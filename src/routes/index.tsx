@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 
 import { getDashboard, logout } from "@/lib/auth.functions";
+import type { ServerStats } from "@/lib/types";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -39,7 +41,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Dashboard() {
-  const stats = Route.useLoaderData();
+  const stats = Route.useLoaderData() as ServerStats;
   const router = useRouter();
   const doLogout = useServerFn(logout);
 
