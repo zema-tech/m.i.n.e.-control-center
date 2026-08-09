@@ -29,7 +29,7 @@ export const Route = createFileRoute("/assistant")({
     if (!state.authenticated) throw redirect({ to: "/login" });
     return null;
   },
-  component: AssistantPage;
+  component: AssistantPage,
 });
 
 type Proposal = { comando: string; motivo: string; state: "pending" | "done" | "rejected"; output?: string };
