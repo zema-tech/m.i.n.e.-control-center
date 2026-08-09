@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Activity,
@@ -64,6 +64,12 @@ function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              to="/assistant"
+              className="rounded-md border border-border px-3 py-1.5 text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+            >
+              ia + console
+            </Link>
             <span className="flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs uppercase tracking-widest text-primary">
               <Power className="h-3.5 w-3.5" />
               {stats.status === "online" ? "online" : "offline"}
