@@ -89,12 +89,24 @@ function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        {stats.demo ? (
+        {stats.demo || stats.note ? (
           <div className="panel flex items-start gap-3 p-4 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <p className="text-muted-foreground">
-              Dati dimostrativi. Appena mi passi la <span className="text-primary">chiave API
-              Falix</span> collego stato reale, log, console e performance del server.
+              {stats.demo ? (
+                <>
+                  <span className="text-primary">Dati dimostrativi.</span>{" "}
+                  {stats.note ??
+                    "Stato reale non disponibile: verifica la configurazione Falix."}
+                </>
+              ) : (
+                <>
+                  <span className="text-primary">
+                    Sorgente: {stats.source === "falix" ? "API Falix" : "query server Minecraft"}.
+                  </span>{" "}
+                  {stats.note}
+                </>
+              )}
             </p>
           </div>
         ) : null}
@@ -103,52 +115,64 @@ function Dashboard() {
           <StatCard
             icon={<Users className="h-4 w-4" />}
             label="Giocatori"
-            value={`${stats.players.online}/${stats.players.max}`}
-            detail={stats.players.names.join(", ")}
+            value={`${nd(stats.players.online)}/${nd(stats.players.max)}`}
+            detail={stats.players.names.join(", ") || undefined}
           />
           <StatCard
             icon={<HardDrive className="h-4 w-4" />}
             label="RAM"
-            value={`${stats.ram.used} / ${stats.ram.total} GB`}
-            detail={`${ramPct}% utilizzata`}
-            progress={ramPct}
+            value={`${nd(stats.ram.used)} / ${nd(stats.ram.total)} GB`}
+            detail={ramPct === null ? "non disponibile" : `${ramPct}% utilizzata`}
+            progress={ramPct ?? undefined}
           />
           <StatCard
             icon={<Cpu className="h-4 w-4" />}
             label="CPU"
-            value={`${stats.cpu}%`}
-            detail={`uptime ${stats.uptime}`}
-            progress={stats.cpu}
+            value={nd(stats.cpu, "%")}
+            detail={`uptime ${nd(stats.uptime)}`}
+            progress={stats.cpu ?? undefined}
           />
           <StatCard
             icon={<Activity className="h-4 w-4" />}
             label="TPS"
-            value={stats.tps.toFixed(1)}
-            detail={stats.version}
-            progress={(stats.tps / 20) * 100}
+            value={stats.tps === null ? "n/d" : stats.tps.toFixed(1)}
+            detail={stats.version ?? undefined}
+            progress={stats.tps === null ? undefined : (stats.tps / 20) * 100}
           />
         </section>
 
         <section className="panel p-4 sm:p-6">
           <h2 className="mb-4 text-sm uppercase tracking-[0.25em] text-primary">
-            TPS ultime 24 ore
+            Andamento TPS
           </h2>
-          <div className="flex h-32 items-end gap-1">
-            {stats.history.map((point) => (
-              <div key={point.t} className="group flex-1" title={`${point.t} — ${point.tps} TPS`}>
-                <div
-                  className="w-full rounded-sm bg-primary-dim transition-colors group-hover:bg-primary"
-                  style={{ height: `${Math.max(6, (point.tps / 20) * 100)}%` }}
-                />
+          {stats.history.some((p) => p.tps !== null) ? (
+            <>
+              <div className="flex h-32 items-end gap-1">
+                {stats.history.map((point, i) => (
+                  <div
+                    key={`${point.t}-${i}`}
+                    className="group flex-1"
+                    title={`${point.t} — ${point.tps ?? "n/d"} TPS`}
+                  >
+                    <div
+                      className="w-full rounded-sm bg-primary-dim transition-colors group-hover:bg-primary"
+                      style={{ height: `${Math.max(6, ((point.tps ?? 0) / 20) * 100)}%` }}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-            <span>00:00</span>
-            <span>12:00</span>
-            <span>23:00</span>
-          </div>
+              <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                <span>{stats.history[0]?.t}</span>
+                <span>{stats.history[stats.history.length - 1]?.t}</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              TPS non disponibili da questa sorgente: servono i dati del pannello Falix.
+            </p>
+          )}
         </section>
+
 
         <section className="panel p-4 sm:p-6">
           <h2 className="mb-4 text-sm uppercase tracking-[0.25em] text-primary">
