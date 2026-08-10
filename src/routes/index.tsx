@@ -215,8 +215,8 @@ function StatCard({
   icon: React.ReactNode;
   label: string;
   value: string;
-  detail?: string;
-  progress?: number;
+  detail?: string | undefined;
+  progress?: number | undefined;
 }) {
   return (
     <div className="panel p-4">
