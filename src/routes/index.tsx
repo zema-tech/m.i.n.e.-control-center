@@ -51,7 +51,11 @@ function Dashboard() {
     await router.navigate({ to: "/login" });
   }
 
-  const ramPct = Math.round((stats.ram.used / stats.ram.total) * 100);
+  const ramPct =
+    stats.ram.used !== null && stats.ram.total
+      ? Math.round((stats.ram.used / stats.ram.total) * 100)
+      : null;
+  const nd = (v: number | string | null, suffix = "") => (v === null ? "n/d" : `${v}${suffix}`);
 
   return (
     <div className="min-h-screen">
