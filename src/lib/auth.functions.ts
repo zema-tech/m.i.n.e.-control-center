@@ -76,5 +76,16 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async () =
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     return { authenticated: false as const, stats: null };
   }
-  return { authenticated: true as const, stats: buildDemoStats(getActionLog()) };
+  const { fetchLiveStatus } = await import("./falix.server");
+  const { buildStats } = await import("./server-stats.server");
+  try {
+    const live = await fetchLiveStatus();
+    return { authenticated: true as const, stats: buildStats(live, getActionLog()) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      authenticated: true as const,
+      stats: buildDemoStats(getActionLog(), `Dati dimostrativi: ${message}.`),
+    };
+  }
 });
