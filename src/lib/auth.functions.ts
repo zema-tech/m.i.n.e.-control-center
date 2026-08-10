@@ -54,7 +54,7 @@ export const login = createServerFn({ method: "POST" })
     setCookie(sessionCookieName, await createToken(), {
       httpOnly: true,
       secure: true,
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
       maxAge: 60 * 60 * 24,
     });
@@ -63,7 +63,7 @@ export const login = createServerFn({ method: "POST" })
   });
 
 export const logout = createServerFn({ method: "POST" }).handler(async () => {
-  deleteCookie(sessionCookieName, { path: "/" });
+  deleteCookie(sessionCookieName, { path: "/", secure: true, sameSite: "none" });
   logAction("info", "Sessione admin terminata");
   return { ok: true as const };
 });
