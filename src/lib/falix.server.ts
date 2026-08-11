@@ -23,7 +23,7 @@ export function getFalixConfig(): FalixConfig | null {
   return {
     key,
     serverId,
-    base: process.env["FALIX_API_BASE"] ?? "https://api.falixnodes.net/api",
+    base: process.env["FALIX_API_BASE"] ?? "https://client.falixnodes.net/api/v2",
   };
 }
 
@@ -83,11 +83,14 @@ const DEMO_LOG = `[08:41:02] [Server thread/INFO]: Starting minecraft server ver
 export async function fetchServerLogs(): Promise<{ demo: boolean; lines: LogLine[] }> {
   const cfg = getFalixConfig();
   if (!cfg) return { demo: true, lines: toLines(DEMO_LOG) };
-  const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/logs`)) as
-    | string
-    | { logs?: string; data?: string };
+  const data = (await falixFetch(
+    cfg,
+    `/servers/${cfg.serverId}/files/content?path=${encodeURIComponent("/logs/latest.log")}`,
+  )) as string | { content?: string; logs?: string; data?: string };
   const raw =
-    typeof data === "string" ? data : (data.logs ?? data.data ?? JSON.stringify(data, null, 2));
+    typeof data === "string"
+      ? data
+      : (data.content ?? data.logs ?? data.data ?? JSON.stringify(data, null, 2));
   return { demo: false, lines: toLines(raw) };
 }
 
@@ -97,7 +100,7 @@ export async function sendServerCommand(command: string): Promise<{ demo: boolea
     logAction("warn", `Comando simulato (chiave Falix mancante): ${command}`);
     return { demo: true, output: `[demo] comando "${command}" non inviato: chiave Falix mancante.` };
   }
-  await falixFetch(cfg, `/servers/${cfg.serverId}/command`, {
+  await falixFetch(cfg, `/servers/${cfg.serverId}/commands`, {
     method: "POST",
     body: { command },
   });
