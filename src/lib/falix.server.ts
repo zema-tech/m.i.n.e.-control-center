@@ -23,7 +23,7 @@ export function getFalixConfig(): FalixConfig | null {
   return {
     key,
     serverId,
-    base: process.env["FALIX_API_BASE"] ?? "https://api.falixnodes.net/api",
+    base: process.env["FALIX_API_BASE"] ?? "https://client.falixnodes.net/api/v2",
   };
 }
 
@@ -83,11 +83,14 @@ const DEMO_LOG = `[08:41:02] [Server thread/INFO]: Starting minecraft server ver
 export async function fetchServerLogs(): Promise<{ demo: boolean; lines: LogLine[] }> {
   const cfg = getFalixConfig();
   if (!cfg) return { demo: true, lines: toLines(DEMO_LOG) };
-  const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/logs`)) as
-    | string
-    | { logs?: string; data?: string };
+  const data = (await falixFetch(
+    cfg,
+    `/servers/${cfg.serverId}/files/content?path=${encodeURIComponent("/logs/latest.log")}`,
+  )) as string | { content?: string; logs?: string; data?: string };
   const raw =
-    typeof data === "string" ? data : (data.logs ?? data.data ?? JSON.stringify(data, null, 2));
+    typeof data === "string"
+      ? data
+      : (data.content ?? data.logs ?? data.data ?? JSON.stringify(data, null, 2));
   return { demo: false, lines: toLines(raw) };
 }
 
@@ -97,7 +100,7 @@ export async function sendServerCommand(command: string): Promise<{ demo: boolea
     logAction("warn", `Comando simulato (chiave Falix mancante): ${command}`);
     return { demo: true, output: `[demo] comando "${command}" non inviato: chiave Falix mancante.` };
   }
-  await falixFetch(cfg, `/servers/${cfg.serverId}/command`, {
+  await falixFetch(cfg, `/servers/${cfg.serverId}/commands`, {
     method: "POST",
     body: { command },
   });
@@ -113,13 +116,41 @@ function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Prova l'API Falix (percorso configurabile con FALIX_API_BASE). */
+/** Giocatori online (endpoint dedicato, opzionale). */
+async function playersFromFalix(cfg: FalixConfig) {
+  try {
+    const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/players`)) as
+      | Record<string, unknown>
+      | unknown[];
+    const raw = (Array.isArray(data) ? { list: data } : data) as Record<string, unknown>;
+    const list = (raw["list"] ?? raw["players"] ?? raw["online_players"] ?? []) as unknown[];
+    const names = Array.isArray(list)
+      ? list
+          .map((p) =>
+            typeof p === "string" ? p : String((p as Record<string, unknown>)?.["name"] ?? ""),
+          )
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
+    return {
+      online: num(raw["online"]) ?? (names.length > 0 ? names.length : null),
+      max: num(raw["max"]) ?? num(raw["max_players"]),
+      names,
+    };
+  } catch {
+    return { online: null, max: null, names: [] as string[] };
+  }
+}
+
+/** Stato dal pannello Falix (percorso configurabile con FALIX_API_BASE). */
 async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
-  const data = (await falixFetch(cfg, `/servers/${cfg.serverId}`)) as Record<string, unknown>;
+  const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/console/status`)) as Record<
+    string,
+    unknown
+  >;
   const raw = (data["attributes"] ?? data["data"] ?? data) as Record<string, unknown>;
   const resources = (raw["resources"] ?? raw["stats"] ?? {}) as Record<string, unknown>;
-  const players = (raw["players"] ?? {}) as Record<string, unknown>;
-  const state = String(raw["status"] ?? raw["state"] ?? "").toLowerCase();
+  const state = String(raw["state"] ?? raw["status"] ?? "").toLowerCase();
 
   const ramUsedMb = num(resources["memory_bytes"])
     ? Math.round((num(resources["memory_bytes"]) as number) / 1024 / 1024)
@@ -128,15 +159,13 @@ async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
     ? Math.round((num(resources["memory_limit_bytes"]) as number) / 1024 / 1024)
     : num(resources["memory_limit"]);
 
+  const players = await playersFromFalix(cfg);
+
   return {
     source: "falix",
     note: null,
     status: state.includes("running") || state.includes("online") ? "online" : "offline",
-    players: {
-      online: num(players["online"]) ?? num(raw["players_online"]),
-      max: num(players["max"]) ?? num(raw["players_max"]),
-      names: Array.isArray(players["list"]) ? (players["list"] as string[]).slice(0, 20) : [],
-    },
+    players,
     ram: {
       used: ramUsedMb === null ? null : Math.round((ramUsedMb / 1024) * 10) / 10,
       total: ramTotalMb === null ? null : Math.round((ramTotalMb / 1024) * 10) / 10,
@@ -147,6 +176,7 @@ async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
     version: typeof raw["version"] === "string" ? (raw["version"] as string) : null,
   };
 }
+
 
 /** Fallback pubblico: query diretta del server Minecraft (indirizzo pubblico). */
 async function statusFromMcStatus(address: string): Promise<LiveStatus> {
