@@ -49,6 +49,20 @@ function Dashboard() {
   const stats = Route.useLoaderData() as ServerStats;
   const router = useRouter();
   const doLogout = useServerFn(logout);
+  const doPower = useServerFn(powerAction);
+
+  const [busy, setBusy] = useState<null | "start" | "stop">(null);
+  const [powerMsg, setPowerMsg] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Aggiornamento automatico dei dati (giocatori, CPU, RAM, TPS)
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(() => {
+      void router.invalidate();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [autoRefresh, router]);
 
   async function onLogout() {
     await doLogout({});
@@ -56,11 +70,30 @@ function Dashboard() {
     await router.navigate({ to: "/login" });
   }
 
+  async function onPower(signal: "start" | "stop") {
+    setBusy(signal);
+    setPowerMsg(null);
+    try {
+      const res = await doPower({ data: { signal } });
+      setPowerMsg(res.output);
+      // aggiorna subito e poi qualche volta mentre il server cambia stato
+      await router.invalidate();
+      for (const delay of [5000, 10000, 20000]) {
+        setTimeout(() => void router.invalidate(), delay);
+      }
+    } catch (error) {
+      setPowerMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const ramPct =
     stats.ram.used !== null && stats.ram.total
       ? Math.round((stats.ram.used / stats.ram.total) * 100)
       : null;
   const nd = (v: number | string | null, suffix = "") => (v === null ? "n/d" : `${v}${suffix}`);
+
 
   return (
     <div className="min-h-screen">
