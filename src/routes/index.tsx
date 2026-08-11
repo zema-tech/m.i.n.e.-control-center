@@ -127,6 +127,42 @@ function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <section className="panel flex flex-wrap items-center gap-3 p-4">
+          <button
+            onClick={() => void onPower("start")}
+            disabled={busy !== null}
+            className="flex items-center gap-2 rounded-md border border-primary px-4 py-2 text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+          >
+            <Play className="h-3.5 w-3.5" /> {busy === "start" ? "avvio…" : "avvia server"}
+          </button>
+          <button
+            onClick={() => void onPower("stop")}
+            disabled={busy !== null}
+            className="flex items-center gap-2 rounded-md border border-destructive px-4 py-2 text-xs uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+          >
+            <Square className="h-3.5 w-3.5" /> {busy === "stop" ? "arresto…" : "spegni server"}
+          </button>
+          <button
+            onClick={() => void router.invalidate()}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> aggiorna
+          </button>
+          <label className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="accent-primary"
+            />
+            auto 10s
+          </label>
+          {powerMsg ? (
+            <p className="w-full font-mono text-xs text-muted-foreground">{powerMsg}</p>
+          ) : null}
+        </section>
+
+
         {stats.demo || stats.note ? (
           <div className="panel flex items-start gap-3 p-4 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
