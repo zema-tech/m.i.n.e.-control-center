@@ -1,16 +1,21 @@
 import { createFileRoute, redirect, useRouter, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
 import {
   Activity,
   AlertTriangle,
   Cpu,
   HardDrive,
   LogOut,
+  Play,
   Power,
+  RefreshCw,
+  Square,
   Users,
 } from "lucide-react";
 
 import { getDashboard, logout } from "@/lib/auth.functions";
+import { powerAction } from "@/lib/panel.functions";
 import type { ServerStats } from "@/lib/types";
 
 
@@ -44,6 +49,20 @@ function Dashboard() {
   const stats = Route.useLoaderData() as ServerStats;
   const router = useRouter();
   const doLogout = useServerFn(logout);
+  const doPower = useServerFn(powerAction);
+
+  const [busy, setBusy] = useState<null | "start" | "stop">(null);
+  const [powerMsg, setPowerMsg] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Aggiornamento automatico dei dati (giocatori, CPU, RAM, TPS)
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(() => {
+      void router.invalidate();
+    }, 10000);
+    return () => clearInterval(id);
+  }, [autoRefresh, router]);
 
   async function onLogout() {
     await doLogout({});
@@ -51,11 +70,30 @@ function Dashboard() {
     await router.navigate({ to: "/login" });
   }
 
+  async function onPower(signal: "start" | "stop") {
+    setBusy(signal);
+    setPowerMsg(null);
+    try {
+      const res = await doPower({ data: { signal } });
+      setPowerMsg(res.output);
+      // aggiorna subito e poi qualche volta mentre il server cambia stato
+      await router.invalidate();
+      for (const delay of [5000, 10000, 20000]) {
+        setTimeout(() => void router.invalidate(), delay);
+      }
+    } catch (error) {
+      setPowerMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const ramPct =
     stats.ram.used !== null && stats.ram.total
       ? Math.round((stats.ram.used / stats.ram.total) * 100)
       : null;
   const nd = (v: number | string | null, suffix = "") => (v === null ? "n/d" : `${v}${suffix}`);
+
 
   return (
     <div className="min-h-screen">
@@ -89,6 +127,42 @@ function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <section className="panel flex flex-wrap items-center gap-3 p-4">
+          <button
+            onClick={() => void onPower("start")}
+            disabled={busy !== null}
+            className="flex items-center gap-2 rounded-md border border-primary px-4 py-2 text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+          >
+            <Play className="h-3.5 w-3.5" /> {busy === "start" ? "avvio…" : "avvia server"}
+          </button>
+          <button
+            onClick={() => void onPower("stop")}
+            disabled={busy !== null}
+            className="flex items-center gap-2 rounded-md border border-destructive px-4 py-2 text-xs uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+          >
+            <Square className="h-3.5 w-3.5" /> {busy === "stop" ? "arresto…" : "spegni server"}
+          </button>
+          <button
+            onClick={() => void router.invalidate()}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> aggiorna
+          </button>
+          <label className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="accent-primary"
+            />
+            auto 10s
+          </label>
+          {powerMsg ? (
+            <p className="w-full font-mono text-xs text-muted-foreground">{powerMsg}</p>
+          ) : null}
+        </section>
+
+
         {stats.demo || stats.note ? (
           <div className="panel flex items-start gap-3 p-4 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />

@@ -38,6 +38,22 @@ export const runCommand = createServerFn({ method: "POST" })
     }
   });
 
+export const powerAction = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ signal: z.enum(["start", "stop", "restart"]) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { sendPowerAction } = await import("./falix.server");
+    try {
+      return { ok: true as const, ...(await sendPowerAction(data.signal)) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("error", `Azione "${data.signal}" fallita: ${message}`);
+      return { ok: false as const, demo: false, output: message };
+    }
+  });
+
 export const askAssistant = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
