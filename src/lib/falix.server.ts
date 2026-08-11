@@ -109,6 +109,41 @@ export async function sendServerCommand(command: string): Promise<{ demo: boolea
 }
 
 /* -------------------------------------------------------------------------- */
+/* Accensione / spegnimento                                                    */
+/* -------------------------------------------------------------------------- */
+
+export type PowerSignal = "start" | "stop" | "restart";
+
+export async function sendPowerAction(
+  signal: PowerSignal,
+): Promise<{ demo: boolean; output: string }> {
+  const cfg = getFalixConfig();
+  const label = signal === "start" ? "avvio" : signal === "stop" ? "spegnimento" : "riavvio";
+  if (!cfg) {
+    logAction("warn", `Azione ${label} simulata (chiave Falix mancante)`);
+    return { demo: true, output: `[demo] ${label} non inviato: chiave Falix mancante.` };
+  }
+
+  const attempts: { path: string; body: unknown }[] = [
+    { path: `/servers/${cfg.serverId}/power`, body: { signal } },
+    { path: `/servers/${cfg.serverId}/${signal}`, body: {} },
+    { path: `/servers/${cfg.serverId}/console/power`, body: { signal } },
+  ];
+
+  let lastError = "";
+  for (const attempt of attempts) {
+    try {
+      await falixFetch(cfg, attempt.path, { method: "POST", body: attempt.body });
+      logAction("info", `Richiesta di ${label} inviata al server`);
+      return { demo: false, output: `Richiesta di ${label} inviata al server.` };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(lastError || `Impossibile inviare la richiesta di ${label}.`);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Stato live                                                                  */
 /* -------------------------------------------------------------------------- */
 
