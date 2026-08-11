@@ -1,16 +1,21 @@
 import { createFileRoute, redirect, useRouter, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
 import {
   Activity,
   AlertTriangle,
   Cpu,
   HardDrive,
   LogOut,
+  Play,
   Power,
+  RefreshCw,
+  Square,
   Users,
 } from "lucide-react";
 
 import { getDashboard, logout } from "@/lib/auth.functions";
+import { powerAction } from "@/lib/panel.functions";
 import type { ServerStats } from "@/lib/types";
 
 
