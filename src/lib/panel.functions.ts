@@ -93,7 +93,7 @@ export const askAssistant = createServerFn({ method: "POST" })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logAction("error", `Richiesta IA fallita: ${message}`);
-      return { ok: false as const, risposta: message, comandi: [], logDemo };
+      return { ok: false as const, risposta: message, comandi: [], azioni: [], logDemo };
     }
   });
 
