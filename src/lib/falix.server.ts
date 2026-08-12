@@ -276,7 +276,7 @@ export async function fetchLiveStatus(): Promise<LiveStatus> {
 
 export async function executeFalixAction(
   id: string,
-  params: Record<string, unknown>,
+  params: Record<string, string | number | boolean>,
 ): Promise<{ demo: boolean; output: string }> {
   const { getAction } = await import("./falix-actions");
   const def = getAction(id);
@@ -299,7 +299,7 @@ export async function executeFalixAction(
     return encodeURIComponent(String(value));
   });
 
-  let body: Record<string, unknown> | undefined;
+  let body: Record<string, string | number | boolean> | undefined;
   if (def.method !== "GET") {
     body = {};
     for (const key of def.body ?? []) {

@@ -2,7 +2,7 @@ import { FALIX_ACTIONS } from "./falix-actions";
 
 export type ProposedAction = {
   id: string;
-  params: Record<string, unknown>;
+  params: Record<string, string | number | boolean>;
   motivo: string;
 };
 
@@ -15,6 +15,20 @@ export type AssistantReply = {
 const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
 ).join("\n");
+
+function sanitizeParams(input: unknown): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  if (input && typeof input === "object") {
+    for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        out[key] = value;
+      } else if (value !== null && value !== undefined) {
+        out[key] = JSON.stringify(value);
+      }
+    }
+  }
+  return out;
+}
 
 const SYSTEM_PROMPT = `Sei M.I.N.E., assistente IA per l'amministrazione di UN server Minecraft (Paper) hostato su Falix.
 Rispondi SEMPRE in italiano, in modo tecnico ma chiaro e sintetico.
@@ -86,8 +100,7 @@ export async function askGroq(
             .slice(0, 5)
             .map((a) => ({
               id: a.id,
-              params:
-                a.params && typeof a.params === "object" ? (a.params as Record<string, unknown>) : {},
+              params: sanitizeParams(a.params),
               motivo: a.motivo ?? "",
             }))
         : [],

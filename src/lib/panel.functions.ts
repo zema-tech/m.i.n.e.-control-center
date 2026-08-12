@@ -102,7 +102,9 @@ export const runFalixAction = createServerFn({ method: "POST" })
     z
       .object({
         id: z.string().min(1).max(80),
-        params: z.record(z.string(), z.unknown()).default({}),
+        params: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .default({}),
         approved: z.boolean().default(false),
       })
       .parse(input),
