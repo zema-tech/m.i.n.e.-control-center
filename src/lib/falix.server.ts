@@ -305,7 +305,7 @@ export async function executeFalixAction(
     for (const key of def.body ?? []) {
       if (params[key] !== undefined) body[key] = params[key];
     }
-    if (id.startsWith("power.")) body["signal"] = id.split(".")[1];
+    if (id.startsWith("power.")) body["signal"] = id.slice("power.".length);
     for (const [key, value] of Object.entries(params)) {
       if (!used.has(key) && body[key] === undefined) body[key] = value;
     }
