@@ -96,3 +96,36 @@ export const askAssistant = createServerFn({ method: "POST" })
       return { ok: false as const, risposta: message, comandi: [], logDemo };
     }
   });
+
+export const runFalixAction = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        id: z.string().min(1).max(80),
+        params: z.record(z.string(), z.unknown()).default({}),
+        approved: z.boolean().default(false),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { getAction } = await import("./falix-actions");
+    const def = getAction(data.id);
+    if (!def) return { ok: false as const, demo: false, output: `Azione sconosciuta: ${data.id}` };
+    if (def.risk !== "read" && !data.approved) {
+      logAction("warn", `Azione "${data.id}" bloccata: approvazione mancante`);
+      return {
+        ok: false as const,
+        demo: false,
+        output: `Azione "${data.id}" richiede approvazione esplicita dell'amministratore.`,
+      };
+    }
+    const { executeFalixAction } = await import("./falix.server");
+    try {
+      return { ok: true as const, ...(await executeFalixAction(data.id, data.params)) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("error", `Azione "${data.id}" fallita: ${message}`);
+      return { ok: false as const, demo: false, output: message };
+    }
+  });
