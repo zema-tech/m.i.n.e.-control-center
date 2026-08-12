@@ -355,6 +355,78 @@ function AssistantPage() {
                     ))}
                   </div>
                 ) : null}
+                {m.actions?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {m.actions.map((a, ai) => {
+                      const def = getAction(a.id);
+                      const risk = def?.risk ?? "critical";
+                      return (
+                        <div
+                          key={ai}
+                          className={`rounded-md border p-2 ${
+                            risk === "critical"
+                              ? "border-destructive/70"
+                              : risk === "write"
+                                ? "border-warning/60"
+                                : "border-border"
+                          }`}
+                        >
+                          <p className="flex flex-wrap items-center gap-2 font-mono text-xs text-primary">
+                            <Zap className="h-3 w-3" /> {a.id}
+                            <span
+                              className={`rounded border px-1 text-[9px] uppercase tracking-widest ${
+                                risk === "critical"
+                                  ? "border-destructive text-destructive"
+                                  : risk === "write"
+                                    ? "border-warning text-warning"
+                                    : "border-border text-muted-foreground"
+                              }`}
+                            >
+                              {riskLabel(risk)}
+                            </span>
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {def?.label ?? "azione"} — {a.motivo}
+                          </p>
+                          {Object.keys(a.params).length ? (
+                            <pre className="mt-1 overflow-x-auto font-mono text-[10px] text-muted-foreground">
+                              {JSON.stringify(a.params)}
+                            </pre>
+                          ) : null}
+                          {a.state === "pending" ? (
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => void confirmAction(mi, ai, a)}
+                                className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] uppercase tracking-widest transition-colors ${
+                                  risk === "read"
+                                    ? "border-primary text-primary hover:bg-primary/10"
+                                    : "border-warning text-warning hover:bg-warning/10"
+                                }`}
+                              >
+                                {risk === "read" ? (
+                                  <Check className="h-3 w-3" />
+                                ) : (
+                                  <ShieldAlert className="h-3 w-3" />
+                                )}
+                                {risk === "read" ? "esegui" : "approva ed esegui"}
+                              </button>
+                              <button
+                                onClick={() => updateAction(mi, ai, { state: "rejected" })}
+                                className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
+                              >
+                                <X className="h-3 w-3" /> rifiuta
+                              </button>
+                            </div>
+                          ) : (
+                            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-muted-foreground">
+                              {a.state === "done" ? (a.output ?? "eseguito") : "rifiutato"}
+                            </pre>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             ))}
             {busy ? <p className="text-xs text-primary">M.I.N.E sta analizzando i log…</p> : null}
@@ -450,6 +522,63 @@ function AssistantPage() {
               >
                 invia
               </button>
+            </div>
+          </section>
+
+          <section className="panel p-4 sm:p-6">
+            <h2 className="mb-1 flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
+              <Zap className="h-4 w-4" /> Azioni Falix
+            </h2>
+            <p className="mb-3 text-[11px] text-muted-foreground">
+              Tutte le operazioni consentite dalla chiave API. Le azioni di scrittura e critiche
+              richiedono approvazione.
+            </p>
+            <div className="space-y-2">
+              <select
+                value={actionId}
+                onChange={(e) => setActionId(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+              >
+                {(["read", "write", "critical"] as ActionRisk[]).map((risk) => (
+                  <optgroup key={risk} label={riskLabel(risk).toUpperCase()}>
+                    {FALIX_ACTIONS.filter((a) => a.risk === risk).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.id} — {a.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <textarea
+                value={actionParams}
+                onChange={(e) => setActionParams(e.target.value)}
+                rows={2}
+                spellCheck={false}
+                placeholder='{"path":"/logs/latest.log"}'
+                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-primary"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
+                    (getAction(actionId)?.risk ?? "read") === "critical"
+                      ? "border-destructive text-destructive"
+                      : (getAction(actionId)?.risk ?? "read") === "write"
+                        ? "border-warning text-warning"
+                        : "border-border text-muted-foreground"
+                  }`}
+                >
+                  {riskLabel(getAction(actionId)?.risk ?? "read")}
+                </span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {getAction(actionId)?.scope}
+                </span>
+                <button
+                  onClick={() => void onRunManualAction()}
+                  className="ml-auto rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+                >
+                  esegui azione
+                </button>
+              </div>
             </div>
           </section>
         </div>
