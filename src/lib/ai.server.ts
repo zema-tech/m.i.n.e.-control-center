@@ -1,15 +1,34 @@
+import { FALIX_ACTIONS } from "./falix-actions";
+
+export type ProposedAction = {
+  id: string;
+  params: Record<string, unknown>;
+  motivo: string;
+};
+
 export type AssistantReply = {
   risposta: string;
   comandi: { comando: string; motivo: string }[];
+  azioni: ProposedAction[];
 };
+
+const ACTION_CATALOG = FALIX_ACTIONS.map(
+  (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
+).join("\n");
 
 const SYSTEM_PROMPT = `Sei M.I.N.E., assistente IA per l'amministrazione di UN server Minecraft (Paper) hostato su Falix.
 Rispondi SEMPRE in italiano, in modo tecnico ma chiaro e sintetico.
 Analizzi i log forniti, individui la causa dei problemi e proponi soluzioni concrete.
-NON esegui mai azioni da solo: puoi solo PROPORRE comandi da console Minecraft che l'amministratore confermerà.
+NON esegui mai azioni da solo: PROPONI comandi console e/o azioni API Falix che l'amministratore approva.
+Le azioni con rischio "write" o "critical" richiedono approvazione esplicita: spiega sempre le conseguenze.
+
+Azioni Falix disponibili (id [rischio] descrizione):
+${ACTION_CATALOG}
+
 Rispondi esclusivamente con JSON valido in questa forma:
-{"risposta":"spiegazione in italiano","comandi":[{"comando":"say ciao","motivo":"perché serve"}]}
-Se non serve nessun comando usa "comandi": [].`;
+{"risposta":"spiegazione in italiano","comandi":[{"comando":"say ciao","motivo":"perché serve"}],"azioni":[{"id":"files.read","params":{"path":"/logs/latest.log"},"motivo":"perché serve"}]}
+Usa "comandi" solo per comandi da console Minecraft, "azioni" per operazioni sul pannello Falix.
+Se non serve nulla usa liste vuote.`;
 
 export async function askGroq(
   question: string,
@@ -61,8 +80,19 @@ export async function askGroq(
             .slice(0, 5)
             .map((c) => ({ comando: c.comando.trim(), motivo: c.motivo ?? "" }))
         : [],
+      azioni: Array.isArray(parsed.azioni)
+        ? parsed.azioni
+            .filter((a) => typeof a?.id === "string" && FALIX_ACTIONS.some((d) => d.id === a.id))
+            .slice(0, 5)
+            .map((a) => ({
+              id: a.id,
+              params:
+                a.params && typeof a.params === "object" ? (a.params as Record<string, unknown>) : {},
+              motivo: a.motivo ?? "",
+            }))
+        : [],
     };
   } catch {
-    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [] };
+    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [], azioni: [] };
   }
 }
