@@ -5,7 +5,21 @@ export type Proposal = {
   output?: string;
 };
 
-export type Msg = { role: "user" | "assistant"; content: string; proposals?: Proposal[] };
+export type ActionProposal = {
+  id: string;
+  params: Record<string, string | number | boolean>;
+  motivo: string;
+  state: "pending" | "done" | "rejected";
+  output?: string;
+};
+
+export type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  proposals?: Proposal[];
+  actions?: ActionProposal[];
+};
+
 
 export type ChatThread = {
   id: string;
