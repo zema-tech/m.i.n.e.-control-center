@@ -8,14 +8,17 @@ import {
   Plus,
   RefreshCw,
   Send,
+  ShieldAlert,
   Terminal,
   Trash2,
+  Zap,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getAuthState } from "@/lib/auth.functions";
-import { askAssistant, getLogs, runCommand } from "@/lib/panel.functions";
+import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
+import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
 import {
   createThread,
   deleteThread as removeThread,
@@ -23,6 +26,7 @@ import {
   loadThreads,
   updateThread,
   type ChatThread,
+  type ActionProposal,
   type Msg,
   type Proposal,
 } from "@/lib/chats";
@@ -61,6 +65,7 @@ function AssistantPage() {
   const ask = useServerFn(askAssistant);
   const fetchLogs = useServerFn(getLogs);
   const exec = useServerFn(runCommand);
+  const execAction = useServerFn(runFalixAction);
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -70,6 +75,8 @@ function AssistantPage() {
   const [logDemo, setLogDemo] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
+  const [actionId, setActionId] = useState("server.status");
+  const [actionParams, setActionParams] = useState("{}");
   const [consoleOut, setConsoleOut] = useState<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -141,6 +148,7 @@ function AssistantPage() {
           role: "assistant",
           content: res.risposta,
           proposals: res.comandi.map((c) => ({ ...c, state: "pending" as const })),
+          actions: (res.azioni ?? []).map((a) => ({ ...a, state: "pending" as const })),
         },
       ]);
     } catch (error) {
@@ -163,6 +171,56 @@ function AssistantPage() {
         };
       }),
     );
+  }
+
+  function updateAction(mi: number, ai: number, patch: Partial<ActionProposal>) {
+    persist(
+      messages.map((msg, i) => {
+        if (i !== mi || !msg.actions) return msg;
+        return {
+          ...msg,
+          actions: msg.actions.map((a, j) => (j === ai ? { ...a, ...patch } : a)),
+        };
+      }),
+    );
+  }
+
+  async function runCatalogAction(
+    id: string,
+    params: Record<string, string | number | boolean>,
+    risk: ActionRisk,
+  ): Promise<string> {
+    if (risk !== "read") {
+      const def = getAction(id);
+      const warn =
+        risk === "critical"
+          ? `AZIONE CRITICA IRREVERSIBILE: "${def?.label ?? id}".\nConfermi l'esecuzione sul server?`
+          : `Approvi l'azione "${def?.label ?? id}" sul server?`;
+      if (!window.confirm(warn)) return "Azione annullata dall'amministratore.";
+    }
+    const res = await execAction({ data: { id, params, approved: risk !== "read" } });
+    setConsoleOut((o) => [...o, `> azione ${id}`, res.output]);
+    void loadLogs();
+    return res.output;
+  }
+
+  async function confirmAction(mi: number, ai: number, a: ActionProposal) {
+    const risk = getAction(a.id)?.risk ?? "critical";
+    const output = await runCatalogAction(a.id, a.params, risk);
+    updateAction(mi, ai, { state: "done", output });
+  }
+
+  async function onRunManualAction() {
+    let params: Record<string, string | number | boolean> = {};
+    try {
+      const parsed = JSON.parse(actionParams || "{}");
+      if (parsed && typeof parsed === "object") params = parsed as typeof params;
+    } catch {
+      setConsoleOut((o) => [...o, "Parametri JSON non validi."]);
+      return;
+    }
+    const risk = getAction(actionId)?.risk ?? "critical";
+    await runCatalogAction(actionId, params, risk);
   }
 
   async function confirmProposal(mi: number, pi: number, cmd: string) {
