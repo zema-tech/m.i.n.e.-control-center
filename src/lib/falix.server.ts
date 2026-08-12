@@ -269,3 +269,54 @@ export async function fetchLiveStatus(): Promise<LiveStatus> {
 
   throw new Error(problems.join("; "));
 }
+
+/* -------------------------------------------------------------------------- */
+/* Esecuzione generica di azioni Falix (catalogo scope)                        */
+/* -------------------------------------------------------------------------- */
+
+export async function executeFalixAction(
+  id: string,
+  params: Record<string, unknown>,
+): Promise<{ demo: boolean; output: string }> {
+  const { getAction } = await import("./falix-actions");
+  const def = getAction(id);
+  if (!def) throw new Error(`Azione sconosciuta: ${id}`);
+
+  const cfg = getFalixConfig();
+  if (!cfg) {
+    logAction("warn", `Azione "${id}" simulata (chiave Falix mancante)`);
+    return { demo: true, output: `[demo] azione "${id}" non inviata: chiave Falix mancante.` };
+  }
+
+  const used = new Set<string>();
+  const path = def.path.replace(/\{(\w+)\}/g, (_m, key: string) => {
+    if (key === "id") return encodeURIComponent(cfg.serverId);
+    used.add(key);
+    const value = params[key];
+    if (value === undefined || value === null || value === "") {
+      throw new Error(`Parametro mancante per l'azione ${id}: ${key}`);
+    }
+    return encodeURIComponent(String(value));
+  });
+
+  let body: Record<string, unknown> | undefined;
+  if (def.method !== "GET") {
+    body = {};
+    for (const key of def.body ?? []) {
+      if (params[key] !== undefined) body[key] = params[key];
+    }
+    if (id.startsWith("power.")) body["signal"] = id.split(".")[1];
+    for (const [key, value] of Object.entries(params)) {
+      if (!used.has(key) && body[key] === undefined) body[key] = value;
+    }
+  }
+
+  const data = await falixFetch(cfg, path, {
+    method: def.method,
+    ...(body ? { body } : {}),
+  });
+
+  logAction(def.risk === "read" ? "info" : "warn", `Azione Falix "${id}" eseguita (${def.scope})`);
+  const output = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  return { demo: false, output: output.slice(0, 4000) };
+}
