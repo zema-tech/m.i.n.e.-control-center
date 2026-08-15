@@ -3,7 +3,7 @@ import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import { isValidToken, logAction, sessionCookieName } from "./auth.server";
-import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./ai.server";
+import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./groq-models";
 
 async function requireAdmin() {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
