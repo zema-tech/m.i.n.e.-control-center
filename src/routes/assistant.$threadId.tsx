@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthState } from "@/lib/auth.functions";
 import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
+import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/ai.server";
 import {
   createThread,
   deleteThread as removeThread,
@@ -59,6 +60,19 @@ export const Route = createFileRoute("/assistant/$threadId")({
 
 type LogLine = { ts: string; level: "info" | "warn" | "error"; message: string };
 
+const MODEL_KEY = "mine.groq.model";
+
+function loadModel(): GroqModelId {
+  if (typeof window === "undefined") return DEFAULT_GROQ_MODEL;
+  try {
+    const v = window.localStorage.getItem(MODEL_KEY);
+    if (v && GROQ_MODELS.some((m) => m.id === v)) return v as GroqModelId;
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_GROQ_MODEL;
+}
+
 function AssistantPage() {
   const { threadId } = Route.useParams();
   const navigate = Route.useNavigate();
@@ -78,7 +92,12 @@ function AssistantPage() {
   const [actionId, setActionId] = useState("server.status");
   const [actionParams, setActionParams] = useState("{}");
   const [consoleOut, setConsoleOut] = useState<string[]>([]);
+  const [model, setModel] = useState<GroqModelId>(DEFAULT_GROQ_MODEL);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    setModel(loadModel());
+  }, []);
 
   useEffect(() => {
     const current = ensureThread(threadId);
@@ -112,6 +131,16 @@ function AssistantPage() {
     inputRef.current?.focus();
   }, [busy, threadId]);
 
+  function onModelChange(id: string) {
+    const next = (GROQ_MODELS.some((m) => m.id === id) ? id : DEFAULT_GROQ_MODEL) as GroqModelId;
+    setModel(next);
+    try {
+      window.localStorage.setItem(MODEL_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
+
   function onNewChat() {
     const thread = createThread();
     setThreads(loadThreads());
@@ -140,6 +169,7 @@ function AssistantPage() {
         data: {
           question,
           history: messages.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+          model,
         },
       });
       persist([
@@ -299,15 +329,31 @@ function AssistantPage() {
         </aside>
 
         <section className="panel flex h-[70vh] flex-col p-4 sm:p-6">
-          <h2 className="mb-3 flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
-            <Bot className="h-4 w-4" /> IA Assistant
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
+              <Bot className="h-4 w-4" /> IA Assistant
+            </h2>
+            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+              modello
+              <select
+                value={model}
+                onChange={(e) => onModelChange(e.target.value)}
+                className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] normal-case tracking-normal text-foreground outline-none focus:border-primary"
+              >
+                {GROQ_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="flex-1 space-y-3 overflow-y-auto pr-1 text-sm">
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
                 Chiedi ad esempio:{" "}
-                <span className="text-primary">&quot;perché il server lagga?&quot;</span> —
-                l&apos;IA legge i log e propone comandi che devi confermare.
+                <span className="text-primary">"perché il server lagga?"</span> —
+                l'IA legge i log e propone comandi che devi confermare.
               </p>
             ) : null}
             {messages.map((m, mi) => (
