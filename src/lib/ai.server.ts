@@ -1,4 +1,5 @@
 import { FALIX_ACTIONS } from "./falix-actions";
+import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "./groq-models";
 
 export type ProposedAction = {
   id: string;
@@ -12,16 +13,7 @@ export type AssistantReply = {
   azioni: ProposedAction[];
 };
 
-/** Modelli Groq gratuiti supportati. */
-export const GROQ_MODELS = [
-  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
-  { id: "mixtral-8x7b-32768", label: "Mixtral 8x7B" },
-  { id: "gemma2-9b-it", label: "Gemma 2 9B" },
-] as const;
-
-export type GroqModelId = (typeof GROQ_MODELS)[number]["id"];
-
-export const DEFAULT_GROQ_MODEL: GroqModelId = "llama-3.3-70b-versatile";
+export { GROQ_MODELS, DEFAULT_GROQ_MODEL, type GroqModelId };
 
 const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
