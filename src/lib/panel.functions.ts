@@ -3,6 +3,7 @@ import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import { isValidToken, logAction, sessionCookieName } from "./auth.server";
+import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./ai.server";
 
 async function requireAdmin() {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
@@ -54,6 +55,8 @@ export const powerAction = createServerFn({ method: "POST" })
     }
   });
 
+const modelIds = GROQ_MODELS.map((m) => m.id) as [string, ...string[]];
+
 export const askAssistant = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -68,6 +71,7 @@ export const askAssistant = createServerFn({ method: "POST" })
           )
           .max(20)
           .default([]),
+        model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
       })
       .parse(input),
   )
@@ -87,8 +91,13 @@ export const askAssistant = createServerFn({ method: "POST" })
     }
 
     try {
-      const reply = await askGroq(data.question, logContext, data.history);
-      logAction("info", `IA consultata: ${data.question.slice(0, 80)}`);
+      const reply = await askGroq(
+        data.question,
+        logContext,
+        data.history,
+        data.model ?? DEFAULT_GROQ_MODEL,
+      );
+      logAction("info", `IA consultata (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`);
       return { ok: true as const, ...reply, logDemo };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
