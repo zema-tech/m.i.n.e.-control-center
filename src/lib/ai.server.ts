@@ -12,6 +12,17 @@ export type AssistantReply = {
   azioni: ProposedAction[];
 };
 
+/** Modelli Groq gratuiti supportati. */
+export const GROQ_MODELS = [
+  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
+  { id: "mixtral-8x7b-32768", label: "Mixtral 8x7B" },
+  { id: "gemma2-9b-it", label: "Gemma 2 9B" },
+] as const;
+
+export type GroqModelId = (typeof GROQ_MODELS)[number]["id"];
+
+export const DEFAULT_GROQ_MODEL: GroqModelId = "llama-3.3-70b-versatile";
+
 const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
 ).join("\n");
@@ -48,9 +59,15 @@ export async function askGroq(
   question: string,
   logContext: string,
   history: { role: "user" | "assistant"; content: string }[],
+  model: string = DEFAULT_GROQ_MODEL,
 ): Promise<AssistantReply> {
   const key = process.env["GROQ_API_KEY"];
   if (!key) throw new Error("GROQ_API_KEY non configurata sul server.");
+
+  const allowed = GROQ_MODELS.map((m) => m.id);
+  const chosen = allowed.includes(model as GroqModelId)
+    ? model
+    : (process.env["GROQ_MODEL"] ?? DEFAULT_GROQ_MODEL);
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -59,7 +76,7 @@ export async function askGroq(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env["GROQ_MODEL"] ?? "llama-3.3-70b-versatile",
+      model: chosen,
       temperature: 0.3,
       response_format: { type: "json_object" },
       messages: [

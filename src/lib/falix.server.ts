@@ -124,17 +124,21 @@ export async function sendPowerAction(
     return { demo: true, output: `[demo] ${label} non inviato: chiave Falix mancante.` };
   }
 
+  // Endpoint Falix tentati in ordine (alcuni panel usano action, altri signal)
   const attempts: { path: string; body: unknown }[] = [
+    { path: `/servers/${cfg.serverId}/console/power`, body: { action: signal } },
     { path: `/servers/${cfg.serverId}/power`, body: { signal } },
+    { path: `/servers/${cfg.serverId}/console/actions`, body: { action: signal } },
+    // fallback legacy
+    { path: `/servers/${cfg.serverId}/power`, body: { action: signal } },
     { path: `/servers/${cfg.serverId}/${signal}`, body: {} },
-    { path: `/servers/${cfg.serverId}/console/power`, body: { signal } },
   ];
 
   let lastError = "";
   for (const attempt of attempts) {
     try {
       await falixFetch(cfg, attempt.path, { method: "POST", body: attempt.body });
-      logAction("info", `Richiesta di ${label} inviata al server`);
+      logAction("info", `Richiesta di ${label} inviata al server (${attempt.path})`);
       return { demo: false, output: `Richiesta di ${label} inviata al server.` };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
