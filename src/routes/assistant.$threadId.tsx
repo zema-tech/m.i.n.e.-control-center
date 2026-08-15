@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthState } from "@/lib/auth.functions";
 import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
-import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/ai.server";
+import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
   createThread,
   deleteThread as removeThread,
