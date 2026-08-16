@@ -114,15 +114,19 @@ function Dashboard() {
   const nd = (v: number | string | null, suffix = "") => (v === null ? "n/d" : `${v}${suffix}`);
 
   const graphNodes: GraphNode[] = useMemo(() => {
+    const online = stats.status === "online";
     const list: GraphNode[] = [
       {
         id: "server",
         label: "Minecraft",
         kind: "server",
-        status: stats.status === "online" ? "online" : "offline",
-        detail: `${stats.version ?? "n/d"} · ${stats.uptime ?? "uptime n/d"}`,
+        status: online ? "online" : "offline",
+        detail: `${stats.version ?? "n/d"} · uptime ${stats.uptime ?? "n/d"}`,
+        size: 18,
       },
     ];
+
+    // Giocatori
     for (const name of stats.players.names) {
       list.push({
         id: `player:${name}`,
@@ -130,20 +134,156 @@ function Dashboard() {
         kind: "player",
         status: "online",
         detail: "Giocatore online",
+        size: 9,
       });
     }
-    // Mondi tipici (non sempre esposti dall'API)
+    if (stats.players.names.length === 0 && (stats.players.online ?? 0) > 0) {
+      for (let i = 0; i < Math.min(stats.players.online ?? 0, 8); i++) {
+        list.push({
+          id: `player:slot-${i}`,
+          label: `Player ${i + 1}`,
+          kind: "player",
+          status: "online",
+          detail: "Slot online (nome non esposto)",
+        });
+      }
+    }
+
+    // Mondi
     for (const world of ["world", "world_nether", "world_the_end"]) {
       list.push({
         id: `world:${world}`,
         label: world,
         kind: "world",
-        status: stats.status === "online" ? "online" : "offline",
-        detail: "Mondo del server",
+        status: online ? "online" : "offline",
+        detail: "Dimensione del server",
+        size: 8,
       });
     }
+
+    // Plugin tipici (placeholder finché non c'è API dedicata)
+    const plugins = [
+      "Paper",
+      "EssentialsX",
+      "WorldGuard",
+      "LuckPerms",
+      "Vault",
+      "PlaceholderAPI",
+      "CoreProtect",
+      "Spark",
+    ];
+    for (const p of plugins) {
+      list.push({
+        id: `plugin:${p}`,
+        label: p,
+        kind: "plugin",
+        status: online ? "online" : "offline",
+        detail: "Plugin / stack server",
+        size: 7,
+      });
+    }
+
+    // Metriche live
+    list.push({
+      id: "metric:cpu",
+      label: `CPU ${nd(stats.cpu, "%")}`,
+      kind: "metric",
+      status: stats.cpu !== null && stats.cpu > 85 ? "error" : online ? "online" : "offline",
+      detail: "Utilizzo processore",
+      size: 10,
+    });
+    list.push({
+      id: "metric:ram",
+      label: `RAM ${ramPct ?? "?"}%`,
+      kind: "metric",
+      status: ramPct !== null && ramPct > 85 ? "error" : online ? "online" : "offline",
+      detail: `${nd(stats.ram.used)} / ${nd(stats.ram.total)} GB`,
+      size: 10,
+    });
+    list.push({
+      id: "metric:tps",
+      label: `TPS ${stats.tps === null ? "n/d" : stats.tps.toFixed(1)}`,
+      kind: "metric",
+      status:
+        stats.tps !== null && stats.tps < 15
+          ? "error"
+          : stats.tps !== null && stats.tps < 18
+            ? "offline"
+            : online
+              ? "online"
+              : "offline",
+      detail: "Tick per secondo",
+      size: 10,
+    });
+    list.push({
+      id: "metric:players",
+      label: `${nd(stats.players.online)}/${nd(stats.players.max)}`,
+      kind: "metric",
+      status: online ? "online" : "offline",
+      detail: "Slot giocatori",
+      size: 9,
+    });
+
+    // Servizi / connettori
+    const services: { id: string; label: string; detail: string; ok: boolean }[] = [
+      {
+        id: "svc:falix",
+        label: "Falix API",
+        detail: stats.source === "falix" ? "Connesso" : "Non primario",
+        ok: stats.source === "falix",
+      },
+      {
+        id: "svc:mcstatus",
+        label: "MC Query",
+        detail: stats.source === "mcstatus" ? "Attivo" : "Fallback",
+        ok: stats.source === "mcstatus" || stats.source === "falix",
+      },
+      {
+        id: "svc:console",
+        label: "Console",
+        detail: "Comandi server",
+        ok: online,
+      },
+      {
+        id: "svc:groq",
+        label: "Groq IA",
+        detail: "Assistente M.I.N.E",
+        ok: true,
+      },
+      {
+        id: "svc:rcon",
+        label: "Power",
+        detail: "Start / stop",
+        ok: online || stats.status === "offline",
+      },
+    ];
+    for (const s of services) {
+      list.push({
+        id: s.id,
+        label: s.label,
+        kind: "service",
+        status: s.ok ? "online" : "offline",
+        detail: s.detail,
+        size: 8,
+      });
+    }
+
+    // Log recenti come nodi evento
+    const recent = stats.log.slice(-6);
+    for (let i = 0; i < recent.length; i++) {
+      const entry = recent[i]!;
+      list.push({
+        id: `log:${i}:${entry.ts}`,
+        label: entry.message.slice(0, 18),
+        kind: "log",
+        status: entry.level === "error" ? "error" : entry.level === "warn" ? "offline" : "online",
+        detail: entry.message.slice(0, 120),
+        size: 6,
+      });
+    }
+
     return list;
-  }, [stats]);
+  }, [stats, ramPct]);
 
   return (
     <div className="min-h-screen">
@@ -177,7 +317,6 @@ function Dashboard() {
       </header>
 
       <div className="mx-auto flex max-w-7xl gap-0 lg:gap-6">
-        {/* Sidebar stats sinistra */}
         <aside className="hidden w-56 shrink-0 border-r border-border bg-background/60 p-4 lg:block">
           <h2 className="mb-4 text-[11px] uppercase tracking-[0.25em] text-primary">Live</h2>
 
@@ -234,7 +373,7 @@ function Dashboard() {
             </p>
           </div>
 
-          <div>
+          <div className="mb-5">
             <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Activity className="h-3 w-3" /> tps
@@ -245,6 +384,19 @@ function Dashboard() {
               </span>
             </div>
           </div>
+
+          {selectedNode ? (
+            <div className="rounded-md border border-border bg-background/50 p-3 text-[11px]">
+              <p className="mb-1 text-[10px] uppercase tracking-widest text-primary">Nodo</p>
+              <p className="font-display text-sm text-primary">{selectedNode.label}</p>
+              <p className="mt-1 text-muted-foreground">
+                {selectedNode.kind} · {selectedNode.status}
+              </p>
+              {selectedNode.detail ? (
+                <p className="mt-1 text-muted-foreground">{selectedNode.detail}</p>
+              ) : null}
+            </div>
+          ) : null}
         </aside>
 
         <main className="min-w-0 flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -305,31 +457,13 @@ function Dashboard() {
             </div>
           ) : null}
 
-          {/* Grafo neurale */}
-          <section className="panel p-4 sm:p-6">
-            <h2 className="mb-3 text-sm uppercase tracking-[0.25em] text-primary">
-              Rete neurale server
-            </h2>
-            <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
-              <NeuralGraph nodes={graphNodes} onSelect={setSelectedNode} />
-              <div className="rounded-md border border-border bg-background/40 p-3 text-xs">
-                <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Dettaglio nodo
-                </p>
-                {selectedNode ? (
-                  <div className="space-y-1">
-                    <p className="font-display text-sm text-primary">{selectedNode.label}</p>
-                    <p className="text-muted-foreground">tipo: {selectedNode.kind}</p>
-                    <p className="text-muted-foreground">stato: {selectedNode.status}</p>
-                    {selectedNode.detail ? (
-                      <p className="text-muted-foreground">{selectedNode.detail}</p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">Clicca un nodo per i dettagli.</p>
-                )}
-              </div>
-            </div>
+          {/* Rete neurale full-bleed */}
+          <section className="panel overflow-hidden p-0 sm:p-0">
+            <NeuralGraph
+              nodes={graphNodes}
+              serverOnline={stats.status === "online"}
+              onSelect={setSelectedNode}
+            />
           </section>
 
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
