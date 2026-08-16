@@ -4,18 +4,36 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  Cable,
   Cpu,
   HardDrive,
   LogOut,
+  MessageSquare,
   Play,
+  Plus,
   Power,
   RefreshCw,
   Square,
+  Trash2,
   Users,
 } from "lucide-react";
 
 import { NeuralGraph, type GraphNode } from "@/components/NeuralGraph";
 import { getDashboard, logout } from "@/lib/auth.functions";
+import {
+  createThread,
+  deleteThread,
+  loadThreads,
+  type ChatThread,
+} from "@/lib/chats";
+import {
+  addConnector,
+  CONNECTOR_KIND_OPTIONS,
+  loadConnectors,
+  removeConnector,
+  type ConnectorKind,
+  type CustomConnector,
+} from "@/lib/connectors";
 import { powerAction } from "@/lib/panel.functions";
 import type { ServerStats } from "@/lib/types";
 
@@ -76,6 +94,18 @@ function Dashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [connectors, setConnectors] = useState<CustomConnector[]>([]);
+  const [showAddConnector, setShowAddConnector] = useState(false);
+  const [connLabel, setConnLabel] = useState("");
+  const [connKind, setConnKind] = useState<ConnectorKind>("service");
+  const [connDetail, setConnDetail] = useState("");
+
+  useEffect(() => {
+    setThreads(loadThreads());
+    setConnectors(loadConnectors());
+  }, []);
+
   useEffect(() => {
     if (!autoRefresh) return;
     const id = setInterval(() => {
@@ -107,6 +137,34 @@ function Dashboard() {
     }
   }
 
+  function onNewChat() {
+    const t = createThread();
+    setThreads(loadThreads());
+    void router.navigate({ to: "/assistant/$threadId", params: { threadId: t.id } });
+  }
+
+  function onDeleteChat(id: string) {
+    setThreads(deleteThread(id));
+  }
+
+  function onAddConnector() {
+    const label = connLabel.trim();
+    if (!label) return;
+    addConnector({
+      label,
+      kind: connKind,
+      detail: connDetail.trim() || undefined,
+    });
+    setConnectors(loadConnectors());
+    setConnLabel("");
+    setConnDetail("");
+    setShowAddConnector(false);
+  }
+
+  function onRemoveConnector(id: string) {
+    setConnectors(removeConnector(id));
+  }
+
   const ramPct =
     stats.ram.used !== null && stats.ram.total
       ? Math.round((stats.ram.used / stats.ram.total) * 100)
@@ -126,7 +184,6 @@ function Dashboard() {
       },
     ];
 
-    // Giocatori
     for (const name of stats.players.names) {
       list.push({
         id: `player:${name}`,
@@ -149,7 +206,6 @@ function Dashboard() {
       }
     }
 
-    // Mondi
     for (const world of ["world", "world_nether", "world_the_end"]) {
       list.push({
         id: `world:${world}`,
@@ -161,7 +217,6 @@ function Dashboard() {
       });
     }
 
-    // Plugin tipici (placeholder finché non c'è API dedicata)
     const plugins = [
       "Paper",
       "EssentialsX",
@@ -183,7 +238,6 @@ function Dashboard() {
       });
     }
 
-    // Metriche live
     list.push({
       id: "metric:cpu",
       label: `CPU ${nd(stats.cpu, "%")}`,
@@ -224,7 +278,6 @@ function Dashboard() {
       size: 9,
     });
 
-    // Servizi / connettori
     const services: { id: string; label: string; detail: string; ok: boolean }[] = [
       {
         id: "svc:falix",
@@ -268,7 +321,6 @@ function Dashboard() {
       });
     }
 
-    // Log recenti come nodi evento
     const recent = stats.log.slice(-6);
     for (let i = 0; i < recent.length; i++) {
       const entry = recent[i]!;
@@ -282,8 +334,20 @@ function Dashboard() {
       });
     }
 
+    // Connettori personalizzati
+    for (const c of connectors) {
+      list.push({
+        id: c.id,
+        label: c.label,
+        kind: c.kind,
+        status: c.status,
+        detail: c.detail,
+        size: 9,
+      });
+    }
+
     return list;
-  }, [stats, ramPct]);
+  }, [stats, ramPct, connectors]);
 
   return (
     <div className="min-h-screen">
@@ -317,86 +381,219 @@ function Dashboard() {
       </header>
 
       <div className="mx-auto flex max-w-7xl gap-0 lg:gap-6">
-        <aside className="hidden w-56 shrink-0 border-r border-border bg-background/60 p-4 lg:block">
-          <h2 className="mb-4 text-[11px] uppercase tracking-[0.25em] text-primary">Live</h2>
+        {/* Sidebar sinistra: chat + connettori + live */}
+        <aside className="flex w-full shrink-0 flex-col gap-5 border-b border-border bg-background/60 p-4 sm:w-64 sm:border-b-0 sm:border-r lg:w-60">
+          {/* Chat IA */}
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-primary">
+                <MessageSquare className="h-3 w-3" /> chat ia
+              </h2>
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="flex items-center gap-1 rounded border border-primary px-2 py-0.5 text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+              >
+                <Plus className="h-3 w-3" /> nuova
+              </button>
+            </div>
+            <div className="max-h-40 space-y-1 overflow-y-auto">
+              {threads.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">Nessuna chat. Creane una.</p>
+              ) : (
+                threads.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5"
+                  >
+                    <Link
+                      to="/assistant/$threadId"
+                      params={{ threadId: t.id }}
+                      className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      {t.title}
+                    </Link>
+                    <button
+                      type="button"
+                      aria-label={`Elimina ${t.title}`}
+                      onClick={() => onDeleteChat(t.id)}
+                      className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
 
-          <div className="mb-5">
-            <p className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-              <Users className="h-3 w-3 text-primary" /> giocatori
-            </p>
-            {stats.players.names.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">Nessuno online</p>
-            ) : (
-              <ul className="space-y-2">
-                {stats.players.names.map((name) => (
-                  <li key={name} className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full border border-primary/50 bg-primary/10 text-[10px] font-bold text-primary">
-                      {initials(name)}
+          {/* Connettori */}
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-primary">
+                <Cable className="h-3 w-3" /> connettori
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddConnector((v) => !v)}
+                className="flex items-center gap-1 rounded border border-primary px-2 py-0.5 text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+              >
+                <Plus className="h-3 w-3" /> aggiungi
+              </button>
+            </div>
+
+            {showAddConnector ? (
+              <div className="mb-2 space-y-2 rounded-md border border-border bg-background/50 p-2">
+                <input
+                  value={connLabel}
+                  onChange={(e) => setConnLabel(e.target.value)}
+                  placeholder="Nome (es. Discord bot)"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                />
+                <select
+                  value={connKind}
+                  onChange={(e) => setConnKind(e.target.value as ConnectorKind)}
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                >
+                  {CONNECTOR_KIND_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={connDetail}
+                  onChange={(e) => setConnDetail(e.target.value)}
+                  placeholder="Dettaglio (opzionale)"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onAddConnector}
+                    className="flex-1 rounded border border-primary py-1 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                  >
+                    salva
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddConnector(false)}
+                    className="rounded border border-border px-2 py-1 text-[10px] uppercase tracking-widest text-muted-foreground"
+                  >
+                    annulla
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="max-h-32 space-y-1 overflow-y-auto">
+              {connectors.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Nessun connettore custom. Aggiungine uno alla rete.
+                </p>
+              ) : (
+                connectors.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                      {c.label}
+                      <span className="ml-1 text-[9px] text-primary/70">{c.kind}</span>
                     </span>
-                    <span className="truncate text-xs text-foreground">{name}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                    <button
+                      type="button"
+                      aria-label={`Rimuovi ${c.label}`}
+                      onClick={() => onRemoveConnector(c.id)}
+                      className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
 
-          <div className="mb-4">
-            <div className="mb-1 flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Cpu className="h-3 w-3" /> cpu
-              </span>
-              <span>{nd(stats.cpu, "%")}</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${barColor(stats.cpu)}`}
-                style={{ width: `${Math.min(100, Math.max(0, stats.cpu ?? 0))}%` }}
-              />
-            </div>
-          </div>
+          {/* Live stats */}
+          <section>
+            <h2 className="mb-3 text-[11px] uppercase tracking-[0.25em] text-primary">Live</h2>
 
-          <div className="mb-4">
-            <div className="mb-1 flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <HardDrive className="h-3 w-3" /> ram
-              </span>
-              <span>{ramPct === null ? "n/d" : `${ramPct}%`}</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${barColor(ramPct)}`}
-                style={{ width: `${Math.min(100, Math.max(0, ramPct ?? 0))}%` }}
-              />
-            </div>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              {nd(stats.ram.used)} / {nd(stats.ram.total)} GB
-            </p>
-          </div>
-
-          <div className="mb-5">
-            <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Activity className="h-3 w-3" /> tps
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className={`inline-block h-2 w-2 rounded-full ${tpsColor(stats.tps)}`} />
-                {stats.tps === null ? "n/d" : stats.tps.toFixed(1)}
-              </span>
-            </div>
-          </div>
-
-          {selectedNode ? (
-            <div className="rounded-md border border-border bg-background/50 p-3 text-[11px]">
-              <p className="mb-1 text-[10px] uppercase tracking-widest text-primary">Nodo</p>
-              <p className="font-display text-sm text-primary">{selectedNode.label}</p>
-              <p className="mt-1 text-muted-foreground">
-                {selectedNode.kind} · {selectedNode.status}
+            <div className="mb-4">
+              <p className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+                <Users className="h-3 w-3 text-primary" /> giocatori
               </p>
-              {selectedNode.detail ? (
-                <p className="mt-1 text-muted-foreground">{selectedNode.detail}</p>
-              ) : null}
+              {stats.players.names.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">Nessuno online</p>
+              ) : (
+                <ul className="space-y-2">
+                  {stats.players.names.map((name) => (
+                    <li key={name} className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-primary/50 bg-primary/10 text-[10px] font-bold text-primary">
+                        {initials(name)}
+                      </span>
+                      <span className="truncate text-xs text-foreground">{name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-          ) : null}
+
+            <div className="mb-3">
+              <div className="mb-1 flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Cpu className="h-3 w-3" /> cpu
+                </span>
+                <span>{nd(stats.cpu, "%")}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${barColor(stats.cpu)}`}
+                  style={{ width: `${Math.min(100, Math.max(0, stats.cpu ?? 0))}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <div className="mb-1 flex justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <HardDrive className="h-3 w-3" /> ram
+                </span>
+                <span>{ramPct === null ? "n/d" : `${ramPct}%`}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${barColor(ramPct)}`}
+                  style={{ width: `${Math.min(100, Math.max(0, ramPct ?? 0))}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Activity className="h-3 w-3" /> tps
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className={`inline-block h-2 w-2 rounded-full ${tpsColor(stats.tps)}`} />
+                  {stats.tps === null ? "n/d" : stats.tps.toFixed(1)}
+                </span>
+              </div>
+            </div>
+
+            {selectedNode ? (
+              <div className="rounded-md border border-border bg-background/50 p-3 text-[11px]">
+                <p className="mb-1 text-[10px] uppercase tracking-widest text-primary">Nodo</p>
+                <p className="font-display text-sm text-primary">{selectedNode.label}</p>
+                <p className="mt-1 text-muted-foreground">
+                  {selectedNode.kind} · {selectedNode.status}
+                </p>
+                {selectedNode.detail ? (
+                  <p className="mt-1 text-muted-foreground">{selectedNode.detail}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
         </aside>
 
         <main className="min-w-0 flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -457,7 +654,6 @@ function Dashboard() {
             </div>
           ) : null}
 
-          {/* Rete neurale full-bleed */}
           <section className="panel overflow-hidden p-0 sm:p-0">
             <NeuralGraph
               nodes={graphNodes}
