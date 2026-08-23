@@ -13,7 +13,9 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Server,
   Square,
+  Star,
   Trash2,
   Users,
 } from "lucide-react";
@@ -29,11 +31,22 @@ import {
 import {
   addConnector,
   CONNECTOR_KIND_OPTIONS,
+  CONNECTOR_PRESETS,
   loadConnectors,
   removeConnector,
   type ConnectorKind,
   type CustomConnector,
 } from "@/lib/connectors";
+import {
+  addHost,
+  HOST_PROVIDERS,
+  loadHosts,
+  providerLabel,
+  removeHost,
+  setPrimaryHost,
+  type HostProfile,
+  type HostProviderId,
+} from "@/lib/hosts";
 import { powerAction } from "@/lib/panel.functions";
 import type { ServerStats } from "@/lib/types";
 
@@ -44,12 +57,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "M.I.N.E: dashboard in tempo reale del tuo server Minecraft su Falix con stato, giocatori, RAM, CPU e TPS.",
+          "M.I.N.E: dashboard multi-host per server Minecraft (Falix e altri) con connettori, rete neurale e assistente IA.",
       },
       { property: "og:title", content: "M.I.N.E — Pannello server Minecraft con IA" },
       {
         property: "og:description",
-        content: "Dashboard cyberpunk per monitorare e gestire il tuo server Minecraft su Falix.",
+        content: "Semplifica l'hosting Minecraft: Falix, altri host e connettori tipo MEGA.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -96,14 +109,21 @@ function Dashboard() {
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [connectors, setConnectors] = useState<CustomConnector[]>([]);
+  const [hosts, setHosts] = useState<HostProfile[]>([]);
   const [showAddConnector, setShowAddConnector] = useState(false);
+  const [showAddHost, setShowAddHost] = useState(false);
   const [connLabel, setConnLabel] = useState("");
-  const [connKind, setConnKind] = useState<ConnectorKind>("service");
+  const [connKind, setConnKind] = useState<ConnectorKind>("storage");
   const [connDetail, setConnDetail] = useState("");
+  const [hostLabel, setHostLabel] = useState("");
+  const [hostProvider, setHostProvider] = useState<HostProviderId>("generic");
+  const [hostAddress, setHostAddress] = useState("");
+  const [hostNotes, setHostNotes] = useState("");
 
   useEffect(() => {
     setThreads(loadThreads());
     setConnectors(loadConnectors());
+    setHosts(loadHosts());
   }, []);
 
   useEffect(() => {
@@ -161,8 +181,44 @@ function Dashboard() {
     setShowAddConnector(false);
   }
 
+  function onPresetConnector(presetId: string) {
+    const p = CONNECTOR_PRESETS.find((x) => x.id === presetId);
+    if (!p) return;
+    addConnector({
+      label: p.label,
+      kind: p.kind,
+      detail: p.detail,
+      preset: p.id,
+    });
+    setConnectors(loadConnectors());
+  }
+
   function onRemoveConnector(id: string) {
     setConnectors(removeConnector(id));
+  }
+
+  function onAddHost() {
+    const label = hostLabel.trim() || providerLabel(hostProvider);
+    addHost({
+      label,
+      provider: hostProvider,
+      address: hostAddress,
+      notes: hostNotes,
+      primary: hosts.length === 0,
+    });
+    setHosts(loadHosts());
+    setHostLabel("");
+    setHostAddress("");
+    setHostNotes("");
+    setShowAddHost(false);
+  }
+
+  function onRemoveHost(id: string) {
+    setHosts(removeHost(id));
+  }
+
+  function onSetPrimary(id: string) {
+    setHosts(setPrimaryHost(id));
   }
 
   const ramPct =
@@ -183,6 +239,26 @@ function Dashboard() {
         size: 18,
       },
     ];
+
+    // Host configurati (Falix + altri)
+    list.push({
+      id: "host:falix-env",
+      label: "Falix (API)",
+      kind: "service",
+      status: stats.source === "falix" ? "online" : "offline",
+      detail: "Host principale collegato via env / API",
+      size: 10,
+    });
+    for (const h of hosts) {
+      list.push({
+        id: h.id,
+        label: h.label,
+        kind: "service",
+        status: h.primary ? (online ? "online" : "offline") : "offline",
+        detail: `${providerLabel(h.provider)}${h.address ? ` · ${h.address}` : ""}${h.notes ? ` · ${h.notes}` : ""}`,
+        size: h.primary ? 11 : 8,
+      });
+    }
 
     for (const name of stats.players.names) {
       list.push({
@@ -276,6 +352,7 @@ function Dashboard() {
       status: online ? "online" : "offline",
       detail: "Slot giocatori",
       size: 9,
+      items: stats.players.names,
     });
 
     const services: { id: string; label: string; detail: string; ok: boolean }[] = [
@@ -334,20 +411,30 @@ function Dashboard() {
       });
     }
 
-    // Connettori personalizzati
+    // Connettori (MEGA, Discord, …) — mappati su kind del grafo
     for (const c of connectors) {
+      const kindMap: Record<string, GraphNode["kind"]> = {
+        storage: "service",
+        backup: "service",
+        chat: "service",
+        rcon: "service",
+        service: "service",
+        plugin: "plugin",
+        world: "world",
+        metric: "metric",
+      };
       list.push({
         id: c.id,
         label: c.label,
-        kind: c.kind,
+        kind: kindMap[c.kind] ?? "service",
         status: c.status,
-        detail: c.detail,
-        size: 9,
+        detail: c.detail + (c.preset ? ` · preset:${c.preset}` : ""),
+        size: c.preset === "mega" ? 11 : 9,
       });
     }
 
     return list;
-  }, [stats, ramPct, connectors]);
+  }, [stats, ramPct, connectors, hosts]);
 
   return (
     <div className="min-h-screen">
@@ -356,7 +443,7 @@ function Dashboard() {
           <div className="flex items-center gap-3">
             <h1 className="text-glow text-xl font-bold text-primary sm:text-2xl">M.I.N.E</h1>
             <span className="hidden text-[11px] uppercase tracking-[0.25em] text-muted-foreground sm:inline">
-              intelligent network engine
+              multi-host network engine
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -381,8 +468,120 @@ function Dashboard() {
       </header>
 
       <div className="mx-auto flex max-w-7xl gap-0 lg:gap-6">
-        {/* Sidebar sinistra: chat + connettori + live */}
         <aside className="flex w-full shrink-0 flex-col gap-5 border-b border-border bg-background/60 p-4 sm:w-64 sm:border-b-0 sm:border-r lg:w-60">
+          {/* Host multipli */}
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-primary">
+                <Server className="h-3 w-3" /> host
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddHost((v) => !v)}
+                className="flex items-center gap-1 rounded border border-primary px-2 py-0.5 text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+              >
+                <Plus className="h-3 w-3" /> aggiungi
+              </button>
+            </div>
+            <p className="mb-2 text-[10px] leading-relaxed text-muted-foreground">
+              Falix è l&apos;API principale. Puoi registrare altri host (Aternos, Apex, VPS…).
+            </p>
+
+            {showAddHost ? (
+              <div className="mb-2 space-y-2 rounded-md border border-border bg-background/50 p-2">
+                <select
+                  value={hostProvider}
+                  onChange={(e) => setHostProvider(e.target.value as HostProviderId)}
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                >
+                  {HOST_PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                      {p.apiReady ? " · API" : ""}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={hostLabel}
+                  onChange={(e) => setHostLabel(e.target.value)}
+                  placeholder="Nome profilo (es. SMP amici)"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                />
+                <input
+                  value={hostAddress}
+                  onChange={(e) => setHostAddress(e.target.value)}
+                  placeholder="IP:porta o hostname"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                />
+                <input
+                  value={hostNotes}
+                  onChange={(e) => setHostNotes(e.target.value)}
+                  placeholder="Note / panel URL"
+                  className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onAddHost}
+                    className="flex-1 rounded border border-primary py-1 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                  >
+                    salva
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddHost(false)}
+                    className="rounded border border-border px-2 py-1 text-[10px] uppercase tracking-widest text-muted-foreground"
+                  >
+                    annulla
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="max-h-36 space-y-1 overflow-y-auto">
+              <div className="flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5">
+                <Star className="h-3 w-3 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+                  Falix (env)
+                  <span className="ml-1 text-[9px] text-primary/70">API live</span>
+                </span>
+              </div>
+              {hosts.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">Nessun host extra.</p>
+              ) : (
+                hosts.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5"
+                  >
+                    <button
+                      type="button"
+                      title="Imposta primario (UI)"
+                      onClick={() => onSetPrimary(h.id)}
+                      className={`shrink-0 ${h.primary ? "text-primary" : "text-muted-foreground"}`}
+                    >
+                      <Star className="h-3 w-3" />
+                    </button>
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                      {h.label}
+                      <span className="ml-1 text-[9px] text-primary/70">
+                        {providerLabel(h.provider)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Rimuovi ${h.label}`}
+                      onClick={() => onRemoveHost(h.id)}
+                      className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
           {/* Chat IA */}
           <section>
             <div className="mb-2 flex items-center justify-between">
@@ -397,9 +596,9 @@ function Dashboard() {
                 <Plus className="h-3 w-3" /> nuova
               </button>
             </div>
-            <div className="max-h-40 space-y-1 overflow-y-auto">
+            <div className="max-h-32 space-y-1 overflow-y-auto">
               {threads.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">Nessuna chat. Creane una.</p>
+                <p className="text-[11px] text-muted-foreground">Nessuna chat.</p>
               ) : (
                 threads.map((t) => (
                   <div
@@ -427,7 +626,7 @@ function Dashboard() {
             </div>
           </section>
 
-          {/* Connettori */}
+          {/* Connettori + preset MEGA */}
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-primary">
@@ -442,12 +641,26 @@ function Dashboard() {
               </button>
             </div>
 
+            <div className="mb-2 flex flex-wrap gap-1">
+              {CONNECTOR_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onPresetConnector(p.id)}
+                  className="rounded-full border border-border px-2 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  title={p.detail}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
             {showAddConnector ? (
               <div className="mb-2 space-y-2 rounded-md border border-border bg-background/50 p-2">
                 <input
                   value={connLabel}
                   onChange={(e) => setConnLabel(e.target.value)}
-                  placeholder="Nome (es. Discord bot)"
+                  placeholder="Nome (es. MEGA backup)"
                   className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
                 />
                 <select
@@ -486,10 +699,11 @@ function Dashboard() {
               </div>
             ) : null}
 
-            <div className="max-h-32 space-y-1 overflow-y-auto">
+            <div className="max-h-28 space-y-1 overflow-y-auto">
               {connectors.length === 0 ? (
                 <p className="text-[11px] text-muted-foreground">
-                  Nessun connettore custom. Aggiungine uno alla rete.
+                  Nessun connettore. Prova <strong className="text-primary">MEGA</strong> per i
+                  backup.
                 </p>
               ) : (
                 connectors.map((c) => (
