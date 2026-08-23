@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AppShell } from "@/components/AppShell";
 import { getAuthState } from "@/lib/auth.functions";
 import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
@@ -33,23 +34,7 @@ import {
 } from "@/lib/chats";
 
 export const Route = createFileRoute("/assistant/$threadId")({
-  head: () => ({
-    meta: [
-      { title: "Chat IA + Console — M.I.N.E" },
-      {
-        name: "description",
-        content:
-          "Chat IA dedicata: analizza i log del server Minecraft, conferma i comandi proposti e inviali su Falix dalla console.",
-      },
-      { property: "og:title", content: "Chat IA + Console — M.I.N.E" },
-      {
-        property: "og:description",
-        content: "Conversazioni separate con l'IA che gestisce il tuo server Minecraft su Falix.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Chat IA + Console — M.I.N.E" }] }),
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
@@ -59,7 +44,6 @@ export const Route = createFileRoute("/assistant/$threadId")({
 });
 
 type LogLine = { ts: string; level: "info" | "warn" | "error"; message: string };
-
 const MODEL_KEY = "mine.groq.model";
 
 function loadModel(): GroqModelId {
@@ -224,9 +208,9 @@ function AssistantPage() {
       const def = getAction(id);
       const warn =
         risk === "critical"
-          ? `AZIONE CRITICA IRREVERSIBILE: "${def?.label ?? id}".\nConfermi l'esecuzione sul server?`
-          : `Approvi l'azione "${def?.label ?? id}" sul server?`;
-      if (!window.confirm(warn)) return "Azione annullata dall'amministratore.";
+          ? `AZIONE CRITICA: "${def?.label ?? id}". Confermi?`
+          : `Approvi l'azione "${def?.label ?? id}"?`;
+      if (!window.confirm(warn)) return "Azione annullata.";
     }
     const res = await execAction({ data: { id, params, approved: risk !== "read" } });
     setConsoleOut((o) => [...o, `> azione ${id}`, res.output]);
@@ -270,36 +254,16 @@ function AssistantPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <h1 className="text-glow text-xl font-bold text-primary">M.I.N.E</h1>
-          <nav className="flex items-center gap-2 text-xs uppercase tracking-widest">
-            <Link
-              to="/"
-              className="rounded-md border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-            >
-              dashboard
-            </Link>
-            <span className="rounded-md border border-primary px-3 py-1.5 text-primary">
-              ia + console
-            </span>
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr_1fr]">
+    <AppShell title="Chat IA" subtitle="Crea ed elimina chat · Groq legge i log e propone comandi">
+      <div className="grid gap-4 p-4 lg:grid-cols-[200px_1fr_1fr] lg:p-6">
         <aside className="panel flex max-h-[70vh] flex-col p-3">
           <button
             onClick={onNewChat}
-            className="mb-3 flex items-center justify-center gap-2 rounded-md border border-primary px-3 py-2 text-[11px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+            className="mb-3 flex items-center justify-center gap-2 rounded-md border border-primary px-3 py-2 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10"
           >
             <Plus className="h-3.5 w-3.5" /> nuova chat
           </button>
           <div className="flex-1 space-y-1 overflow-y-auto">
-            {threads.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">Nessuna chat.</p>
-            ) : null}
             {threads.map((t) => (
               <div
                 key={t.id}
@@ -311,15 +275,14 @@ function AssistantPage() {
                   onClick={() =>
                     void navigate({ to: "/assistant/$threadId", params: { threadId: t.id } })
                   }
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground hover:text-primary"
                 >
                   <MessageSquare className="h-3 w-3 shrink-0" />
                   <span className="truncate">{t.title}</span>
                 </button>
                 <button
                   onClick={() => onDeleteChat(t.id)}
-                  aria-label={`Elimina chat ${t.title}`}
-                  className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                  className="text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -328,32 +291,27 @@ function AssistantPage() {
           </div>
         </aside>
 
-        <section className="panel flex h-[70vh] flex-col p-4 sm:p-6">
+        <section className="panel flex h-[70vh] flex-col p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
-              <Bot className="h-4 w-4" /> IA Assistant
+              <Bot className="h-4 w-4" /> assistente
             </h2>
-            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-              modello
-              <select
-                value={model}
-                onChange={(e) => onModelChange(e.target.value)}
-                className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] normal-case tracking-normal text-foreground outline-none focus:border-primary"
-              >
-                {GROQ_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <select
+              value={model}
+              onChange={(e) => onModelChange(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary"
+            >
+              {GROQ_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto pr-1 text-sm">
+          <div className="flex-1 space-y-3 overflow-y-auto text-sm">
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
-                Chiedi ad esempio:{" "}
-                <span className="text-primary">"perché il server lagga?"</span> —
-                l'IA legge i log e propone comandi che devi confermare.
+                Es. <span className="text-primary">"perché il server lagga?"</span>
               </p>
             ) : null}
             {messages.map((m, mi) => (
@@ -368,114 +326,54 @@ function AssistantPage() {
                 <p className="mb-1 text-[10px] uppercase tracking-widest text-muted-foreground">
                   {m.role === "user" ? "tu" : "m.i.n.e"}
                 </p>
-                <p className="whitespace-pre-wrap text-foreground">{m.content}</p>
-                {m.proposals?.length ? (
-                  <div className="mt-3 space-y-2">
-                    {m.proposals.map((p, pi) => (
-                      <div key={pi} className="rounded-md border border-border p-2">
-                        <p className="font-mono text-xs text-primary">/{p.comando}</p>
-                        {p.motivo ? (
-                          <p className="mt-1 text-[11px] text-muted-foreground">{p.motivo}</p>
-                        ) : null}
-                        {p.state === "pending" ? (
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              onClick={() => void confirmProposal(mi, pi, p.comando)}
-                              className="flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
-                            >
-                              <Check className="h-3 w-3" /> conferma
-                            </button>
-                            <button
-                              onClick={() => updateProposal(mi, pi, { state: "rejected" })}
-                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
-                            >
-                              <X className="h-3 w-3" /> rifiuta
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-[11px] text-muted-foreground">
-                            {p.state === "done" ? (p.output ?? "eseguito") : "rifiutato"}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {m.actions?.length ? (
-                  <div className="mt-3 space-y-2">
-                    {m.actions.map((a, ai) => {
-                      const def = getAction(a.id);
-                      const risk = def?.risk ?? "critical";
-                      return (
-                        <div
-                          key={ai}
-                          className={`rounded-md border p-2 ${
-                            risk === "critical"
-                              ? "border-destructive/70"
-                              : risk === "write"
-                                ? "border-warning/60"
-                                : "border-border"
-                          }`}
+                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.proposals?.map((p, pi) => (
+                  <div key={pi} className="mt-2 rounded border border-border p-2">
+                    <p className="font-mono text-xs text-primary">/{p.comando}</p>
+                    {p.state === "pending" ? (
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => void confirmProposal(mi, pi, p.comando)}
+                          className="flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
                         >
-                          <p className="flex flex-wrap items-center gap-2 font-mono text-xs text-primary">
-                            <Zap className="h-3 w-3" /> {a.id}
-                            <span
-                              className={`rounded border px-1 text-[9px] uppercase tracking-widest ${
-                                risk === "critical"
-                                  ? "border-destructive text-destructive"
-                                  : risk === "write"
-                                    ? "border-warning text-warning"
-                                    : "border-border text-muted-foreground"
-                              }`}
-                            >
-                              {riskLabel(risk)}
-                            </span>
-                          </p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {def?.label ?? "azione"} — {a.motivo}
-                          </p>
-                          {Object.keys(a.params).length ? (
-                            <pre className="mt-1 overflow-x-auto font-mono text-[10px] text-muted-foreground">
-                              {JSON.stringify(a.params)}
-                            </pre>
-                          ) : null}
-                          {a.state === "pending" ? (
-                            <div className="mt-2 flex gap-2">
-                              <button
-                                onClick={() => void confirmAction(mi, ai, a)}
-                                className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] uppercase tracking-widest transition-colors ${
-                                  risk === "read"
-                                    ? "border-primary text-primary hover:bg-primary/10"
-                                    : "border-warning text-warning hover:bg-warning/10"
-                                }`}
-                              >
-                                {risk === "read" ? (
-                                  <Check className="h-3 w-3" />
-                                ) : (
-                                  <ShieldAlert className="h-3 w-3" />
-                                )}
-                                {risk === "read" ? "esegui" : "approva ed esegui"}
-                              </button>
-                              <button
-                                onClick={() => updateAction(mi, ai, { state: "rejected" })}
-                                className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
-                              >
-                                <X className="h-3 w-3" /> rifiuta
-                              </button>
-                            </div>
-                          ) : (
-                            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-muted-foreground">
-                              {a.state === "done" ? (a.output ?? "eseguito") : "rifiutato"}
-                            </pre>
-                          )}
-                        </div>
-                      );
-                    })}
+                          <Check className="h-3 w-3" /> conferma
+                        </button>
+                        <button
+                          onClick={() => updateProposal(mi, pi, { state: "rejected" })}
+                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          <X className="h-3 w-3" /> rifiuta
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {p.state === "done" ? p.output ?? "ok" : "rifiutato"}
+                      </p>
+                    )}
                   </div>
-                ) : null}
+                ))}
+                {m.actions?.map((a, ai) => {
+                  const risk = getAction(a.id)?.risk ?? "critical";
+                  return (
+                    <div key={ai} className="mt-2 rounded border border-border p-2">
+                      <p className="font-mono text-xs text-primary">{a.id}</p>
+                      {a.state === "pending" ? (
+                        <button
+                          onClick={() => void confirmAction(mi, ai, a)}
+                          className="mt-2 flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
+                        >
+                          <ShieldAlert className="h-3 w-3" /> approva
+                        </button>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-muted-foreground">{a.output ?? a.state}</p>
+                      )}
+                      <span className="text-[9px] text-muted-foreground">{riskLabel(risk)}</span>
+                    </div>
+                  );
+                })}
               </div>
             ))}
-            {busy ? <p className="text-xs text-primary">M.I.N.E sta analizzando i log…</p> : null}
+            {busy ? <p className="text-xs text-primary">Analisi log…</p> : null}
           </div>
           <div className="mt-3 flex gap-2">
             <textarea
@@ -489,68 +387,49 @@ function AssistantPage() {
                 }
               }}
               rows={2}
-              placeholder="Chiedi qualcosa sul server…"
-              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              placeholder="Chiedi sul server…"
+              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             />
             <button
               onClick={() => void onAsk()}
               disabled={busy}
-              className="flex items-center gap-1 rounded-md border border-primary px-3 text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+              className="rounded-md border border-primary px-3 text-xs uppercase tracking-widest text-primary disabled:opacity-40"
             >
-              <Send className="h-3.5 w-3.5" /> invia
+              <Send className="h-3.5 w-3.5" />
             </button>
           </div>
         </section>
 
-        <div className="space-y-6">
-          <section className="panel p-4 sm:p-6">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm uppercase tracking-[0.25em] text-primary">Log server</h2>
-              <button
-                onClick={() => void loadLogs()}
-                className="flex items-center gap-1 text-[11px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-primary"
-              >
-                <RefreshCw className="h-3 w-3" /> aggiorna
+        <div className="space-y-4">
+          <section className="panel p-4">
+            <div className="mb-2 flex justify-between">
+              <h2 className="text-sm uppercase tracking-widest text-primary">Log</h2>
+              <button onClick={() => void loadLogs()} className="text-muted-foreground hover:text-primary">
+                <RefreshCw className="h-3 w-3" />
               </button>
             </div>
-            {logDemo || logError ? (
-              <p className="mb-2 flex items-start gap-2 text-[11px] text-warning">
-                <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                {logError ?? "Log dimostrativi: API Falix non raggiungibile."}
+            {(logDemo || logError) && (
+              <p className="mb-2 flex gap-1 text-[11px] text-warning">
+                <AlertTriangle className="h-3 w-3" /> {logError ?? "Log demo"}
               </p>
-            ) : null}
-            <div className="max-h-64 space-y-0.5 overflow-y-auto font-mono text-[11px]">
+            )}
+            <div className="max-h-40 overflow-y-auto font-mono text-[11px] text-muted-foreground">
               {logs.map((l, i) => (
-                <p
-                  key={i}
-                  className={
-                    l.level === "error"
-                      ? "text-destructive"
-                      : l.level === "warn"
-                        ? "text-warning"
-                        : "text-muted-foreground"
-                  }
-                >
+                <p key={i} className={l.level === "error" ? "text-destructive" : undefined}>
                   {l.message}
                 </p>
               ))}
             </div>
           </section>
 
-          <section className="panel p-4 sm:p-6">
-            <h2 className="mb-3 flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
-              <Terminal className="h-4 w-4" /> Console
+          <section className="panel p-4">
+            <h2 className="mb-2 flex items-center gap-2 text-sm uppercase tracking-widest text-primary">
+              <Terminal className="h-4 w-4" /> console
             </h2>
-            <div className="mb-3 max-h-40 space-y-0.5 overflow-y-auto font-mono text-[11px] text-muted-foreground">
-              {consoleOut.length === 0 ? (
-                <p>Nessun comando inviato.</p>
-              ) : (
-                consoleOut.map((line, i) => (
-                  <p key={i} className={line.startsWith(">") ? "text-primary" : undefined}>
-                    {line}
-                  </p>
-                ))
-              )}
+            <div className="mb-2 max-h-28 overflow-y-auto font-mono text-[11px] text-muted-foreground">
+              {consoleOut.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
             </div>
             <div className="flex gap-2">
               <input
@@ -560,75 +439,47 @@ function AssistantPage() {
                   if (e.key === "Enter") void onSendCommand();
                 }}
                 placeholder="say ciao"
-                className="flex-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+                className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
               />
               <button
                 onClick={() => void onSendCommand()}
-                className="rounded-md border border-primary px-3 text-[11px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+                className="rounded border border-primary px-2 text-[11px] text-primary"
               >
                 invia
               </button>
             </div>
           </section>
 
-          <section className="panel p-4 sm:p-6">
-            <h2 className="mb-1 flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
-              <Zap className="h-4 w-4" /> Azioni Falix
+          <section className="panel p-4">
+            <h2 className="mb-2 flex items-center gap-2 text-sm uppercase tracking-widest text-primary">
+              <Zap className="h-4 w-4" /> azioni
             </h2>
-            <p className="mb-3 text-[11px] text-muted-foreground">
-              Tutte le operazioni consentite dalla chiave API. Le azioni di scrittura e critiche
-              richiedono approvazione.
-            </p>
-            <div className="space-y-2">
-              <select
-                value={actionId}
-                onChange={(e) => setActionId(e.target.value)}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-primary"
-              >
-                {(["read", "write", "critical"] as ActionRisk[]).map((risk) => (
-                  <optgroup key={risk} label={riskLabel(risk).toUpperCase()}>
-                    {FALIX_ACTIONS.filter((a) => a.risk === risk).map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.id} — {a.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              <textarea
-                value={actionParams}
-                onChange={(e) => setActionParams(e.target.value)}
-                rows={2}
-                spellCheck={false}
-                placeholder='{"path":"/logs/latest.log"}'
-                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-foreground outline-none focus:border-primary"
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
-                    (getAction(actionId)?.risk ?? "read") === "critical"
-                      ? "border-destructive text-destructive"
-                      : (getAction(actionId)?.risk ?? "read") === "write"
-                        ? "border-warning text-warning"
-                        : "border-border text-muted-foreground"
-                  }`}
-                >
-                  {riskLabel(getAction(actionId)?.risk ?? "read")}
-                </span>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {getAction(actionId)?.scope}
-                </span>
-                <button
-                  onClick={() => void onRunManualAction()}
-                  className="ml-auto rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
-                >
-                  esegui azione
-                </button>
-              </div>
-            </div>
+            <select
+              value={actionId}
+              onChange={(e) => setActionId(e.target.value)}
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs"
+            >
+              {FALIX_ACTIONS.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.id}
+                </option>
+              ))}
+            </select>
+            <textarea
+              value={actionParams}
+              onChange={(e) => setActionParams(e.target.value)}
+              rows={2}
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px]"
+            />
+            <button
+              onClick={() => void onRunManualAction()}
+              className="rounded border border-primary px-3 py-1 text-[11px] uppercase text-primary"
+            >
+              esegui
+            </button>
           </section>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
