@@ -1,18 +1,26 @@
 /**
  * Account connettori con chiavi API proprie.
- * Esempio: due account Falix diversi, ognuno con la sua API key + server id.
- * Salvati solo in localStorage del browser (non inviati a terzi oltre le chiamate API dell'host).
+ * Include provider panel-style simili a Falix (Ptero-based, MCSManager, …).
  */
 
 export type AccountProvider =
   | "falix"
+  | "bloom"
+  | "apex"
+  | "bisect"
+  | "shockbyte"
+  | "akliz"
+  | "flexynode"
   | "pterodactyl"
+  | "pelican"
+  | "mcsmanager"
+  | "amp"
+  | "exaroton"
   | "mega"
   | "discord"
   | "rcon"
   | "generic";
 
-/** Competenze = azioni che questo account può eseguire. */
 export type SkillId =
   | "power"
   | "console"
@@ -28,30 +36,47 @@ export type ApiAccount = {
   id: string;
   label: string;
   provider: AccountProvider;
-  /** API key / token / password RCON */
   apiKey: string;
-  /** Server / instance id (Falix, Ptero, …) */
   serverId: string;
-  /** Base URL opzionale */
   baseUrl: string;
-  /** Indirizzo pubblico IP:porta */
   address: string;
   skills: SkillId[];
-  /** Account attivo per le azioni dashboard */
   active: boolean;
   createdAt: number;
 };
+
+const FALIX_LIKE_SKILLS: SkillId[] = [
+  "power",
+  "console",
+  "metrics",
+  "players",
+  "files",
+  "logs",
+  "status",
+];
+
+const PTERO_FIELDS: {
+  key: "apiKey" | "serverId" | "baseUrl" | "address";
+  label: string;
+  secret?: boolean;
+}[] = [
+  { key: "apiKey", label: "Client API Key", secret: true },
+  { key: "serverId", label: "Server UUID / ID" },
+  { key: "baseUrl", label: "Panel URL (es. https://panel.example.com)" },
+];
 
 export const ACCOUNT_PROVIDERS: {
   id: AccountProvider;
   label: string;
   defaultSkills: SkillId[];
+  falixLike: boolean;
   fields: { key: "apiKey" | "serverId" | "baseUrl" | "address"; label: string; secret?: boolean }[];
 }[] = [
   {
     id: "falix",
     label: "FalixNodes",
-    defaultSkills: ["power", "console", "metrics", "players", "files", "logs", "status"],
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
     fields: [
       { key: "apiKey", label: "API Key", secret: true },
       { key: "serverId", label: "Server ID" },
@@ -59,19 +84,98 @@ export const ACCOUNT_PROVIDERS: {
     ],
   },
   {
+    id: "bloom",
+    label: "Bloom Host",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "apex",
+    label: "Apex Hosting",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "bisect",
+    label: "BisectHosting",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "shockbyte",
+    label: "Shockbyte",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "akliz",
+    label: "Akliz",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "flexynode",
+    label: "FlexyNode",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
     id: "pterodactyl",
-    label: "Pterodactyl / Pelican",
+    label: "Pterodactyl",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "pelican",
+    label: "Pelican Panel",
+    defaultSkills: FALIX_LIKE_SKILLS,
+    falixLike: true,
+    fields: PTERO_FIELDS,
+  },
+  {
+    id: "mcsmanager",
+    label: "MCSManager",
     defaultSkills: ["power", "console", "metrics", "files", "status"],
+    falixLike: true,
     fields: [
-      { key: "apiKey", label: "Client API Key", secret: true },
-      { key: "serverId", label: "Server UUID" },
+      { key: "apiKey", label: "API Key / Token", secret: true },
+      { key: "serverId", label: "Instance UUID" },
       { key: "baseUrl", label: "Panel URL" },
+    ],
+  },
+  {
+    id: "amp",
+    label: "AMP (CubeCoders)",
+    defaultSkills: ["power", "console", "metrics", "status"],
+    falixLike: true,
+    fields: [
+      { key: "apiKey", label: "API / Session", secret: true },
+      { key: "serverId", label: "Instance ID" },
+      { key: "baseUrl", label: "AMP URL" },
+    ],
+  },
+  {
+    id: "exaroton",
+    label: "Exaroton",
+    defaultSkills: ["power", "status", "players", "console"],
+    falixLike: true,
+    fields: [
+      { key: "apiKey", label: "API Token", secret: true },
+      { key: "serverId", label: "Server ID" },
     ],
   },
   {
     id: "mega",
     label: "MEGA",
     defaultSkills: ["backup", "files"],
+    falixLike: false,
     fields: [
       { key: "apiKey", label: "Email o session", secret: true },
       { key: "serverId", label: "Folder / handle (opz.)" },
@@ -81,6 +185,7 @@ export const ACCOUNT_PROVIDERS: {
     id: "discord",
     label: "Discord",
     defaultSkills: ["chat", "status"],
+    falixLike: false,
     fields: [
       { key: "apiKey", label: "Bot token / webhook", secret: true },
       { key: "serverId", label: "Channel / Guild ID" },
@@ -90,6 +195,7 @@ export const ACCOUNT_PROVIDERS: {
     id: "rcon",
     label: "RCON",
     defaultSkills: ["console", "power"],
+    falixLike: false,
     fields: [
       { key: "address", label: "Host:porta" },
       { key: "apiKey", label: "Password RCON", secret: true },
@@ -97,8 +203,9 @@ export const ACCOUNT_PROVIDERS: {
   },
   {
     id: "generic",
-    label: "Generico",
+    label: "Generico / altro",
     defaultSkills: ["status"],
+    falixLike: false,
     fields: [
       { key: "apiKey", label: "API Key", secret: true },
       { key: "baseUrl", label: "Base URL" },
@@ -168,8 +275,11 @@ export function addAccount(input: {
   if (account.active) {
     list = list.map((a) => ({ ...a, active: false }));
   }
-  // se è il primo account falix, attivarlo
-  if (!account.active && list.filter((a) => a.provider === "falix").length === 0 && account.provider === "falix") {
+  if (
+    !account.active &&
+    account.provider === "falix" &&
+    list.filter((a) => a.provider === "falix").length === 0
+  ) {
     account.active = true;
   }
   list = [account, ...list];
@@ -213,12 +323,13 @@ export function toggleSkill(id: string, skill: SkillId): ApiAccount[] {
 
 export function getActiveFalixAccount(): ApiAccount | null {
   const list = loadAccounts();
-  return list.find((a) => a.active && a.provider === "falix" && a.apiKey && a.serverId)
-    ?? list.find((a) => a.provider === "falix" && a.apiKey && a.serverId)
-    ?? null;
+  return (
+    list.find((a) => a.active && a.provider === "falix" && a.apiKey && a.serverId) ??
+    list.find((a) => a.provider === "falix" && a.apiKey && a.serverId) ??
+    null
+  );
 }
 
-/** Credenziali da passare alle server fn (senza esporre in log). */
 export function credentialsPayload(account: ApiAccount | null) {
   if (!account) return undefined;
   return {

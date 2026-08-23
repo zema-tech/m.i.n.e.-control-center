@@ -1,31 +1,38 @@
 /**
  * Profili host multipli per M.I.N.E.
- * Falix resta l'host principale con API completa lato server;
- * gli altri profili sono gestiti in locale (indirizzo pubblico / note / credenziali UI)
- * e compaiono sulla rete neurale come hub alternativi.
+ * Falix resta l'host con integrazione API più completa;
+ * gli altri sono profili panel-style (spesso Pterodactyl) o free-tier.
  */
 
 export type HostProviderId =
   | "falix"
-  | "pterodactyl"
-  | "aternos"
-  | "minehut"
+  | "bloom"
   | "apex"
   | "bisect"
   | "shockbyte"
+  | "akliz"
+  | "flexynode"
+  | "meloncube"
+  | "craftserve"
+  | "minekeep"
   | "exaroton"
-  | "generic"
-  | "selfhosted";
+  | "aternos"
+  | "minehut"
+  | "minefort"
+  | "pterodactyl"
+  | "pelican"
+  | "mcsmanager"
+  | "amp"
+  | "crafty"
+  | "selfhosted"
+  | "generic";
 
 export type HostProfile = {
   id: string;
   label: string;
   provider: HostProviderId;
-  /** Indirizzo pubblico IP:porta o hostname (query mcstatus). */
   address: string;
-  /** Note / API base / server id (testo libero, non inviato a terzi). */
   notes: string;
-  /** Host attivo per la dashboard (un solo primary). */
   primary: boolean;
   createdAt: number;
 };
@@ -34,67 +41,178 @@ export const HOST_PROVIDERS: {
   id: HostProviderId;
   label: string;
   blurb: string;
+  /** Simile a Falix: panel completo, power, file, console */
+  falixLike: boolean;
   apiReady: boolean;
+  category: "premium" | "budget" | "free" | "panel" | "other";
 }[] = [
   {
     id: "falix",
     label: "FalixNodes",
-    blurb: "Host principale — API power, console, metriche",
+    blurb: "API power, console, metriche — integrazione nativa M.I.N.E",
+    falixLike: true,
     apiReady: true,
+    category: "premium",
   },
   {
-    id: "pterodactyl",
-    label: "Pterodactyl / Pelican",
-    blurb: "Panel open-source (Apex e molti host lo usano)",
+    id: "bloom",
+    label: "Bloom Host",
+    blurb: "Ryzen, panel moderno — simile a Falix",
+    falixLike: true,
     apiReady: false,
-  },
-  {
-    id: "aternos",
-    label: "Aternos",
-    blurb: "Hosting gratuito — stato via indirizzo pubblico",
-    apiReady: false,
-  },
-  {
-    id: "minehut",
-    label: "Minehut",
-    blurb: "Network + server esterni",
-    apiReady: false,
+    category: "premium",
   },
   {
     id: "apex",
     label: "Apex Hosting",
-    blurb: "Hosting premium (spesso Pterodactyl)",
+    blurb: "Premium + modpack; spesso Pterodactyl",
+    falixLike: true,
     apiReady: false,
+    category: "premium",
   },
   {
     id: "bisect",
     label: "BisectHosting",
-    blurb: "Modpack one-click",
+    blurb: "1000+ modpack one-click",
+    falixLike: true,
     apiReady: false,
+    category: "premium",
   },
   {
     id: "shockbyte",
     label: "Shockbyte",
-    blurb: "Hosting Minecraft popolare",
+    blurb: "Hosting MC popolare, panel completo",
+    falixLike: true,
     apiReady: false,
+    category: "budget",
+  },
+  {
+    id: "akliz",
+    label: "Akliz",
+    blurb: "Modded-first, multi-server",
+    falixLike: true,
+    apiReady: false,
+    category: "premium",
+  },
+  {
+    id: "flexynode",
+    label: "FlexyNode",
+    blurb: "Ryzen 9, NVMe, network-ready",
+    falixLike: true,
+    apiReady: false,
+    category: "premium",
+  },
+  {
+    id: "meloncube",
+    label: "MelonCube",
+    blurb: "Hardware enterprise, prezzo contenuto",
+    falixLike: true,
+    apiReady: false,
+    category: "budget",
+  },
+  {
+    id: "craftserve",
+    label: "CraftServe",
+    blurb: "Hosting PL — panel proprietario",
+    falixLike: true,
+    apiReady: false,
+    category: "budget",
+  },
+  {
+    id: "minekeep",
+    label: "MineKeep",
+    blurb: "Free + paid, panel semplice",
+    falixLike: true,
+    apiReady: false,
+    category: "budget",
   },
   {
     id: "exaroton",
     label: "Exaroton",
     blurb: "Pay-as-you-go (team Aternos)",
+    falixLike: true,
     apiReady: false,
+    category: "budget",
+  },
+  {
+    id: "aternos",
+    label: "Aternos",
+    blurb: "Gratuito — coda avvio, no API pubblica",
+    falixLike: false,
+    apiReady: false,
+    category: "free",
+  },
+  {
+    id: "minehut",
+    label: "Minehut",
+    blurb: "Network + external servers",
+    falixLike: false,
+    apiReady: false,
+    category: "free",
+  },
+  {
+    id: "minefort",
+    label: "Minefort",
+    blurb: "Free 24/7, slot illimitati",
+    falixLike: false,
+    apiReady: false,
+    category: "free",
+  },
+  {
+    id: "pterodactyl",
+    label: "Pterodactyl",
+    blurb: "Panel open-source usato da molti host",
+    falixLike: true,
+    apiReady: false,
+    category: "panel",
+  },
+  {
+    id: "pelican",
+    label: "Pelican",
+    blurb: "Fork moderno di Pterodactyl",
+    falixLike: true,
+    apiReady: false,
+    category: "panel",
+  },
+  {
+    id: "mcsmanager",
+    label: "MCSManager",
+    blurb: "Panel free multi-machine + API HTTP",
+    falixLike: true,
+    apiReady: false,
+    category: "panel",
+  },
+  {
+    id: "amp",
+    label: "AMP (CubeCoders)",
+    blurb: "Panel multi-game commerciale",
+    falixLike: true,
+    apiReady: false,
+    category: "panel",
+  },
+  {
+    id: "crafty",
+    label: "Crafty Controller",
+    blurb: "Panel Python self-hosted",
+    falixLike: true,
+    apiReady: false,
+    category: "panel",
   },
   {
     id: "selfhosted",
     label: "Self-hosted / VPS",
-    blurb: "Docker, MCSManager, Crafty, RCON",
+    blurb: "Docker, RCON, IP pubblico",
+    falixLike: false,
     apiReady: false,
+    category: "other",
   },
   {
     id: "generic",
     label: "Altro host",
-    blurb: "Qualsiasi provider — monitor via IP pubblico",
+    blurb: "Qualsiasi provider — monitor via IP",
+    falixLike: false,
     apiReady: false,
+    category: "other",
   },
 ];
 
@@ -159,4 +277,18 @@ export function setPrimaryHost(id: string): HostProfile[] {
 
 export function providerLabel(id: HostProviderId): string {
   return HOST_PROVIDERS.find((p) => p.id === id)?.label ?? id;
+}
+
+export function hostsByCategory() {
+  const groups: Record<string, typeof HOST_PROVIDERS> = {
+    premium: [],
+    budget: [],
+    free: [],
+    panel: [],
+    other: [],
+  };
+  for (const p of HOST_PROVIDERS) {
+    groups[p.category]!.push(p);
+  }
+  return groups;
 }
