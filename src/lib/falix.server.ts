@@ -16,7 +16,21 @@ export type LiveStatus = {
   version: string | null;
 };
 
-export function getFalixConfig(): FalixConfig | null {
+/** Credenziali opzionali da account utente (multi-account). Fallback su env. */
+export type FalixCredentials = {
+  key: string;
+  serverId: string;
+  base?: string;
+};
+
+export function getFalixConfig(override?: FalixCredentials | null): FalixConfig | null {
+  if (override?.key && override?.serverId) {
+    return {
+      key: override.key,
+      serverId: override.serverId,
+      base: override.base?.trim() || process.env["FALIX_API_BASE"] || "https://client.falixnodes.net/api/v2",
+    };
+  }
   const key = process.env["FALIX_API_KEY"];
   const serverId = process.env["FALIX_SERVER_ID"];
   if (!key || !serverId) return null;
@@ -80,8 +94,10 @@ const DEMO_LOG = `[08:41:02] [Server thread/INFO]: Starting minecraft server ver
 [08:55:10] [Server thread/ERROR]: java.lang.NullPointerException: region manager not loaded
 [08:56:01] [Server thread/INFO]: Alex joined the game`;
 
-export async function fetchServerLogs(): Promise<{ demo: boolean; lines: LogLine[] }> {
-  const cfg = getFalixConfig();
+export async function fetchServerLogs(
+  override?: FalixCredentials | null,
+): Promise<{ demo: boolean; lines: LogLine[] }> {
+  const cfg = getFalixConfig(override);
   if (!cfg) return { demo: true, lines: toLines(DEMO_LOG) };
   const data = (await falixFetch(
     cfg,
@@ -94,8 +110,11 @@ export async function fetchServerLogs(): Promise<{ demo: boolean; lines: LogLine
   return { demo: false, lines: toLines(raw) };
 }
 
-export async function sendServerCommand(command: string): Promise<{ demo: boolean; output: string }> {
-  const cfg = getFalixConfig();
+export async function sendServerCommand(
+  command: string,
+  override?: FalixCredentials | null,
+): Promise<{ demo: boolean; output: string }> {
+  const cfg = getFalixConfig(override);
   if (!cfg) {
     logAction("warn", `Comando simulato (chiave Falix mancante): ${command}`);
     return { demo: true, output: `[demo] comando "${command}" non inviato: chiave Falix mancante.` };
@@ -108,28 +127,23 @@ export async function sendServerCommand(command: string): Promise<{ demo: boolea
   return { demo: false, output: `Comando inviato: ${command}` };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Accensione / spegnimento                                                    */
-/* -------------------------------------------------------------------------- */
-
 export type PowerSignal = "start" | "stop" | "restart";
 
 export async function sendPowerAction(
   signal: PowerSignal,
+  override?: FalixCredentials | null,
 ): Promise<{ demo: boolean; output: string }> {
-  const cfg = getFalixConfig();
+  const cfg = getFalixConfig(override);
   const label = signal === "start" ? "avvio" : signal === "stop" ? "spegnimento" : "riavvio";
   if (!cfg) {
     logAction("warn", `Azione ${label} simulata (chiave Falix mancante)`);
     return { demo: true, output: `[demo] ${label} non inviato: chiave Falix mancante.` };
   }
 
-  // Endpoint Falix tentati in ordine (alcuni panel usano action, altri signal)
   const attempts: { path: string; body: unknown }[] = [
     { path: `/servers/${cfg.serverId}/console/power`, body: { action: signal } },
     { path: `/servers/${cfg.serverId}/power`, body: { signal } },
     { path: `/servers/${cfg.serverId}/console/actions`, body: { action: signal } },
-    // fallback legacy
     { path: `/servers/${cfg.serverId}/power`, body: { action: signal } },
     { path: `/servers/${cfg.serverId}/${signal}`, body: {} },
   ];
@@ -138,7 +152,7 @@ export async function sendPowerAction(
   for (const attempt of attempts) {
     try {
       await falixFetch(cfg, attempt.path, { method: "POST", body: attempt.body });
-      logAction("info", `Richiesta di ${label} inviata al server (${attempt.path})`);
+      logAction("info", `Richiesta di ${label} inviata (${attempt.path})`);
       return { demo: false, output: `Richiesta di ${label} inviata al server.` };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -147,15 +161,10 @@ export async function sendPowerAction(
   throw new Error(lastError || `Impossibile inviare la richiesta di ${label}.`);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Stato live                                                                  */
-/* -------------------------------------------------------------------------- */
-
 function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Giocatori online (endpoint dedicato, opzionale). */
 async function playersFromFalix(cfg: FalixConfig) {
   try {
     const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/players`)) as
@@ -181,7 +190,6 @@ async function playersFromFalix(cfg: FalixConfig) {
   }
 }
 
-/** Stato dal pannello Falix (percorso configurabile con FALIX_API_BASE). */
 async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
   const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/console/status`)) as Record<
     string,
@@ -216,8 +224,6 @@ async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
   };
 }
 
-
-/** Fallback pubblico: query diretta del server Minecraft (indirizzo pubblico). */
 async function statusFromMcStatus(address: string): Promise<LiveStatus> {
   const res = await fetch(`https://api.mcstatus.io/v2/status/java/${encodeURIComponent(address)}`, {
     headers: { Accept: "application/json" },
@@ -230,7 +236,7 @@ async function statusFromMcStatus(address: string): Promise<LiveStatus> {
   };
   return {
     source: "mcstatus",
-    note: "Stato reale via query pubblica del server. RAM, CPU e TPS richiedono l'API del pannello Falix.",
+    note: "Stato reale via query pubblica del server. RAM, CPU e TPS richiedono l'API del pannello.",
     status: data.online ? "online" : "offline",
     players: {
       online: num(data.players?.online),
@@ -245,8 +251,10 @@ async function statusFromMcStatus(address: string): Promise<LiveStatus> {
   };
 }
 
-export async function fetchLiveStatus(): Promise<LiveStatus> {
-  const cfg = getFalixConfig();
+export async function fetchLiveStatus(
+  override?: FalixCredentials | null,
+): Promise<LiveStatus> {
+  const cfg = getFalixConfig(override);
   const address = process.env["MC_SERVER_ADDRESS"];
   const problems: string[] = [];
 
@@ -257,7 +265,7 @@ export async function fetchLiveStatus(): Promise<LiveStatus> {
       problems.push(`API Falix non raggiungibile (${error instanceof Error ? error.message : "errore"})`);
     }
   } else {
-    problems.push("chiave Falix mancante");
+    problems.push("chiave Falix mancante (env o account)");
   }
 
   if (address) {
@@ -274,19 +282,16 @@ export async function fetchLiveStatus(): Promise<LiveStatus> {
   throw new Error(problems.join("; "));
 }
 
-/* -------------------------------------------------------------------------- */
-/* Esecuzione generica di azioni Falix (catalogo scope)                        */
-/* -------------------------------------------------------------------------- */
-
 export async function executeFalixAction(
   id: string,
   params: Record<string, string | number | boolean>,
+  override?: FalixCredentials | null,
 ): Promise<{ demo: boolean; output: string }> {
   const { getAction } = await import("./falix-actions");
   const def = getAction(id);
   if (!def) throw new Error(`Azione sconosciuta: ${id}`);
 
-  const cfg = getFalixConfig();
+  const cfg = getFalixConfig(override);
   if (!cfg) {
     logAction("warn", `Azione "${id}" simulata (chiave Falix mancante)`);
     return { demo: true, output: `[demo] azione "${id}" non inviata: chiave Falix mancante.` };
@@ -323,4 +328,21 @@ export async function executeFalixAction(
   logAction(def.risk === "read" ? "info" : "warn", `Azione Falix "${id}" eseguita (${def.scope})`);
   const output = typeof data === "string" ? data : JSON.stringify(data, null, 2);
   return { demo: false, output: output.slice(0, 4000) };
+}
+
+/** Test connessione account (senza loggare la key). */
+export async function testFalixConnection(
+  override: FalixCredentials,
+): Promise<{ ok: boolean; message: string }> {
+  const cfg = getFalixConfig(override);
+  if (!cfg) return { ok: false, message: "Credenziali incomplete" };
+  try {
+    await falixFetch(cfg, `/servers/${cfg.serverId}/console/status`);
+    return { ok: true, message: "Connessione Falix OK" };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

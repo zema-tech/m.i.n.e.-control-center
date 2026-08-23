@@ -5,6 +5,14 @@ import { z } from "zod";
 import { isValidToken, logAction, sessionCookieName } from "./auth.server";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./groq-models";
 
+const credSchema = z
+  .object({
+    key: z.string().min(1).max(500),
+    serverId: z.string().min(1).max(120),
+    base: z.string().max(300).optional(),
+  })
+  .optional();
+
 async function requireAdmin() {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
@@ -25,13 +33,18 @@ export const getLogs = createServerFn({ method: "GET" }).handler(async () => {
 
 export const runCommand = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ command: z.string().min(1).max(300) }).parse(input),
+    z
+      .object({
+        command: z.string().min(1).max(300),
+        credentials: credSchema,
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
     const { sendServerCommand } = await import("./falix.server");
     try {
-      return { ok: true as const, ...(await sendServerCommand(data.command)) };
+      return { ok: true as const, ...(await sendServerCommand(data.command, data.credentials)) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logAction("error", `Comando "${data.command}" fallito: ${message}`);
@@ -41,18 +54,52 @@ export const runCommand = createServerFn({ method: "POST" })
 
 export const powerAction = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ signal: z.enum(["start", "stop", "restart"]) }).parse(input),
+    z
+      .object({
+        signal: z.enum(["start", "stop", "restart"]),
+        credentials: credSchema,
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
     const { sendPowerAction } = await import("./falix.server");
     try {
-      return { ok: true as const, ...(await sendPowerAction(data.signal)) };
+      return { ok: true as const, ...(await sendPowerAction(data.signal, data.credentials)) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logAction("error", `Azione "${data.signal}" fallita: ${message}`);
       return { ok: false as const, demo: false, output: message };
     }
+  });
+
+export const testAccountConnection = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        key: z.string().min(1).max(500),
+        serverId: z.string().min(1).max(120),
+        base: z.string().max(300).optional(),
+        provider: z.string().max(40).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    if (data.provider && data.provider !== "falix") {
+      return {
+        ok: true as const,
+        message: `Provider "${data.provider}" registrato. Test live disponibile per Falix; gli altri usano le competenze in UI.`,
+      };
+    }
+    const { testFalixConnection } = await import("./falix.server");
+    const res = await testFalixConnection({
+      key: data.key,
+      serverId: data.serverId,
+      base: data.base,
+    });
+    logAction(res.ok ? "info" : "warn", `Test account: ${res.message}`);
+    return res;
   });
 
 const modelIds = GROQ_MODELS.map((m) => m.id) as [string, ...string[]];
@@ -72,6 +119,7 @@ export const askAssistant = createServerFn({ method: "POST" })
           .max(20)
           .default([]),
         model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
+        credentials: credSchema,
       })
       .parse(input),
   )
@@ -83,7 +131,7 @@ export const askAssistant = createServerFn({ method: "POST" })
     let logContext = "";
     let logDemo = true;
     try {
-      const logs = await fetchServerLogs();
+      const logs = await fetchServerLogs(data.credentials);
       logDemo = logs.demo;
       logContext = logs.lines.map((l) => l.message).join("\n");
     } catch (error) {
@@ -115,6 +163,7 @@ export const runFalixAction = createServerFn({ method: "POST" })
           .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
           .default({}),
         approved: z.boolean().default(false),
+        credentials: credSchema,
       })
       .parse(input),
   )
@@ -133,7 +182,10 @@ export const runFalixAction = createServerFn({ method: "POST" })
     }
     const { executeFalixAction } = await import("./falix.server");
     try {
-      return { ok: true as const, ...(await executeFalixAction(data.id, data.params)) };
+      return {
+        ok: true as const,
+        ...(await executeFalixAction(data.id, data.params, data.credentials)),
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logAction("error", `Azione "${data.id}" fallita: ${message}`);
