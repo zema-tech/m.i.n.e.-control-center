@@ -8,24 +8,16 @@ import { getAuthState, login } from "@/lib/auth.functions";
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Accesso — M.I.N.E Control Panel" },
+      { title: "Accesso — M.I.N.E" },
       {
         name: "description",
-        content:
-          "Accesso riservato al pannello M.I.N.E per la gestione del server Minecraft su Falix.",
+        content: "Accesso al pannello M.I.N.E: rete neurale, chat IA, competenze e connettori.",
       },
-      { property: "og:title", content: "Accesso — M.I.N.E Control Panel" },
-      {
-        property: "og:description",
-        content: "Autenticazione singola protetta per il pannello di controllo M.I.N.E.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   beforeLoad: async () => {
     const { authenticated } = await getAuthState();
-    if (authenticated) throw redirect({ to: "/" });
+    if (authenticated) throw redirect({ to: "/network" });
   },
   component: LoginPage,
 });
@@ -45,7 +37,7 @@ function LoginPage() {
     setBusy(false);
     if (res.ok) {
       await router.invalidate();
-      await router.navigate({ to: "/" });
+      await router.navigate({ to: "/network" });
     } else {
       setError(res.message);
       setPassword("");
@@ -101,8 +93,7 @@ function LoginPage() {
           </button>
 
           <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-            Password verificata con bcrypt lato server · sessione JWT 24h · blocco 15 minuti dopo 5
-            tentativi falliti.
+            Dopo il login: rete pallini · chat IA · competenze · connettori. Sessione JWT 24h.
           </p>
         </form>
       </div>

@@ -89,7 +89,7 @@ export const testAccountConnection = createServerFn({ method: "POST" })
     if (data.provider && data.provider !== "falix") {
       return {
         ok: true as const,
-        message: `Provider "${data.provider}" registrato. Test live disponibile per Falix; gli altri usano le competenze in UI.`,
+        message: `Provider "${data.provider}" registrato. Test live completo su Falix; gli altri usano competenze in UI.`,
       };
     }
     const { testFalixConnection } = await import("./falix.server");
@@ -103,6 +103,25 @@ export const testAccountConnection = createServerFn({ method: "POST" })
   });
 
 const modelIds = GROQ_MODELS.map((m) => m.id) as [string, ...string[]];
+
+export const analyzeNetwork = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        serverLabel: z.string().min(1).max(80),
+        status: z.string().max(40),
+        summary: z.string().min(1).max(8000),
+        model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { analyzeNetworkWithGroq } = await import("./neural.server");
+    const res = await analyzeNetworkWithGroq(data);
+    logAction(res.ok ? "info" : "warn", `Analisi neurale: ${data.serverLabel}`);
+    return res;
+  });
 
 export const askAssistant = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -145,7 +164,10 @@ export const askAssistant = createServerFn({ method: "POST" })
         data.history,
         data.model ?? DEFAULT_GROQ_MODEL,
       );
-      logAction("info", `IA consultata (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`);
+      logAction(
+        "info",
+        `IA consultata (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`,
+      );
       return { ok: true as const, ...reply, logDemo };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
