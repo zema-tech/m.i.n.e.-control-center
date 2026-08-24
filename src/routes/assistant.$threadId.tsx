@@ -21,11 +21,20 @@ import {
   ACTIVE_ACCOUNT_EVENT,
   activeCredentials,
   getActiveFalixAccount,
+  listStorageAccounts,
+  type ApiAccount,
 } from "@/lib/accounts";
 import { logAiActivity } from "@/lib/ai-activity";
 import { getAuthState } from "@/lib/auth.functions";
-import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
+import {
+  askAssistant,
+  getLogs,
+  runCommand,
+  runFalixAction,
+  runStorageAction,
+} from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
+import { GDRIVE_MCP_TOOLS, MEGA_MCP_TOOLS } from "@/lib/mcp";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
   createThread,
@@ -52,6 +61,13 @@ export const Route = createFileRoute("/assistant/$threadId")({
 type LogLine = { ts: string; level: "info" | "warn" | "error"; message: string };
 const MODEL_KEY = "mine.groq.model";
 
+const STORAGE_TOOLS = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS];
+const STORAGE_BY_ID = new Map(STORAGE_TOOLS.map((t) => [t.name, t]));
+
+function isStorageTool(id: string) {
+  return STORAGE_BY_ID.has(id);
+}
+
 function loadModel(): GroqModelId {
   if (typeof window === "undefined") return DEFAULT_GROQ_MODEL;
   try {
@@ -71,6 +87,13 @@ function accountCtx() {
   };
 }
 
+function pickStorageAccount(toolId: string): ApiAccount | null {
+  const tool = STORAGE_BY_ID.get(toolId);
+  if (!tool) return null;
+  const list = listStorageAccounts().filter((a) => a.provider === tool.provider && a.apiKey);
+  return list[0] ?? null;
+}
+
 function AssistantPage() {
   const { threadId } = Route.useParams();
   const navigate = Route.useNavigate();
@@ -78,6 +101,7 @@ function AssistantPage() {
   const fetchLogs = useServerFn(getLogs);
   const exec = useServerFn(runCommand);
   const execAction = useServerFn(runFalixAction);
+  const execStorage = useServerFn(runStorageAction);
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -273,6 +297,68 @@ function AssistantPage() {
     risk: ActionRisk,
   ): Promise<string> {
     const ctx = accountCtx();
+
+    if (isStorageTool(id)) {
+      const tool = STORAGE_BY_ID.get(id)!;
+      const acc = pickStorageAccount(id);
+      if (!acc) {
+        const msg = `Nessun account ${tool.provider} in Competenze. Aggiungi MEGA o Google Drive.`;
+        logAiActivity({
+          ...ctx,
+          kind: "execute_action",
+          title: `Storage: ${id}`,
+          detail: msg,
+          status: "error",
+        });
+        return msg;
+      }
+      if (tool.risk !== "read") {
+        const warn =
+          tool.risk === "critical"
+            ? `AZIONE CRITICA storage "${tool.name}". Confermi?`
+            : `Approvi il tool storage "${tool.name}" (${acc.label})?`;
+        if (!window.confirm(warn)) {
+          logAiActivity({
+            ...ctx,
+            kind: "reject",
+            title: `Rifiutata: ${id}`,
+            status: "rejected",
+          });
+          return "Azione storage annullata.";
+        }
+      }
+      const res = await execStorage({
+        data: {
+          tool: id as
+            | "mega_status"
+            | "mega_list"
+            | "mega_upload_note"
+            | "mega_share_link"
+            | "gdrive_status"
+            | "gdrive_list"
+            | "gdrive_upload_note"
+            | "gdrive_create_folder",
+          params,
+          approved: tool.risk !== "read",
+          storage: {
+            provider: tool.provider as "mega" | "gdrive",
+            apiKey: acc.apiKey,
+            serverId: acc.serverId || undefined,
+            baseUrl: acc.baseUrl || undefined,
+          },
+        },
+      });
+      setConsoleOut((o) => [...o, `> storage ${id}`, res.output]);
+      logAiActivity({
+        ...ctx,
+        kind: "execute_action",
+        title: `Storage: ${id}`,
+        detail: res.output,
+        status: res.ok === false ? "error" : "done",
+      });
+      return res.output;
+    }
+
     if (risk !== "read") {
       const def = getAction(id);
       const label = ctx.accountLabel;
@@ -312,7 +398,9 @@ function AssistantPage() {
   }
 
   async function confirmAction(mi: number, ai: number, a: ActionProposal) {
-    const risk = getAction(a.id)?.risk ?? "critical";
+    const risk = isStorageTool(a.id)
+      ? (STORAGE_BY_ID.get(a.id)?.risk ?? "write")
+      : (getAction(a.id)?.risk ?? "critical");
     const output = await runCatalogAction(a.id, a.params, risk);
     updateAction(mi, ai, { state: "done", output });
   }
@@ -326,7 +414,9 @@ function AssistantPage() {
       setConsoleOut((o) => [...o, "Parametri JSON non validi."]);
       return;
     }
-    const risk = getAction(actionId)?.risk ?? "critical";
+    const risk = isStorageTool(actionId)
+      ? (STORAGE_BY_ID.get(actionId)?.risk ?? "write")
+      : (getAction(actionId)?.risk ?? "critical");
     await runCatalogAction(actionId, params, risk);
   }
 
@@ -367,6 +457,11 @@ function AssistantPage() {
     });
     void loadLogs();
   }
+
+  const actionOptions = [
+    ...FALIX_ACTIONS.map((a) => ({ id: a.id, label: a.id })),
+    ...STORAGE_TOOLS.map((t) => ({ id: t.name, label: `[${t.provider}] ${t.name}` })),
+  ];
 
   return (
     <AppShell
@@ -434,6 +529,8 @@ function AssistantPage() {
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
                 Es. <span className="text-primary">"perché il server lagga?"</span>
+                {" · "}
+                <span className="text-primary">"fai backup mondo su MEGA"</span>
                 {accountLabel ? (
                   <span className="mt-1 block text-[11px]">
                     Contesto log: <span className="text-primary">{accountLabel}</span>
@@ -488,7 +585,9 @@ function AssistantPage() {
                   </div>
                 ))}
                 {m.actions?.map((a, ai) => {
-                  const risk = getAction(a.id)?.risk ?? "critical";
+                  const risk = isStorageTool(a.id)
+                    ? (STORAGE_BY_ID.get(a.id)?.risk ?? "write")
+                    : (getAction(a.id)?.risk ?? "critical");
                   return (
                     <div key={ai} className="mt-2 rounded border border-border p-2">
                       <p className="font-mono text-xs text-primary">{a.id}</p>
@@ -522,7 +621,7 @@ function AssistantPage() {
                 }
               }}
               rows={2}
-              placeholder="Chiedi sul server…"
+              placeholder="Chiedi sul server… es. backup su MEGA"
               className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             />
             <button
@@ -589,16 +688,16 @@ function AssistantPage() {
 
           <section className="panel p-4">
             <h2 className="mb-2 flex items-center gap-2 text-sm uppercase tracking-widest text-primary">
-              <Zap className="h-4 w-4" /> azioni
+              <Zap className="h-4 w-4" /> azioni MCP
             </h2>
             <select
               value={actionId}
               onChange={(e) => setActionId(e.target.value)}
               className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs"
             >
-              {FALIX_ACTIONS.map((a) => (
+              {actionOptions.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.id}
+                  {a.label}
                 </option>
               ))}
             </select>
