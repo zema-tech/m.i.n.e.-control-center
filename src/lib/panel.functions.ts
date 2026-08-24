@@ -13,6 +13,13 @@ const credSchema = z
   })
   .optional();
 
+const storageCredSchema = z.object({
+  provider: z.enum(["mega", "gdrive"]),
+  apiKey: z.string().min(1).max(8000),
+  serverId: z.string().max(500).optional(),
+  baseUrl: z.string().max(500).optional(),
+});
+
 async function requireAdmin() {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
@@ -85,21 +92,40 @@ export const testAccountConnection = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        key: z.string().min(1).max(500),
-        serverId: z.string().min(1).max(120),
-        base: z.string().max(300).optional(),
+        key: z.string().min(1).max(8000),
+        serverId: z.string().max(500).optional(),
+        base: z.string().max(500).optional(),
         provider: z.string().max(40).optional(),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
-    if (data.provider && data.provider !== "falix") {
+    const provider = data.provider ?? "falix";
+
+    if (provider === "mega" || provider === "gdrive") {
+      const { storageStatus } = await import("./storage.server");
+      const res = storageStatus({
+        provider,
+        apiKey: data.key,
+        serverId: data.serverId,
+        baseUrl: data.base,
+      });
+      logAction(res.ok ? "info" : "warn", `Test storage ${provider}: ${res.message}`);
+      return { ok: res.ok, message: res.message };
+    }
+
+    if (provider !== "falix") {
       return {
         ok: true as const,
-        message: `Provider "${data.provider}" registrato. Test live completo su Falix; gli altri usano competenze in UI.`,
+        message: `Provider "${provider}" registrato. Solo Falix + MEGA/Drive hanno test live.`,
       };
     }
+
+    if (!data.serverId?.trim()) {
+      return { ok: false as const, message: "Per Falix serve il Server ID." };
+    }
+
     const { testFalixConnection } = await import("./falix.server");
     const res = await testFalixConnection({
       key: data.key,
@@ -226,4 +252,95 @@ export const runFalixAction = createServerFn({ method: "POST" })
       logAction("error", `Azione "${data.id}" fallita: ${message}`);
       return { ok: false as const, demo: false, output: message };
     }
+  });
+
+/** MCP storage: status / list-note / upload-note (MEGA · Google Drive). */
+export const runStorageAction = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        tool: z.enum([
+          "mega_status",
+          "mega_list",
+          "mega_upload_note",
+          "mega_share_link",
+          "gdrive_status",
+          "gdrive_list",
+          "gdrive_upload_note",
+          "gdrive_create_folder",
+        ]),
+        params: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .default({}),
+        approved: z.boolean().default(false),
+        storage: storageCredSchema,
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { storageStatus, registerUploadNote } = await import("./storage.server");
+    const writeTools = new Set([
+      "mega_upload_note",
+      "mega_share_link",
+      "gdrive_upload_note",
+      "gdrive_create_folder",
+    ]);
+
+    if (writeTools.has(data.tool) && !data.approved) {
+      logAction("warn", `Storage "${data.tool}" bloccata: approvazione mancante`);
+      return {
+        ok: false as const,
+        output: `Tool "${data.tool}" richiede approvazione esplicita.`,
+      };
+    }
+
+    const creds = data.storage;
+
+    if (data.tool === "mega_status" || data.tool === "gdrive_status") {
+      const res = storageStatus(creds);
+      logAction("info", `Storage status ${creds.provider}: ${res.message}`);
+      return { ok: res.ok, output: res.message };
+    }
+
+    if (data.tool === "mega_list" || data.tool === "gdrive_list") {
+      const res = storageStatus(creds);
+      if (!res.configured) return { ok: false, output: res.message };
+      const folder =
+        String(data.params.folder ?? data.params.folderId ?? creds.serverId ?? "root");
+      return {
+        ok: true,
+        output: `${creds.provider.toUpperCase()} list (simulato): cartella "${folder}". Collega SDK per elenco live. Stato: ${res.message}`,
+      };
+    }
+
+    if (data.tool === "mega_upload_note" || data.tool === "gdrive_upload_note") {
+      const res = registerUploadNote(creds, {
+        filename: String(data.params.filename ?? ""),
+        sourcePath: data.params.sourcePath != null ? String(data.params.sourcePath) : undefined,
+        folderId: data.params.folderId != null ? String(data.params.folderId) : undefined,
+      });
+      logAction(res.ok ? "info" : "warn", `Upload note ${creds.provider}: ${res.jobId || "fail"}`);
+      return { ok: res.ok, output: res.output };
+    }
+
+    if (data.tool === "mega_share_link") {
+      const nodeId = String(data.params.nodeId ?? "");
+      if (!nodeId) return { ok: false, output: "Serve nodeId MEGA." };
+      return {
+        ok: true,
+        output: `Richiesta link pubblico MEGA per nodo ${nodeId} registrata (confermata). Generazione link nativa in arrivo.`,
+      };
+    }
+
+    if (data.tool === "gdrive_create_folder") {
+      const name = String(data.params.name ?? "").trim();
+      if (!name) return { ok: false, output: "Serve name cartella." };
+      return {
+        ok: true,
+        output: `Richiesta creazione cartella Drive "${name}"${data.params.parentId ? ` sotto ${data.params.parentId}` : ""} registrata.`,
+      };
+    }
+
+    return { ok: false, output: `Tool storage sconosciuto: ${data.tool}` };
   });
