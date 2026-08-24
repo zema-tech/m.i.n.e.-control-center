@@ -1,6 +1,6 @@
 /**
  * Account connettori con chiavi API proprie.
- * Include provider panel-style simili a Falix (Ptero-based, MCSManager, …).
+ * Multi-account Falix (es. Gino, Edo, il tuo): uno attivo alla volta guida status/power/console/IA.
  */
 
 export type AccountProvider =
@@ -227,6 +227,7 @@ export const SKILL_META: Record<SkillId, { label: string; hint: string }> = {
 };
 
 const KEY = "mine.accounts.v1";
+export const ACTIVE_ACCOUNT_EVENT = "mine:active-account";
 
 function canUseStorage() {
   return typeof window !== "undefined";
@@ -248,6 +249,14 @@ export function saveAccounts(list: ApiAccount[]) {
   window.localStorage.setItem(KEY, JSON.stringify(list));
 }
 
+/** Notifica le pagine (Rete, Chat IA, …) che l'account attivo è cambiato. */
+export function notifyActiveAccountChanged(accountId: string | null) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(ACTIVE_ACCOUNT_EVENT, { detail: { accountId } }),
+  );
+}
+
 export function addAccount(input: {
   label: string;
   provider: AccountProvider;
@@ -260,6 +269,11 @@ export function addAccount(input: {
 }): ApiAccount {
   const def = ACCOUNT_PROVIDERS.find((p) => p.id === input.provider);
   let list = loadAccounts();
+  const makeActive =
+    input.active === true ||
+    list.length === 0 ||
+    (input.provider === "falix" && !list.some((a) => a.provider === "falix" && a.active));
+
   const account: ApiAccount = {
     id: `acc:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     label: input.label.trim().slice(0, 48) || def?.label || "Account",
@@ -269,21 +283,16 @@ export function addAccount(input: {
     baseUrl: (input.baseUrl ?? "").trim(),
     address: (input.address ?? "").trim(),
     skills: input.skills?.length ? input.skills : (def?.defaultSkills ?? ["status"]),
-    active: Boolean(input.active),
+    active: makeActive,
     createdAt: Date.now(),
   };
+
   if (account.active) {
     list = list.map((a) => ({ ...a, active: false }));
   }
-  if (
-    !account.active &&
-    account.provider === "falix" &&
-    list.filter((a) => a.provider === "falix").length === 0
-  ) {
-    account.active = true;
-  }
   list = [account, ...list];
   saveAccounts(list);
+  if (account.active) notifyActiveAccountChanged(account.id);
   return account;
 }
 
@@ -293,11 +302,22 @@ export function updateAccount(id: string, patch: Partial<ApiAccount>): ApiAccoun
     list = list.map((a) => ({ ...a, active: a.id === id }));
   }
   saveAccounts(list);
+  if (patch.active) notifyActiveAccountChanged(id);
   return list;
 }
 
 export function removeAccount(id: string): ApiAccount[] {
-  const next = loadAccounts().filter((a) => a.id !== id);
+  const prev = loadAccounts();
+  const wasActive = prev.find((a) => a.id === id)?.active;
+  let next = prev.filter((a) => a.id !== id);
+  if (wasActive && next.length > 0) {
+    const falix = next.find((a) => a.provider === "falix");
+    const pick = falix ?? next[0]!;
+    next = next.map((a) => ({ ...a, active: a.id === pick.id }));
+    notifyActiveAccountChanged(pick.id);
+  } else if (wasActive) {
+    notifyActiveAccountChanged(null);
+  }
   saveAccounts(next);
   return next;
 }
@@ -305,6 +325,7 @@ export function removeAccount(id: string): ApiAccount[] {
 export function setActiveAccount(id: string): ApiAccount[] {
   const next = loadAccounts().map((a) => ({ ...a, active: a.id === id }));
   saveAccounts(next);
+  notifyActiveAccountChanged(id);
   return next;
 }
 
@@ -321,22 +342,41 @@ export function toggleSkill(id: string, skill: SkillId): ApiAccount[] {
   return next;
 }
 
+/** Account attivo (qualsiasi provider). */
+export function getActiveAccount(): ApiAccount | null {
+  const list = loadAccounts();
+  return list.find((a) => a.active) ?? list[0] ?? null;
+}
+
+/** Account Falix attivo (API key + server id). Preferito per power/console/log. */
 export function getActiveFalixAccount(): ApiAccount | null {
   const list = loadAccounts();
-  return (
-    list.find((a) => a.active && a.provider === "falix" && a.apiKey && a.serverId) ??
-    list.find((a) => a.provider === "falix" && a.apiKey && a.serverId) ??
-    null
-  );
+  const active = list.find((a) => a.active && a.provider === "falix" && a.apiKey && a.serverId);
+  if (active) return active;
+  return list.find((a) => a.provider === "falix" && a.apiKey && a.serverId) ?? null;
+}
+
+/** Tutti gli account Falix configurati (per selettore Gino / Edo / …). */
+export function listFalixAccounts(): ApiAccount[] {
+  return loadAccounts().filter((a) => a.provider === "falix" && a.apiKey && a.serverId);
+}
+
+export function getAccountById(id: string): ApiAccount | null {
+  return loadAccounts().find((a) => a.id === id) ?? null;
 }
 
 export function credentialsPayload(account: ApiAccount | null) {
-  if (!account) return undefined;
+  if (!account?.apiKey || !account.serverId) return undefined;
   return {
     key: account.apiKey,
     serverId: account.serverId,
     base: account.baseUrl || undefined,
   };
+}
+
+/** Credenziali dell'account Falix attivo (o undefined → fallback env server). */
+export function activeCredentials() {
+  return credentialsPayload(getActiveFalixAccount());
 }
 
 export function maskKey(key: string) {
