@@ -17,6 +17,11 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import {
+  ACTIVE_ACCOUNT_EVENT,
+  activeCredentials,
+  getActiveFalixAccount,
+} from "@/lib/accounts";
 import { getAuthState } from "@/lib/auth.functions";
 import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
@@ -77,6 +82,7 @@ function AssistantPage() {
   const [actionParams, setActionParams] = useState("{}");
   const [consoleOut, setConsoleOut] = useState<string[]>([]);
   const [model, setModel] = useState<GroqModelId>(DEFAULT_GROQ_MODEL);
+  const [accountLabel, setAccountLabel] = useState<string>("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -99,7 +105,12 @@ function AssistantPage() {
   );
 
   const loadLogs = useCallback(async () => {
-    const res = await fetchLogs({});
+    const active = getActiveFalixAccount();
+    setAccountLabel(active?.label ?? "");
+    const credentials = activeCredentials();
+    const res = await fetchLogs({
+      data: credentials ? { credentials } : {},
+    });
     setLogs(res.lines as LogLine[]);
     setLogDemo(res.demo);
     setLogError(res.ok ? null : ((res as { message?: string }).message ?? "Errore log"));
@@ -109,6 +120,12 @@ function AssistantPage() {
     void loadLogs();
     const id = setInterval(() => void loadLogs(), 15000);
     return () => clearInterval(id);
+  }, [loadLogs]);
+
+  useEffect(() => {
+    const onAccount = () => void loadLogs();
+    window.addEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
+    return () => window.removeEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
   }, [loadLogs]);
 
   useEffect(() => {
@@ -141,6 +158,15 @@ function AssistantPage() {
     }
   }
 
+  function credPayload() {
+    const credentials = activeCredentials();
+    const active = getActiveFalixAccount();
+    return {
+      ...(credentials ? { credentials } : {}),
+      accountLabel: active?.label,
+    };
+  }
+
   async function onAsk() {
     const question = input.trim();
     if (!question || busy) return;
@@ -154,6 +180,7 @@ function AssistantPage() {
           question,
           history: messages.slice(-8).map((m) => ({ role: m.role, content: m.content })),
           model,
+          ...credPayload(),
         },
       });
       persist([
@@ -206,13 +233,22 @@ function AssistantPage() {
   ): Promise<string> {
     if (risk !== "read") {
       const def = getAction(id);
+      const label = getActiveFalixAccount()?.label ?? "account";
       const warn =
         risk === "critical"
-          ? `AZIONE CRITICA: "${def?.label ?? id}". Confermi?`
-          : `Approvi l'azione "${def?.label ?? id}"?`;
+          ? `AZIONE CRITICA su "${label}": "${def?.label ?? id}". Confermi?`
+          : `Approvi l'azione "${def?.label ?? id}" su "${label}"?`;
       if (!window.confirm(warn)) return "Azione annullata.";
     }
-    const res = await execAction({ data: { id, params, approved: risk !== "read" } });
+    const credentials = activeCredentials();
+    const res = await execAction({
+      data: {
+        id,
+        params,
+        approved: risk !== "read",
+        ...(credentials ? { credentials } : {}),
+      },
+    });
     setConsoleOut((o) => [...o, `> azione ${id}`, res.output]);
     void loadLogs();
     return res.output;
@@ -238,7 +274,10 @@ function AssistantPage() {
   }
 
   async function confirmProposal(mi: number, pi: number, cmd: string) {
-    const res = await exec({ data: { command: cmd } });
+    const credentials = activeCredentials();
+    const res = await exec({
+      data: { command: cmd, ...(credentials ? { credentials } : {}) },
+    });
     updateProposal(mi, pi, { state: "done", output: res.output });
     setConsoleOut((o) => [...o, `> ${cmd}`, res.output]);
     void loadLogs();
@@ -248,13 +287,23 @@ function AssistantPage() {
     const cmd = command.trim();
     if (!cmd) return;
     setCommand("");
-    const res = await exec({ data: { command: cmd } });
+    const credentials = activeCredentials();
+    const res = await exec({
+      data: { command: cmd, ...(credentials ? { credentials } : {}) },
+    });
     setConsoleOut((o) => [...o, `> ${cmd}`, res.output]);
     void loadLogs();
   }
 
   return (
-    <AppShell title="Chat IA" subtitle="Crea ed elimina chat · Groq legge i log e propone comandi">
+    <AppShell
+      title="Chat IA"
+      subtitle={
+        accountLabel
+          ? `Operazioni su account Falix: ${accountLabel}`
+          : "Crea account Falix in Competenze · Groq legge i log dell'account attivo"
+      }
+    >
       <div className="grid gap-4 p-4 lg:grid-cols-[200px_1fr_1fr] lg:p-6">
         <aside className="panel flex max-h-[70vh] flex-col p-3">
           <button
@@ -312,6 +361,11 @@ function AssistantPage() {
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
                 Es. <span className="text-primary">"perché il server lagga?"</span>
+                {accountLabel ? (
+                  <span className="mt-1 block text-[11px]">
+                    Contesto log: <span className="text-primary">{accountLabel}</span>
+                  </span>
+                ) : null}
               </p>
             ) : null}
             {messages.map((m, mi) => (
@@ -403,7 +457,9 @@ function AssistantPage() {
         <div className="space-y-4">
           <section className="panel p-4">
             <div className="mb-2 flex justify-between">
-              <h2 className="text-sm uppercase tracking-widest text-primary">Log</h2>
+              <h2 className="text-sm uppercase tracking-widest text-primary">
+                Log{accountLabel ? ` · ${accountLabel}` : ""}
+              </h2>
               <button onClick={() => void loadLogs()} className="text-muted-foreground hover:text-primary">
                 <RefreshCw className="h-3 w-3" />
               </button>

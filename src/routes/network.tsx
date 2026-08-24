@@ -1,17 +1,20 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain, Play, RefreshCw, Square } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { NeuralGraph, type GraphNode } from "@/components/NeuralGraph";
 import {
+  ACTIVE_ACCOUNT_EVENT,
   credentialsPayload,
   getActiveFalixAccount,
+  listFalixAccounts,
   loadAccounts,
+  setActiveAccount,
   type ApiAccount,
 } from "@/lib/accounts";
-import { getDashboard } from "@/lib/auth.functions";
+import { getAuthState, getDashboardForAccount } from "@/lib/auth.functions";
 import { loadConnectors, type CustomConnector } from "@/lib/connectors";
 import { loadHosts, providerLabel, type HostProfile } from "@/lib/hosts";
 import { analyzeNetwork, powerAction } from "@/lib/panel.functions";
@@ -22,97 +25,101 @@ export const Route = createFileRoute("/network")({
     meta: [{ title: "Rete neurale — M.I.N.E" }],
   }),
   loader: async () => {
-    const res = await getDashboard();
-    if (!res.authenticated || !res.stats) throw redirect({ to: "/login" });
-    return res.stats;
+    const state = await getAuthState();
+    if (!state.authenticated) throw redirect({ to: "/login" });
+    return null;
   },
   component: NetworkPage,
 });
 
 function NetworkPage() {
-  const stats = Route.useLoaderData() as ServerStats;
-  const router = Route.useNavigate();
   const doPower = useServerFn(powerAction);
   const doAnalyze = useServerFn(analyzeNetwork);
+  const doDashboard = useServerFn(getDashboardForAccount);
 
+  const [stats, setStats] = useState<ServerStats | null>(null);
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [hosts, setHosts] = useState<HostProfile[]>([]);
   const [connectors, setConnectors] = useState<CustomConnector[]>([]);
-  const [serverKey, setServerKey] = useState<string>("live");
-  const [busy, setBusy] = useState<null | "start" | "stop">(null);
+  const [activeId, setActiveId] = useState<string>("");
+  const [busy, setBusy] = useState<null | "start" | "stop" | "restart">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(true);
 
-  useEffect(() => {
-    setAccounts(loadAccounts());
+  const refreshAccounts = useCallback(() => {
+    const list = loadAccounts();
+    setAccounts(list);
     setHosts(loadHosts());
     setConnectors(loadConnectors());
+    const active = getActiveFalixAccount();
+    setActiveId(active?.id ?? "");
+    return active;
   }, []);
 
-  const servers = useMemo(() => {
-    const list: { key: string; label: string; kind: "live" | "account" | "host" }[] = [
-      { key: "live", label: "Server live (API)", kind: "live" },
-    ];
-    for (const a of accounts) {
-      list.push({ key: a.id, label: a.label, kind: "account" });
+  const loadStats = useCallback(async () => {
+    setLoadingStats(true);
+    const active = getActiveFalixAccount();
+    const credentials = credentialsPayload(active);
+    try {
+      const res = await doDashboard({
+        data: {
+          ...(credentials ? { credentials } : {}),
+          accountLabel: active?.label,
+        },
+      });
+      if (res.stats) setStats(res.stats);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingStats(false);
     }
-    for (const h of hosts) {
-      list.push({ key: h.id, label: h.label, kind: "host" });
-    }
-    return list;
-  }, [accounts, hosts]);
+  }, [doDashboard]);
 
-  const selectedLabel = servers.find((s) => s.key === serverKey)?.label ?? "Server";
+  useEffect(() => {
+    refreshAccounts();
+    void loadStats();
+  }, [refreshAccounts, loadStats]);
+
+  useEffect(() => {
+    const onAccount = () => {
+      refreshAccounts();
+      void loadStats();
+    };
+    window.addEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
+    return () => window.removeEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
+  }, [refreshAccounts, loadStats]);
+
+  const falixAccounts = useMemo(() => listFalixAccounts(), [accounts]);
+  const activeLabel =
+    falixAccounts.find((a) => a.id === activeId)?.label ??
+    getActiveFalixAccount()?.label ??
+    "Server live";
 
   const graphNodes: GraphNode[] = useMemo(() => {
+    if (!stats) return [];
     const online = stats.status === "online";
     const list: GraphNode[] = [
       {
         id: "server",
-        label: selectedLabel.slice(0, 18),
+        label: activeLabel.slice(0, 18),
         kind: "server",
         status: online ? "online" : "offline",
-        detail: `${stats.version ?? "n/d"} · ${selectedLabel}`,
+        detail: `${stats.version ?? "n/d"} · ${activeLabel}`,
         size: 18,
       },
     ];
 
-    // solo account/host correlati alla selezione
-    if (serverKey === "live") {
-      for (const acc of accounts) {
-        list.push({
-          id: acc.id,
-          label: acc.label,
-          kind: "service",
-          status: acc.active ? "online" : "offline",
-          detail: `${acc.provider} · ${acc.skills.join(", ")}`,
-          size: acc.active ? 11 : 8,
-        });
-      }
-    } else {
-      const acc = accounts.find((a) => a.id === serverKey);
-      if (acc) {
-        list.push({
-          id: acc.id,
-          label: acc.label,
-          kind: "service",
-          status: "online",
-          detail: `${acc.provider} · competenze: ${acc.skills.join(", ")}`,
-          size: 12,
-        });
-      }
-      const host = hosts.find((h) => h.id === serverKey);
-      if (host) {
-        list.push({
-          id: host.id,
-          label: host.label,
-          kind: "service",
-          status: "online",
-          detail: providerLabel(host.provider),
-          size: 11,
-        });
-      }
+    for (const acc of falixAccounts) {
+      list.push({
+        id: acc.id,
+        label: acc.label,
+        kind: "service",
+        status: acc.id === activeId ? "online" : "offline",
+        detail: `Falix · ${acc.skills.join(", ")}`,
+        size: acc.id === activeId ? 12 : 8,
+      });
     }
 
     for (const name of stats.players.names) {
@@ -180,10 +187,27 @@ function NetworkPage() {
       });
     }
 
-    return list;
-  }, [stats, accounts, hosts, connectors, serverKey, selectedLabel]);
+    for (const h of hosts) {
+      list.push({
+        id: h.id,
+        label: h.label,
+        kind: "service",
+        status: "offline",
+        detail: providerLabel(h.provider),
+        size: 8,
+      });
+    }
 
-  async function onPower(signal: "start" | "stop") {
+    return list;
+  }, [stats, falixAccounts, connectors, hosts, activeId, activeLabel]);
+
+  function onSelectAccount(id: string) {
+    setActiveId(id);
+    setActiveAccount(id);
+    setMsg(`Account attivo: ${getActiveFalixAccount()?.label ?? id}`);
+  }
+
+  async function onPower(signal: "start" | "stop" | "restart") {
     setBusy(signal);
     setMsg(null);
     const active = getActiveFalixAccount();
@@ -192,7 +216,12 @@ function NetworkPage() {
       const res = await doPower({
         data: { signal, ...(credentials ? { credentials } : {}) },
       });
-      setMsg(res.output);
+      setMsg(
+        active
+          ? `[${active.label}] ${res.output}`
+          : res.output,
+      );
+      void loadStats();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -201,6 +230,7 @@ function NetworkPage() {
   }
 
   async function onNeural() {
+    if (!stats) return;
     setAnalyzing(true);
     setAnalysis(null);
     const summary = graphNodes
@@ -209,7 +239,7 @@ function NetworkPage() {
     try {
       const res = await doAnalyze({
         data: {
-          serverLabel: selectedLabel,
+          serverLabel: activeLabel,
           status: stats.status,
           summary,
         },
@@ -223,21 +253,29 @@ function NetworkPage() {
   }
 
   return (
-    <AppShell title="Rete / pallini" subtitle="Cambia server — la mappa nodi si aggiorna · Groq analizza la rete">
+    <AppShell
+      title="Rete / pallini"
+      subtitle="Seleziona account Falix (Gino, Edo, …) — status e power usano quello attivo"
+    >
       <div className="space-y-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
-            server
+            falix
             <select
-              value={serverKey}
-              onChange={(e) => setServerKey(e.target.value)}
+              value={activeId}
+              onChange={(e) => onSelectAccount(e.target.value)}
               className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-primary outline-none focus:border-primary"
             >
-              {servers.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
+              {falixAccounts.length === 0 ? (
+                <option value="">Nessun account — Competenze</option>
+              ) : (
+                falixAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                    {a.active ? " ★" : ""}
+                  </option>
+                ))
+              )}
             </select>
           </label>
 
@@ -259,34 +297,53 @@ function NetworkPage() {
           </button>
           <button
             type="button"
+            onClick={() => void onPower("restart")}
+            disabled={busy !== null}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
+          >
+            <RefreshCw className="h-3 w-3" /> riavvia
+          </button>
+          <button
+            type="button"
             onClick={() => void onNeural()}
-            disabled={analyzing}
+            disabled={analyzing || !stats}
             className="flex items-center gap-1.5 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             <Brain className="h-3 w-3" /> {analyzing ? "analisi…" : "analisi neurale Groq"}
           </button>
           <button
             type="button"
-            onClick={() => window.location.reload()}
-            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary"
+            onClick={() => void loadStats()}
+            disabled={loadingStats}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
           >
-            <RefreshCw className="h-3 w-3" /> aggiorna
+            <RefreshCw className={`h-3 w-3 ${loadingStats ? "animate-spin" : ""}`} /> aggiorna
           </button>
         </div>
 
         {msg ? <p className="font-mono text-xs text-muted-foreground">{msg}</p> : null}
 
+        {stats?.note ? (
+          <p className="text-[11px] text-muted-foreground">{stats.note}</p>
+        ) : null}
+
         {analysis ? (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
             <p className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-primary">
-              <Brain className="h-3.5 w-3.5" /> briefing neurale · {selectedLabel}
+              <Brain className="h-3.5 w-3.5" /> briefing neurale · {activeLabel}
             </p>
             <p className="whitespace-pre-wrap text-foreground/90">{analysis}</p>
           </div>
         ) : null}
 
         <div className="overflow-hidden rounded-lg border border-border">
-          <NeuralGraph nodes={graphNodes} serverOnline={stats.status === "online"} />
+          {stats ? (
+            <NeuralGraph nodes={graphNodes} serverOnline={stats.status === "online"} />
+          ) : (
+            <p className="p-8 text-center text-sm text-muted-foreground">
+              {loadingStats ? "Caricamento status…" : "Nessun dato. Aggiungi un account Falix in Competenze."}
+            </p>
+          )}
         </div>
       </div>
     </AppShell>
