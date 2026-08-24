@@ -37,6 +37,7 @@ export function AccountsPanel({
   const [testing, setTesting] = useState(false);
 
   const def = ACCOUNT_PROVIDERS.find((p) => p.id === provider);
+  const falixCount = accounts.filter((a) => a.provider === "falix").length;
 
   function save() {
     if (!apiKey.trim()) {
@@ -48,13 +49,13 @@ export function AccountsPanel({
       return;
     }
     addAccount({
-      label: label || def?.label || "Account",
+      label: label || (provider === "falix" ? `Falix #${falixCount + 1}` : def?.label) || "Account",
       provider,
       apiKey,
       serverId,
       baseUrl,
       address,
-      active: accounts.filter((a) => a.provider === provider).length === 0,
+      active: accounts.length === 0,
     });
     onChange(loadAccounts());
     setLabel("");
@@ -78,7 +79,7 @@ export function AccountsPanel({
           provider: acc.provider,
         },
       });
-      setTestMsg(res.message);
+      setTestMsg(`${acc.label}: ${res.message}`);
     } catch (e) {
       setTestMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -90,7 +91,7 @@ export function AccountsPanel({
     <section>
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.25em] text-primary">
-          <KeyRound className="h-3 w-3" /> connettori &amp; competenze
+          <KeyRound className="h-3 w-3" /> account Falix &amp; altri
         </h2>
         <button
           type="button"
@@ -101,8 +102,9 @@ export function AccountsPanel({
         </button>
       </div>
       <p className="mb-2 text-[10px] leading-relaxed text-muted-foreground">
-        Collega più account con le tue API key (es. due Falix). Attiva le competenze per ogni
-        connettore.
+        Aggiungi più account Falix (es. <span className="text-primary">Gino</span>,{" "}
+        <span className="text-primary">Edo</span>, <span className="text-primary">il mio</span>) ciascuno
+        con la sua API key. La stella ★ = account attivo per status, power, log, console e IA.
       </p>
 
       {open ? (
@@ -121,7 +123,7 @@ export function AccountsPanel({
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Nome (es. Falix SMP #2)"
+            placeholder="Nome (es. Gino, Edo, Il mio SMP)"
             className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary"
           />
           {def?.fields.map((f) => {
@@ -179,15 +181,22 @@ export function AccountsPanel({
       <div className="max-h-64 space-y-2 overflow-y-auto">
         {accounts.length === 0 ? (
           <p className="text-[11px] text-muted-foreground">
-            Nessun account. Aggiungi una API key Falix (puoi averne più di una).
+            Nessun account. Aggiungi almeno un Falix (puoi averne tanti: Gino, Edo, il tuo…).
           </p>
         ) : (
           accounts.map((acc) => (
-            <div key={acc.id} className="rounded-md border border-border bg-background/40 p-2">
+            <div
+              key={acc.id}
+              className={`rounded-md border p-2 ${
+                acc.active
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-border bg-background/40"
+              }`}
+            >
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  title="Account attivo per power/console"
+                  title="Imposta come account attivo"
                   onClick={() => onChange(setActiveAccount(acc.id))}
                   className={acc.active ? "text-primary" : "text-muted-foreground"}
                 >
@@ -202,7 +211,7 @@ export function AccountsPanel({
                   <span className="block truncate text-[9px] text-muted-foreground">
                     {ACCOUNT_PROVIDERS.find((p) => p.id === acc.provider)?.label} ·{" "}
                     {maskKey(acc.apiKey)}
-                    {acc.active ? " · attivo" : ""}
+                    {acc.active ? " · attivo ★" : ""}
                   </span>
                 </button>
                 <button

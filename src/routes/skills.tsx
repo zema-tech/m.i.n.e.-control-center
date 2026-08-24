@@ -24,11 +24,13 @@ function SkillsPage() {
   }, []);
 
   const allSkills = Object.keys(SKILL_META) as SkillId[];
+  const falix = accounts.filter((a) => a.provider === "falix");
+  const active = accounts.find((a) => a.active);
 
   return (
     <AppShell
       title="Competenze"
-      subtitle="Abilita power, console, metriche… per ogni account collegato"
+      subtitle="Multi-account Falix: Gino, Edo, il tuo — uno attivo alla volta"
     >
       <div className="mx-auto grid max-w-5xl gap-6 p-4 sm:grid-cols-2 sm:p-6">
         <div className="rounded-lg border border-border bg-background/50 p-4">
@@ -37,6 +39,25 @@ function SkillsPage() {
 
         <div className="space-y-4">
           <div className="rounded-lg border border-border p-4">
+            <h2 className="mb-2 text-xs uppercase tracking-[0.2em] text-primary">Account attivi</h2>
+            <p className="mb-3 text-[11px] text-muted-foreground">
+              Falix collegati: <span className="text-primary">{falix.length}</span>
+              {active ? (
+                <>
+                  {" "}· in uso: <span className="text-primary">{active.label}</span>
+                </>
+              ) : null}
+            </p>
+            <ul className="mb-4 space-y-1 text-[11px] text-muted-foreground">
+              {falix.map((a) => (
+                <li key={a.id}>
+                  {a.active ? "★ " : "· "}{
+                  a.label} — Server {a.serverId.slice(0, 8)}
+                  {a.serverId.length > 8 ? "…" : ""}
+                </li>
+              ))}
+              {falix.length === 0 ? <li>Nessun Falix ancora.</li> : null}
+            </ul>
             <h2 className="mb-3 text-xs uppercase tracking-[0.2em] text-primary">Mappa competenze</h2>
             <ul className="space-y-2">
               {allSkills.map((s) => (
@@ -53,8 +74,8 @@ function SkillsPage() {
             </ul>
           </div>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Aggiungi account Falix (o altri host) con la tua API key, poi attiva le competenze.
-            L&apos;account con la stella guida power e console dalla Rete e dalla dashboard.
+            Il selettore in sidebar (e in Rete) cambia l&apos;account attivo. Tutte le azioni — status,
+            avvio/stop, log, console, chat IA — usano solo quell&apos;account.
           </p>
         </div>
       </div>
