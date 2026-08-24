@@ -50,8 +50,18 @@ function ConnectorsPage() {
   }
 
   return (
-    <AppShell title="Connettori" subtitle="MEGA, Discord, RCON, webhook — compaiono sulla rete neurale">
+    <AppShell
+      title="Connettori"
+      subtitle="Falix MCP · MEGA · Google Drive — compaiono sulla rete neurale"
+    >
       <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Scope attuale: <span className="text-primary">API Falix</span> (multi-account) +{" "}
+          <span className="text-primary">MCP Falix</span> + storage{" "}
+          <span className="text-primary">MEGA / Google Drive</span>. Le credenziali si impostano in{" "}
+          Competenze; qui aggiungi i nodi visibili sulla rete.
+        </p>
+
         <div>
           <p className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">Preset</p>
           <div className="flex flex-wrap gap-2">
@@ -104,7 +114,9 @@ function ConnectorsPage() {
 
         <ul className="space-y-2">
           {list.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nessun connettore. Prova MEGA o Discord.</p>
+            <p className="text-sm text-muted-foreground">
+              Nessun connettore. Usa i preset Falix MCP, MEGA o Google Drive.
+            </p>
           ) : (
             list.map((c) => (
               <li
