@@ -22,6 +22,7 @@ import {
   activeCredentials,
   getActiveFalixAccount,
 } from "@/lib/accounts";
+import { logAiActivity } from "@/lib/ai-activity";
 import { getAuthState } from "@/lib/auth.functions";
 import { askAssistant, getLogs, runCommand, runFalixAction } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
@@ -60,6 +61,14 @@ function loadModel(): GroqModelId {
     /* ignore */
   }
   return DEFAULT_GROQ_MODEL;
+}
+
+function accountCtx() {
+  const active = getActiveFalixAccount();
+  return {
+    accountId: active?.id ?? "unknown",
+    accountLabel: active?.label ?? "server",
+  };
 }
 
 function AssistantPage() {
@@ -172,6 +181,7 @@ function AssistantPage() {
     if (!question || busy) return;
     setInput("");
     setBusy(true);
+    const ctx = accountCtx();
     const withUser: Msg[] = [...messages, { role: "user", content: question }];
     persist(withUser);
     try {
@@ -192,11 +202,42 @@ function AssistantPage() {
           actions: (res.azioni ?? []).map((a) => ({ ...a, state: "pending" as const })),
         },
       ]);
+
+      logAiActivity({
+        ...ctx,
+        kind: "chat",
+        title: question.slice(0, 80),
+        detail: res.risposta.slice(0, 400),
+        status: res.ok === false ? "error" : "done",
+      });
+      for (const c of res.comandi ?? []) {
+        logAiActivity({
+          ...ctx,
+          kind: "propose_command",
+          title: `Proposta: ${c.comando}`,
+          detail: c.motivo,
+          status: "pending",
+        });
+      }
+      for (const a of res.azioni ?? []) {
+        logAiActivity({
+          ...ctx,
+          kind: "propose_action",
+          title: `Proposta: ${a.id}`,
+          detail: a.motivo,
+          status: "pending",
+        });
+      }
     } catch (error) {
-      persist([
-        ...withUser,
-        { role: "assistant", content: error instanceof Error ? error.message : String(error) },
-      ]);
+      const message = error instanceof Error ? error.message : String(error);
+      persist([...withUser, { role: "assistant", content: message }]);
+      logAiActivity({
+        ...ctx,
+        kind: "chat",
+        title: "Errore chat IA",
+        detail: message,
+        status: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -231,14 +272,23 @@ function AssistantPage() {
     params: Record<string, string | number | boolean>,
     risk: ActionRisk,
   ): Promise<string> {
+    const ctx = accountCtx();
     if (risk !== "read") {
       const def = getAction(id);
-      const label = getActiveFalixAccount()?.label ?? "account";
+      const label = ctx.accountLabel;
       const warn =
         risk === "critical"
           ? `AZIONE CRITICA su "${label}": "${def?.label ?? id}". Confermi?`
           : `Approvi l'azione "${def?.label ?? id}" su "${label}"?`;
-      if (!window.confirm(warn)) return "Azione annullata.";
+      if (!window.confirm(warn)) {
+        logAiActivity({
+          ...ctx,
+          kind: "reject",
+          title: `Rifiutata: ${id}`,
+          status: "rejected",
+        });
+        return "Azione annullata.";
+      }
     }
     const credentials = activeCredentials();
     const res = await execAction({
@@ -250,6 +300,13 @@ function AssistantPage() {
       },
     });
     setConsoleOut((o) => [...o, `> azione ${id}`, res.output]);
+    logAiActivity({
+      ...ctx,
+      kind: "execute_action",
+      title: `Eseguita: ${id}`,
+      detail: res.output,
+      status: res.ok === false ? "error" : "done",
+    });
     void loadLogs();
     return res.output;
   }
@@ -274,12 +331,20 @@ function AssistantPage() {
   }
 
   async function confirmProposal(mi: number, pi: number, cmd: string) {
+    const ctx = accountCtx();
     const credentials = activeCredentials();
     const res = await exec({
       data: { command: cmd, ...(credentials ? { credentials } : {}) },
     });
     updateProposal(mi, pi, { state: "done", output: res.output });
     setConsoleOut((o) => [...o, `> ${cmd}`, res.output]);
+    logAiActivity({
+      ...ctx,
+      kind: "execute_command",
+      title: `Comando: ${cmd}`,
+      detail: res.output,
+      status: res.ok === false ? "error" : "done",
+    });
     void loadLogs();
   }
 
@@ -287,11 +352,19 @@ function AssistantPage() {
     const cmd = command.trim();
     if (!cmd) return;
     setCommand("");
+    const ctx = accountCtx();
     const credentials = activeCredentials();
     const res = await exec({
       data: { command: cmd, ...(credentials ? { credentials } : {}) },
     });
     setConsoleOut((o) => [...o, `> ${cmd}`, res.output]);
+    logAiActivity({
+      ...ctx,
+      kind: "execute_command",
+      title: `Console: ${cmd}`,
+      detail: res.output,
+      status: res.ok === false ? "error" : "done",
+    });
     void loadLogs();
   }
 
@@ -300,7 +373,7 @@ function AssistantPage() {
       title="Chat IA"
       subtitle={
         accountLabel
-          ? `Operazioni su account Falix: ${accountLabel}`
+          ? `IA sul server: ${accountLabel} — azioni visibili anche in Rete neurale`
           : "Crea account Falix in Competenze · Groq legge i log dell'account attivo"
       }
     >
@@ -393,7 +466,15 @@ function AssistantPage() {
                           <Check className="h-3 w-3" /> conferma
                         </button>
                         <button
-                          onClick={() => updateProposal(mi, pi, { state: "rejected" })}
+                          onClick={() => {
+                            updateProposal(mi, pi, { state: "rejected" });
+                            logAiActivity({
+                              ...accountCtx(),
+                              kind: "reject",
+                              title: `Rifiutato: ${p.comando}`,
+                              status: "rejected",
+                            });
+                          }}
                           className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground"
                         >
                           <X className="h-3 w-3" /> rifiuta
