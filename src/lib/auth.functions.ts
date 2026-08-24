@@ -15,6 +15,14 @@ import {
 } from "./auth.server";
 import { buildDemoStats } from "./server-stats.server";
 
+const credSchema = z
+  .object({
+    key: z.string().min(1).max(500),
+    serverId: z.string().min(1).max(120),
+    base: z.string().max(300).optional(),
+  })
+  .optional();
+
 export const login = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ password: z.string().min(1).max(200) }).parse(input),
@@ -72,6 +80,7 @@ export const getAuthState = createServerFn({ method: "GET" }).handler(async () =
   return { authenticated: await isValidToken(getCookie(sessionCookieName)) };
 });
 
+/** Dashboard senza credenziali account (fallback env / demo). Usato dal loader. */
 export const getDashboard = createServerFn({ method: "GET" }).handler(async () => {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     return { authenticated: false as const, stats: null };
@@ -89,3 +98,37 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async () =
     };
   }
 });
+
+/** Dashboard legata all'account Falix selezionato (Gino / Edo / …). */
+export const getDashboardForAccount = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        credentials: credSchema,
+        accountLabel: z.string().max(80).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    if (!(await isValidToken(getCookie(sessionCookieName)))) {
+      return { authenticated: false as const, stats: null };
+    }
+    const { fetchLiveStatus } = await import("./falix.server");
+    const { buildStats } = await import("./server-stats.server");
+    const label = data.accountLabel?.trim() || "account";
+    try {
+      const live = await fetchLiveStatus(data.credentials ?? null);
+      logAction("info", `Status live: ${label} (${live.source})`);
+      return { authenticated: true as const, stats: buildStats(live, getActionLog()) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("warn", `Status ${label} fallito: ${message}`);
+      return {
+        authenticated: true as const,
+        stats: buildDemoStats(
+          getActionLog(),
+          `Account "${label}": ${message}. Controlla API key / Server ID.`,
+        ),
+      };
+    }
+  });

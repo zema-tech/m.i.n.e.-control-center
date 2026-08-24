@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { AccountSelector } from "@/components/AccountSelector";
 import { logout } from "@/lib/auth.functions";
 
 const NAV = [
@@ -31,7 +32,6 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const doLogout = useServerFn(logout);
-  const router = useRouterState();
 
   async function onLogout() {
     await doLogout({});
@@ -50,6 +50,9 @@ export function AppShell({
               network engine
             </span>
           </Link>
+          <div className="mt-3">
+            <AccountSelector />
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 p-3">
@@ -79,8 +82,8 @@ export function AppShell({
               <Brain className="h-3 w-3" /> sistema neurale
             </p>
             <p className="text-[10px] leading-relaxed text-muted-foreground">
-              Rete collegata a <span className="text-primary">Groq API</span> — analizza nodi e
-              server dalla sezione Rete.
+              Rete collegata a <span className="text-primary">Groq API</span> — azioni su account
+              Falix selezionato (Gino, Edo, …).
             </p>
           </div>
         </nav>
@@ -98,8 +101,8 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         {(title || subtitle) && (
-          <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-            <div>
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
+            <div className="min-w-0">
               {title ? (
                 <h1 className="font-display text-lg font-bold tracking-wide text-primary">{title}</h1>
               ) : null}
@@ -107,9 +110,12 @@ export function AppShell({
                 <p className="text-[11px] text-muted-foreground">{subtitle}</p>
               ) : null}
             </div>
-            <span className="hidden items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground sm:flex">
-              <Sparkles className="h-3 w-3 text-primary" /> groq online
-            </span>
+            <div className="flex items-center gap-3">
+              <AccountSelector className="sm:hidden" />
+              <span className="hidden items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground sm:flex">
+                <Sparkles className="h-3 w-3 text-primary" /> groq online
+              </span>
+            </div>
           </header>
         )}
         <div className="flex-1 overflow-auto">{children}</div>

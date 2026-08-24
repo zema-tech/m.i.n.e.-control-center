@@ -19,17 +19,25 @@ async function requireAdmin() {
   }
 }
 
-export const getLogs = createServerFn({ method: "GET" }).handler(async () => {
-  await requireAdmin();
-  const { fetchServerLogs } = await import("./falix.server");
-  try {
-    return { ok: true as const, ...(await fetchServerLogs()) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logAction("error", `Lettura log Falix fallita: ${message}`);
-    return { ok: false as const, demo: false, lines: [], message };
-  }
-});
+export const getLogs = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        credentials: credSchema,
+      })
+      .parse(input ?? {}),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { fetchServerLogs } = await import("./falix.server");
+    try {
+      return { ok: true as const, ...(await fetchServerLogs(data.credentials ?? null)) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("error", `Lettura log Falix fallita: ${message}`);
+      return { ok: false as const, demo: false, lines: [], message };
+    }
+  });
 
 export const runCommand = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -139,6 +147,7 @@ export const askAssistant = createServerFn({ method: "POST" })
           .default([]),
         model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
         credentials: credSchema,
+        accountLabel: z.string().max(80).optional(),
       })
       .parse(input),
   )
@@ -149,12 +158,16 @@ export const askAssistant = createServerFn({ method: "POST" })
 
     let logContext = "";
     let logDemo = true;
+    const label = data.accountLabel?.trim() || "account attivo";
     try {
-      const logs = await fetchServerLogs(data.credentials);
+      const logs = await fetchServerLogs(data.credentials ?? null);
       logDemo = logs.demo;
       logContext = logs.lines.map((l) => l.message).join("\n");
+      if (!logDemo) {
+        logContext = `[Account Falix: ${label}]\n${logContext}`;
+      }
     } catch (error) {
-      logContext = `Log non disponibili: ${error instanceof Error ? error.message : String(error)}`;
+      logContext = `Log non disponibili (${label}): ${error instanceof Error ? error.message : String(error)}`;
     }
 
     try {
@@ -166,7 +179,7 @@ export const askAssistant = createServerFn({ method: "POST" })
       );
       logAction(
         "info",
-        `IA consultata (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`,
+        `IA su "${label}" (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`,
       );
       return { ok: true as const, ...reply, logDemo };
     } catch (error) {
