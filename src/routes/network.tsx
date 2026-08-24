@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain, Play, RefreshCw, Square } from "lucide-react";
 
+import { AiActivityPanel } from "@/components/AiActivityPanel";
 import { AppShell } from "@/components/AppShell";
 import { NeuralGraph, type GraphNode } from "@/components/NeuralGraph";
 import {
@@ -14,6 +15,12 @@ import {
   setActiveAccount,
   type ApiAccount,
 } from "@/lib/accounts";
+import {
+  AI_ACTIVITY_EVENT,
+  activityForAccount,
+  logAiActivity,
+  type AiActivity,
+} from "@/lib/ai-activity";
 import { getAuthState, getDashboardForAccount } from "@/lib/auth.functions";
 import { loadConnectors, type CustomConnector } from "@/lib/connectors";
 import { loadHosts, providerLabel, type HostProfile } from "@/lib/hosts";
@@ -41,6 +48,7 @@ function NetworkPage() {
   const [accounts, setAccounts] = useState<ApiAccount[]>([]);
   const [hosts, setHosts] = useState<HostProfile[]>([]);
   const [connectors, setConnectors] = useState<CustomConnector[]>([]);
+  const [aiEvents, setAiEvents] = useState<AiActivity[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [busy, setBusy] = useState<null | "start" | "stop" | "restart">(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -55,6 +63,7 @@ function NetworkPage() {
     setConnectors(loadConnectors());
     const active = getActiveFalixAccount();
     setActiveId(active?.id ?? "");
+    setAiEvents(activityForAccount(active?.id ?? "", 20));
     return active;
   }, []);
 
@@ -85,10 +94,19 @@ function NetworkPage() {
   useEffect(() => {
     const onAccount = () => {
       refreshAccounts();
+      setAnalysis(null);
       void loadStats();
     };
+    const onAi = () => {
+      const active = getActiveFalixAccount();
+      setAiEvents(activityForAccount(active?.id ?? "", 20));
+    };
     window.addEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
-    return () => window.removeEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
+    window.addEventListener(AI_ACTIVITY_EVENT, onAi);
+    return () => {
+      window.removeEventListener(ACTIVE_ACCOUNT_EVENT, onAccount);
+      window.removeEventListener(AI_ACTIVITY_EVENT, onAi);
+    };
   }, [refreshAccounts, loadStats]);
 
   const falixAccounts = useMemo(() => listFalixAccounts(), [accounts]);
@@ -106,19 +124,31 @@ function NetworkPage() {
         label: activeLabel.slice(0, 18),
         kind: "server",
         status: online ? "online" : "offline",
-        detail: `${stats.version ?? "n/d"} · ${activeLabel}`,
+        detail: `Rete neurale di ${activeLabel} · ${stats.version ?? "n/d"}`,
         size: 18,
+      },
+      {
+        id: "ai:core",
+        label: "IA Groq",
+        kind: "service",
+        status: "online",
+        detail: `Nucleo IA sul server "${activeLabel}". Analisi, proposte e azioni tracciate sotto.`,
+        size: 13,
       },
     ];
 
+    // Solo account correlati: attivo in evidenza
     for (const acc of falixAccounts) {
       list.push({
         id: acc.id,
         label: acc.label,
         kind: "service",
         status: acc.id === activeId ? "online" : "offline",
-        detail: `Falix · ${acc.skills.join(", ")}`,
-        size: acc.id === activeId ? 12 : 8,
+        detail:
+          acc.id === activeId
+            ? `Account attivo · competenze: ${acc.skills.join(", ")}`
+            : `Account Falix inattivo su questa vista · ${acc.skills.join(", ")}`,
+        size: acc.id === activeId ? 12 : 7,
       });
     }
 
@@ -128,7 +158,7 @@ function NetworkPage() {
         label: name,
         kind: "player",
         status: "online",
-        detail: "Giocatore online",
+        detail: `Giocatore online su ${activeLabel}`,
         size: 9,
       });
     }
@@ -139,7 +169,7 @@ function NetworkPage() {
         label: world,
         kind: "world",
         status: online ? "online" : "offline",
-        detail: "Dimensione",
+        detail: `Dimensione su ${activeLabel}`,
         size: 8,
       });
     }
@@ -155,7 +185,7 @@ function NetworkPage() {
         label: `CPU ${stats.cpu ?? "?"}%`,
         kind: "metric",
         status: stats.cpu !== null && stats.cpu > 85 ? "error" : online ? "online" : "offline",
-        detail: "CPU",
+        detail: `CPU · ${activeLabel}`,
         size: 10,
       },
       {
@@ -163,7 +193,7 @@ function NetworkPage() {
         label: `RAM ${ramPct ?? "?"}%`,
         kind: "metric",
         status: ramPct !== null && ramPct > 85 ? "error" : online ? "online" : "offline",
-        detail: "RAM",
+        detail: `RAM · ${activeLabel}`,
         size: 10,
       },
       {
@@ -171,10 +201,27 @@ function NetworkPage() {
         label: `TPS ${stats.tps?.toFixed(1) ?? "n/d"}`,
         kind: "metric",
         status: online ? "online" : "offline",
-        detail: "TPS",
+        detail: `TPS · ${activeLabel}`,
         size: 10,
       },
     );
+
+    // Nodi dalle ultime azioni IA su QUESTO server
+    for (const ev of aiEvents.slice(0, 8)) {
+      list.push({
+        id: `ai-ev:${ev.id}`,
+        label: ev.title.slice(0, 16),
+        kind: "log",
+        status:
+          ev.status === "error"
+            ? "error"
+            : ev.status === "rejected"
+              ? "offline"
+              : "online",
+        detail: `[IA · ${ev.kind}] ${ev.detail || ev.title}`,
+        size: 7,
+      });
+    }
 
     for (const c of connectors) {
       list.push({
@@ -199,12 +246,14 @@ function NetworkPage() {
     }
 
     return list;
-  }, [stats, falixAccounts, connectors, hosts, activeId, activeLabel]);
+  }, [stats, falixAccounts, connectors, hosts, activeId, activeLabel, aiEvents]);
 
   function onSelectAccount(id: string) {
     setActiveId(id);
     setActiveAccount(id);
-    setMsg(`Account attivo: ${getActiveFalixAccount()?.label ?? id}`);
+    setAnalysis(null);
+    setAiEvents(activityForAccount(id, 20));
+    setMsg(`Rete neurale su: ${getActiveFalixAccount()?.label ?? id}`);
   }
 
   async function onPower(signal: "start" | "stop" | "restart") {
@@ -216,11 +265,7 @@ function NetworkPage() {
       const res = await doPower({
         data: { signal, ...(credentials ? { credentials } : {}) },
       });
-      setMsg(
-        active
-          ? `[${active.label}] ${res.output}`
-          : res.output,
-      );
+      setMsg(active ? `[${active.label}] ${res.output}` : res.output);
       void loadStats();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -233,6 +278,7 @@ function NetworkPage() {
     if (!stats) return;
     setAnalyzing(true);
     setAnalysis(null);
+    const active = getActiveFalixAccount();
     const summary = graphNodes
       .map((n) => `${n.kind}:${n.label} [${n.status}] ${n.detail ?? ""}`)
       .join("\n");
@@ -245,8 +291,26 @@ function NetworkPage() {
         },
       });
       setAnalysis(res.analysis);
+      logAiActivity({
+        accountId: active?.id ?? activeId,
+        accountLabel: activeLabel,
+        kind: "analysis",
+        title: res.ok ? "Analisi rete completata" : "Analisi fallita",
+        detail: res.analysis,
+        status: res.ok ? "done" : "error",
+      });
+      setAiEvents(activityForAccount(active?.id ?? activeId, 20));
     } catch (e) {
-      setAnalysis(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setAnalysis(message);
+      logAiActivity({
+        accountId: active?.id ?? activeId,
+        accountLabel: activeLabel,
+        kind: "analysis",
+        title: "Errore analisi",
+        detail: message,
+        status: "error",
+      });
     } finally {
       setAnalyzing(false);
     }
@@ -255,12 +319,12 @@ function NetworkPage() {
   return (
     <AppShell
       title="Rete / pallini"
-      subtitle="Seleziona account Falix (Gino, Edo, …) — status e power usano quello attivo"
+      subtitle="Ogni server ha la sua rete neurale — seleziona Gino, Edo o il tuo e vedi come agisce l'IA"
     >
       <div className="space-y-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
-            falix
+            server
             <select
               value={activeId}
               onChange={(e) => onSelectAccount(e.target.value)}
@@ -321,11 +385,15 @@ function NetworkPage() {
           </button>
         </div>
 
-        {msg ? <p className="font-mono text-xs text-muted-foreground">{msg}</p> : null}
+        <p className="text-[11px] text-muted-foreground">
+          Vista rete: <span className="text-primary">{activeLabel}</span>
+          {aiEvents.length > 0 ? (
+            <> · {aiEvents.length} eventi IA su questo server</>
+          ) : null}
+        </p>
 
-        {stats?.note ? (
-          <p className="text-[11px] text-muted-foreground">{stats.note}</p>
-        ) : null}
+        {msg ? <p className="font-mono text-xs text-muted-foreground">{msg}</p> : null}
+        {stats?.note ? <p className="text-[11px] text-muted-foreground">{stats.note}</p> : null}
 
         {analysis ? (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
@@ -336,14 +404,20 @@ function NetworkPage() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-lg border border-border">
-          {stats ? (
-            <NeuralGraph nodes={graphNodes} serverOnline={stats.status === "online"} />
-          ) : (
-            <p className="p-8 text-center text-sm text-muted-foreground">
-              {loadingStats ? "Caricamento status…" : "Nessun dato. Aggiungi un account Falix in Competenze."}
-            </p>
-          )}
+        <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+          <div className="overflow-hidden rounded-lg border border-border">
+            {stats ? (
+              <NeuralGraph nodes={graphNodes} serverOnline={stats.status === "online"} />
+            ) : (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                {loadingStats
+                  ? "Caricamento rete neurale…"
+                  : "Nessun dato. Aggiungi un account Falix in Competenze."}
+              </p>
+            )}
+          </div>
+
+          <AiActivityPanel accountId={activeId} accountLabel={activeLabel} />
         </div>
       </div>
     </AppShell>
