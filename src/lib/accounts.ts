@@ -1,25 +1,9 @@
 /**
- * Account connettori con chiavi API proprie.
- * Multi-account Falix (es. Gino, Edo, il tuo): uno attivo alla volta guida status/power/console/IA.
+ * Account: solo Falix (multi) + storage MEGA / Google Drive.
+ * L'account Falix attivo guida status, power, console, log e IA.
  */
 
-export type AccountProvider =
-  | "falix"
-  | "bloom"
-  | "apex"
-  | "bisect"
-  | "shockbyte"
-  | "akliz"
-  | "flexynode"
-  | "pterodactyl"
-  | "pelican"
-  | "mcsmanager"
-  | "amp"
-  | "exaroton"
-  | "mega"
-  | "discord"
-  | "rcon"
-  | "generic";
+export type AccountProvider = "falix" | "mega" | "gdrive";
 
 export type SkillId =
   | "power"
@@ -29,7 +13,6 @@ export type SkillId =
   | "files"
   | "logs"
   | "backup"
-  | "chat"
   | "status";
 
 export type ApiAccount = {
@@ -45,7 +28,7 @@ export type ApiAccount = {
   createdAt: number;
 };
 
-const FALIX_LIKE_SKILLS: SkillId[] = [
+const FALIX_SKILLS: SkillId[] = [
   "power",
   "console",
   "metrics",
@@ -55,28 +38,20 @@ const FALIX_LIKE_SKILLS: SkillId[] = [
   "status",
 ];
 
-const PTERO_FIELDS: {
-  key: "apiKey" | "serverId" | "baseUrl" | "address";
-  label: string;
-  secret?: boolean;
-}[] = [
-  { key: "apiKey", label: "Client API Key", secret: true },
-  { key: "serverId", label: "Server UUID / ID" },
-  { key: "baseUrl", label: "Panel URL (es. https://panel.example.com)" },
-];
-
 export const ACCOUNT_PROVIDERS: {
   id: AccountProvider;
   label: string;
   defaultSkills: SkillId[];
   falixLike: boolean;
   fields: { key: "apiKey" | "serverId" | "baseUrl" | "address"; label: string; secret?: boolean }[];
+  hint: string;
 }[] = [
   {
     id: "falix",
-    label: "FalixNodes",
-    defaultSkills: FALIX_LIKE_SKILLS,
+    label: "FalixNodes (API + MCP)",
+    defaultSkills: FALIX_SKILLS,
     falixLike: true,
+    hint: "API key + Server ID dal pannello Falix. Multi-account: Gino, Edo, il tuo…",
     fields: [
       { key: "apiKey", label: "API Key", secret: true },
       { key: "serverId", label: "Server ID" },
@@ -84,132 +59,27 @@ export const ACCOUNT_PROVIDERS: {
     ],
   },
   {
-    id: "bloom",
-    label: "Bloom Host",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "apex",
-    label: "Apex Hosting",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "bisect",
-    label: "BisectHosting",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "shockbyte",
-    label: "Shockbyte",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "akliz",
-    label: "Akliz",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "flexynode",
-    label: "FlexyNode",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "pterodactyl",
-    label: "Pterodactyl",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "pelican",
-    label: "Pelican Panel",
-    defaultSkills: FALIX_LIKE_SKILLS,
-    falixLike: true,
-    fields: PTERO_FIELDS,
-  },
-  {
-    id: "mcsmanager",
-    label: "MCSManager",
-    defaultSkills: ["power", "console", "metrics", "files", "status"],
-    falixLike: true,
-    fields: [
-      { key: "apiKey", label: "API Key / Token", secret: true },
-      { key: "serverId", label: "Instance UUID" },
-      { key: "baseUrl", label: "Panel URL" },
-    ],
-  },
-  {
-    id: "amp",
-    label: "AMP (CubeCoders)",
-    defaultSkills: ["power", "console", "metrics", "status"],
-    falixLike: true,
-    fields: [
-      { key: "apiKey", label: "API / Session", secret: true },
-      { key: "serverId", label: "Instance ID" },
-      { key: "baseUrl", label: "AMP URL" },
-    ],
-  },
-  {
-    id: "exaroton",
-    label: "Exaroton",
-    defaultSkills: ["power", "status", "players", "console"],
-    falixLike: true,
-    fields: [
-      { key: "apiKey", label: "API Token", secret: true },
-      { key: "serverId", label: "Server ID" },
-    ],
-  },
-  {
     id: "mega",
-    label: "MEGA",
+    label: "MEGA (storage)",
     defaultSkills: ["backup", "files"],
     falixLike: false,
+    hint: "Email account MEGA nella chiave; password/session nel campo extra. Per backup cloud.",
     fields: [
-      { key: "apiKey", label: "Email o session", secret: true },
-      { key: "serverId", label: "Folder / handle (opz.)" },
+      { key: "apiKey", label: "Email MEGA", secret: true },
+      { key: "serverId", label: "Password o session token", secret: true },
+      { key: "baseUrl", label: "Folder handle (opz.)" },
     ],
   },
   {
-    id: "discord",
-    label: "Discord",
-    defaultSkills: ["chat", "status"],
+    id: "gdrive",
+    label: "Google Drive (storage)",
+    defaultSkills: ["backup", "files"],
     falixLike: false,
+    hint: "API key o JSON service account (incolla nel campo chiave). Folder ID opzionale.",
     fields: [
-      { key: "apiKey", label: "Bot token / webhook", secret: true },
-      { key: "serverId", label: "Channel / Guild ID" },
-    ],
-  },
-  {
-    id: "rcon",
-    label: "RCON",
-    defaultSkills: ["console", "power"],
-    falixLike: false,
-    fields: [
-      { key: "address", label: "Host:porta" },
-      { key: "apiKey", label: "Password RCON", secret: true },
-    ],
-  },
-  {
-    id: "generic",
-    label: "Generico / altro",
-    defaultSkills: ["status"],
-    falixLike: false,
-    fields: [
-      { key: "apiKey", label: "API Key", secret: true },
-      { key: "baseUrl", label: "Base URL" },
-      { key: "serverId", label: "Resource ID" },
+      { key: "apiKey", label: "API Key o Service Account JSON", secret: true },
+      { key: "serverId", label: "Folder ID destinazione (opz.)" },
+      { key: "baseUrl", label: "Client ID OAuth (opz.)" },
     ],
   },
 ];
@@ -219,10 +89,9 @@ export const SKILL_META: Record<SkillId, { label: string; hint: string }> = {
   console: { label: "Console", hint: "Comandi in-game" },
   metrics: { label: "Metriche", hint: "CPU RAM TPS" },
   players: { label: "Giocatori", hint: "Lista online" },
-  files: { label: "File", hint: "Gestione file server" },
+  files: { label: "File", hint: "Gestione file server / cloud" },
   logs: { label: "Log", hint: "latest.log / console" },
-  backup: { label: "Backup", hint: "Snapshot mondi" },
-  chat: { label: "Chat", hint: "Notifiche / bot" },
+  backup: { label: "Backup", hint: "Snapshot e cloud MEGA/Drive" },
   status: { label: "Status", hint: "Online / offline" },
 };
 
@@ -233,12 +102,23 @@ function canUseStorage() {
   return typeof window !== "undefined";
 }
 
+/** Migra provider vecchi non più supportati → generico rimosso; restano solo falix/mega/gdrive. */
+function normalizeProvider(p: string): AccountProvider {
+  if (p === "falix" || p === "mega" || p === "gdrive") return p;
+  return "falix";
+}
+
 export function loadAccounts(): ApiAccount[] {
   if (!canUseStorage()) return [];
   try {
     const raw = window.localStorage.getItem(KEY);
     const parsed = raw ? (JSON.parse(raw) as ApiAccount[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((a) => ({
+      ...a,
+      provider: normalizeProvider(String(a.provider)),
+      skills: Array.isArray(a.skills) ? a.skills : [],
+    }));
   } catch {
     return [];
   }
@@ -249,7 +129,6 @@ export function saveAccounts(list: ApiAccount[]) {
   window.localStorage.setItem(KEY, JSON.stringify(list));
 }
 
-/** Notifica le pagine (Rete, Chat IA, …) che l'account attivo è cambiato. */
 export function notifyActiveAccountChanged(accountId: string | null) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
@@ -283,11 +162,14 @@ export function addAccount(input: {
     baseUrl: (input.baseUrl ?? "").trim(),
     address: (input.address ?? "").trim(),
     skills: input.skills?.length ? input.skills : (def?.defaultSkills ?? ["status"]),
-    active: makeActive,
+    active: makeActive && input.provider === "falix",
     createdAt: Date.now(),
   };
 
-  if (account.active) {
+  // Solo Falix può essere "attivo" per power/console
+  if (account.provider !== "falix") {
+    account.active = false;
+  } else if (account.active) {
     list = list.map((a) => ({ ...a, active: false }));
   }
   list = [account, ...list];
@@ -299,7 +181,10 @@ export function addAccount(input: {
 export function updateAccount(id: string, patch: Partial<ApiAccount>): ApiAccount[] {
   let list = loadAccounts().map((a) => (a.id === id ? { ...a, ...patch, id: a.id } : a));
   if (patch.active) {
-    list = list.map((a) => ({ ...a, active: a.id === id }));
+    list = list.map((a) => ({
+      ...a,
+      active: a.id === id && a.provider === "falix",
+    }));
   }
   saveAccounts(list);
   if (patch.active) notifyActiveAccountChanged(id);
@@ -312,9 +197,12 @@ export function removeAccount(id: string): ApiAccount[] {
   let next = prev.filter((a) => a.id !== id);
   if (wasActive && next.length > 0) {
     const falix = next.find((a) => a.provider === "falix");
-    const pick = falix ?? next[0]!;
-    next = next.map((a) => ({ ...a, active: a.id === pick.id }));
-    notifyActiveAccountChanged(pick.id);
+    if (falix) {
+      next = next.map((a) => ({ ...a, active: a.id === falix.id }));
+      notifyActiveAccountChanged(falix.id);
+    } else {
+      notifyActiveAccountChanged(null);
+    }
   } else if (wasActive) {
     notifyActiveAccountChanged(null);
   }
@@ -323,6 +211,8 @@ export function removeAccount(id: string): ApiAccount[] {
 }
 
 export function setActiveAccount(id: string): ApiAccount[] {
+  const target = loadAccounts().find((a) => a.id === id);
+  if (!target || target.provider !== "falix") return loadAccounts();
   const next = loadAccounts().map((a) => ({ ...a, active: a.id === id }));
   saveAccounts(next);
   notifyActiveAccountChanged(id);
@@ -342,13 +232,11 @@ export function toggleSkill(id: string, skill: SkillId): ApiAccount[] {
   return next;
 }
 
-/** Account attivo (qualsiasi provider). */
 export function getActiveAccount(): ApiAccount | null {
   const list = loadAccounts();
-  return list.find((a) => a.active) ?? list[0] ?? null;
+  return list.find((a) => a.active && a.provider === "falix") ?? list.find((a) => a.provider === "falix") ?? null;
 }
 
-/** Account Falix attivo (API key + server id). Preferito per power/console/log. */
 export function getActiveFalixAccount(): ApiAccount | null {
   const list = loadAccounts();
   const active = list.find((a) => a.active && a.provider === "falix" && a.apiKey && a.serverId);
@@ -356,9 +244,12 @@ export function getActiveFalixAccount(): ApiAccount | null {
   return list.find((a) => a.provider === "falix" && a.apiKey && a.serverId) ?? null;
 }
 
-/** Tutti gli account Falix configurati (per selettore Gino / Edo / …). */
 export function listFalixAccounts(): ApiAccount[] {
   return loadAccounts().filter((a) => a.provider === "falix" && a.apiKey && a.serverId);
+}
+
+export function listStorageAccounts(): ApiAccount[] {
+  return loadAccounts().filter((a) => a.provider === "mega" || a.provider === "gdrive");
 }
 
 export function getAccountById(id: string): ApiAccount | null {
@@ -367,6 +258,7 @@ export function getAccountById(id: string): ApiAccount | null {
 
 export function credentialsPayload(account: ApiAccount | null) {
   if (!account?.apiKey || !account.serverId) return undefined;
+  if (account.provider !== "falix") return undefined;
   return {
     key: account.apiKey,
     serverId: account.serverId,
@@ -374,7 +266,6 @@ export function credentialsPayload(account: ApiAccount | null) {
   };
 }
 
-/** Credenziali dell'account Falix attivo (o undefined → fallback env server). */
 export function activeCredentials() {
   return credentialsPayload(getActiveFalixAccount());
 }
