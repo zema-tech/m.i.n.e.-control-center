@@ -1,5 +1,6 @@
 import { FALIX_ACTIONS } from "./falix-actions";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "./groq-models";
+import { MEGA_MCP_TOOLS, GDRIVE_MCP_TOOLS } from "./mcp";
 
 export type ProposedAction = {
   id: string;
@@ -19,6 +20,20 @@ const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
 ).join("\n");
 
+const STORAGE_CATALOG = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS]
+  .map(
+    (t) =>
+      `${t.name} [${t.risk}] ${t.description}` +
+      (t.params.length
+        ? ` (params: ${t.params.map((p) => p.name + (p.required ? "*" : "")).join(", ")})`
+        : ""),
+  )
+  .join("\n");
+
+const STORAGE_TOOL_IDS = new Set(
+  [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS].map((t) => t.name),
+);
+
 function sanitizeParams(input: unknown): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
   if (input && typeof input === "object") {
@@ -36,15 +51,20 @@ function sanitizeParams(input: unknown): Record<string, string | number | boolea
 const SYSTEM_PROMPT = `Sei M.I.N.E., assistente IA per l'amministrazione di UN server Minecraft (Paper) hostato su Falix.
 Rispondi SEMPRE in italiano, in modo tecnico ma chiaro e sintetico.
 Analizzi i log forniti, individui la causa dei problemi e proponi soluzioni concrete.
-NON esegui mai azioni da solo: PROPONI comandi console e/o azioni API Falix che l'amministratore approva.
+NON esegui mai azioni da solo: PROPONI comandi console e/o azioni API Falix / tool MCP storage che l'amministratore approva.
 Le azioni con rischio "write" o "critical" richiedono approvazione esplicita: spiega sempre le conseguenze.
+
+Scope API: SOLO Falix (multi-account) + storage MEGA / Google Drive. Nessun altro host MC.
 
 Azioni Falix disponibili (id [rischio] descrizione):
 ${ACTION_CATALOG}
 
+Tool MCP storage MEGA / Google Drive (id [rischio] descrizione):
+${STORAGE_CATALOG}
+
 Rispondi esclusivamente con JSON valido in questa forma:
 {"risposta":"spiegazione in italiano","comandi":[{"comando":"say ciao","motivo":"perché serve"}],"azioni":[{"id":"files.read","params":{"path":"/logs/latest.log"},"motivo":"perché serve"}]}
-Usa "comandi" solo per comandi da console Minecraft, "azioni" per operazioni sul pannello Falix.
+Usa "comandi" solo per comandi da console Minecraft, "azioni" per operazioni sul pannello Falix O tool storage (mega_*, gdrive_*).
 Se non serve nulla usa liste vuote.`;
 
 export async function askGroq(
@@ -105,7 +125,11 @@ export async function askGroq(
         : [],
       azioni: Array.isArray(parsed.azioni)
         ? parsed.azioni
-            .filter((a) => typeof a?.id === "string" && FALIX_ACTIONS.some((d) => d.id === a.id))
+            .filter(
+              (a) =>
+                typeof a?.id === "string" &&
+                (FALIX_ACTIONS.some((d) => d.id === a.id) || STORAGE_TOOL_IDS.has(a.id)),
+            )
             .slice(0, 5)
             .map((a) => ({
               id: a.id,
