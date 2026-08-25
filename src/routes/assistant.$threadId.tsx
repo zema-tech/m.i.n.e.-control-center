@@ -1,12 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  AlertTriangle,
   Bot,
   Check,
   MessageSquare,
   Plus,
-  RefreshCw,
   Send,
   ShieldAlert,
   Terminal,
@@ -17,6 +15,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { LogViewer } from "@/components/LogViewer";
 import {
   ACTIVE_ACCOUNT_EVENT,
   activeCredentials,
@@ -476,47 +475,51 @@ function AssistantPage() {
         <aside className="panel flex max-h-[70vh] flex-col p-3">
           <button
             onClick={onNewChat}
-            className="mb-3 flex items-center justify-center gap-2 rounded-md border border-primary px-3 py-2 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10"
+            className="btn-matrix mb-3 flex items-center justify-center gap-2 rounded-md border border-primary px-3 py-2 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10"
           >
             <Plus className="h-3.5 w-3.5" /> nuova chat
           </button>
           <div className="flex-1 space-y-1 overflow-y-auto">
-            {threads.map((t) => (
-              <div
-                key={t.id}
-                className={`flex items-center gap-1 rounded-md border px-2 py-1.5 ${
-                  t.id === threadId ? "border-primary" : "border-border"
-                }`}
-              >
-                <button
-                  onClick={() =>
-                    void navigate({ to: "/assistant/$threadId", params: { threadId: t.id } })
-                  }
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground hover:text-primary"
+            {threads.length === 0 ? (
+              <p className="px-1 text-caption text-muted-foreground">Nessuna chat ancora.</p>
+            ) : (
+              threads.map((t) => (
+                <div
+                  key={t.id}
+                  className={`flex items-center gap-1 rounded-md border px-2 py-1.5 transition-colors ${
+                    t.id === threadId ? "border-primary bg-primary/5" : "border-border"
+                  }`}
                 >
-                  <MessageSquare className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{t.title}</span>
-                </button>
-                <button
-                  onClick={() => onDeleteChat(t.id)}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={() =>
+                      void navigate({ to: "/assistant/$threadId", params: { threadId: t.id } })
+                    }
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground hover:text-primary"
+                  >
+                    <MessageSquare className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{t.title}</span>
+                  </button>
+                  <button
+                    onClick={() => onDeleteChat(t.id)}
+                    className="btn-matrix text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </aside>
 
-        <section className="panel flex h-[70vh] flex-col p-4">
+        <section className="panel flex h-[70vh] flex-col p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 text-sm uppercase tracking-[0.25em] text-primary">
+            <h2 className="flex items-center gap-2 text-section text-primary">
               <Bot className="h-4 w-4" /> assistente
             </h2>
             <select
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
-              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary"
+              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none transition-colors focus:border-primary"
             >
               {GROQ_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -532,7 +535,7 @@ function AssistantPage() {
                 {" · "}
                 <span className="text-primary">"fai backup mondo su MEGA"</span>
                 {accountLabel ? (
-                  <span className="mt-1 block text-[11px]">
+                  <span className="mt-1 block text-caption">
                     Contesto log: <span className="text-primary">{accountLabel}</span>
                   </span>
                 ) : null}
@@ -547,7 +550,7 @@ function AssistantPage() {
                     : "rounded-md border border-primary/40 p-3"
                 }
               >
-                <p className="mb-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                <p className="mb-1 text-caption uppercase tracking-widest text-muted-foreground">
                   {m.role === "user" ? "tu" : "m.i.n.e"}
                 </p>
                 <p className="whitespace-pre-wrap">{m.content}</p>
@@ -558,7 +561,7 @@ function AssistantPage() {
                       <div className="mt-2 flex gap-2">
                         <button
                           onClick={() => void confirmProposal(mi, pi, p.comando)}
-                          className="flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
+                          className="btn-matrix flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
                         >
                           <Check className="h-3 w-3" /> conferma
                         </button>
@@ -572,7 +575,7 @@ function AssistantPage() {
                               status: "rejected",
                             });
                           }}
-                          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                          className="btn-matrix flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground"
                         >
                           <X className="h-3 w-3" /> rifiuta
                         </button>
@@ -594,7 +597,7 @@ function AssistantPage() {
                       {a.state === "pending" ? (
                         <button
                           onClick={() => void confirmAction(mi, ai, a)}
-                          className="mt-2 flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
+                          className="btn-matrix mt-2 flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
                         >
                           <ShieldAlert className="h-3 w-3" /> approva
                         </button>
@@ -622,12 +625,12 @@ function AssistantPage() {
               }}
               rows={2}
               placeholder="Chiedi sul server… es. backup su MEGA"
-              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
             />
             <button
               onClick={() => void onAsk()}
               disabled={busy}
-              className="rounded-md border border-primary px-3 text-xs uppercase tracking-widest text-primary disabled:opacity-40"
+              className="btn-matrix rounded-md border border-primary px-3 text-xs uppercase tracking-widest text-primary disabled:opacity-40"
             >
               <Send className="h-3.5 w-3.5" />
             </button>
@@ -635,31 +638,16 @@ function AssistantPage() {
         </section>
 
         <div className="space-y-4">
-          <section className="panel p-4">
-            <div className="mb-2 flex justify-between">
-              <h2 className="text-sm uppercase tracking-widest text-primary">
-                Log{accountLabel ? ` · ${accountLabel}` : ""}
-              </h2>
-              <button onClick={() => void loadLogs()} className="text-muted-foreground hover:text-primary">
-                <RefreshCw className="h-3 w-3" />
-              </button>
-            </div>
-            {(logDemo || logError) && (
-              <p className="mb-2 flex gap-1 text-[11px] text-warning">
-                <AlertTriangle className="h-3 w-3" /> {logError ?? "Log demo"}
-              </p>
-            )}
-            <div className="max-h-40 overflow-y-auto font-mono text-[11px] text-muted-foreground">
-              {logs.map((l, i) => (
-                <p key={i} className={l.level === "error" ? "text-destructive" : undefined}>
-                  {l.message}
-                </p>
-              ))}
-            </div>
-          </section>
+          <LogViewer
+            title={accountLabel ? `Log · ${accountLabel}` : "Log"}
+            lines={logs}
+            demo={logDemo}
+            error={logError}
+            onRefresh={() => void loadLogs()}
+          />
 
           <section className="panel p-4">
-            <h2 className="mb-2 flex items-center gap-2 text-sm uppercase tracking-widest text-primary">
+            <h2 className="mb-2 flex items-center gap-2 text-section text-primary">
               <Terminal className="h-4 w-4" /> console
             </h2>
             <div className="mb-2 max-h-28 overflow-y-auto font-mono text-[11px] text-muted-foreground">
@@ -675,11 +663,11 @@ function AssistantPage() {
                   if (e.key === "Enter") void onSendCommand();
                 }}
                 placeholder="say ciao"
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
+                className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none transition-colors focus:border-primary"
               />
               <button
                 onClick={() => void onSendCommand()}
-                className="rounded border border-primary px-2 text-[11px] text-primary"
+                className="btn-matrix rounded border border-primary px-2 text-[11px] text-primary"
               >
                 invia
               </button>
@@ -687,13 +675,13 @@ function AssistantPage() {
           </section>
 
           <section className="panel p-4">
-            <h2 className="mb-2 flex items-center gap-2 text-sm uppercase tracking-widest text-primary">
+            <h2 className="mb-2 flex items-center gap-2 text-section text-primary">
               <Zap className="h-4 w-4" /> azioni MCP
             </h2>
             <select
               value={actionId}
               onChange={(e) => setActionId(e.target.value)}
-              className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs"
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none transition-colors focus:border-primary"
             >
               {actionOptions.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -705,11 +693,11 @@ function AssistantPage() {
               value={actionParams}
               onChange={(e) => setActionParams(e.target.value)}
               rows={2}
-              className="mb-2 w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px]"
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none transition-colors focus:border-primary"
             />
             <button
               onClick={() => void onRunManualAction()}
-              className="rounded border border-primary px-3 py-1 text-[11px] uppercase text-primary"
+              className="btn-matrix rounded border border-primary px-3 py-1 text-[11px] uppercase text-primary"
             >
               esegui
             </button>
