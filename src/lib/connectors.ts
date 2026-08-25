@@ -1,4 +1,4 @@
-/** Connettori storage / MCP sulla rete neurale (MEGA, Google Drive). */
+/** Connettori storage / MCP sulla rete neurale (MEGA, Drive, Discord, skill). */
 
 export type ConnectorKind = "storage" | "backup" | "mcp" | "service";
 
@@ -9,7 +9,6 @@ export type CustomConnector = {
   detail: string;
   status: "online" | "offline" | "error";
   preset?: string;
-  /** Credenziale opzionale (non mostrata in chiaro nella lista). */
   secretHint?: string;
   createdAt: number;
 };
@@ -84,6 +83,12 @@ export const CONNECTOR_PRESETS: {
     detail: "Catalogo tool API Falix per l'IA (power, console, files, …)",
   },
   {
+    id: "connector-mcp",
+    label: "Connettori MCP",
+    kind: "mcp",
+    detail: "Tool conn_*: Discord status/notify, webhook, skill check, pipeline backup",
+  },
+  {
     id: "mega",
     label: "MEGA",
     kind: "storage",
@@ -94,5 +99,11 @@ export const CONNECTOR_PRESETS: {
     label: "Google Drive",
     kind: "storage",
     detail: "Google Drive API — configura anche in Competenze",
+  },
+  {
+    id: "discord",
+    label: "Discord status",
+    kind: "service",
+    detail: "Nodo rete per stato on/off — tool MCP conn_discord_*",
   },
 ];
