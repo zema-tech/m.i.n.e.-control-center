@@ -1,6 +1,6 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Cable, Plus, Trash2 } from "lucide-react";
+import { Cable, ExternalLink, Plus, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -8,8 +8,11 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { getAuthState } from "@/lib/auth.functions";
 import {
   addConnector,
+  connectModeLabel,
   CONNECTOR_KIND_OPTIONS,
-  CONNECTOR_PRESETS,
+  DEFAULT_CONNECTOR_CATALOG,
+  ensureDefaultConnectors,
+  isPresetActive,
   loadConnectors,
   removeConnector,
   type ConnectorKind,
@@ -33,7 +36,7 @@ function ConnectorsPage() {
   const [detail, setDetail] = useState("");
 
   useEffect(() => {
-    setList(loadConnectors());
+    setList(ensureDefaultConnectors());
   }, []);
 
   function save() {
@@ -44,9 +47,10 @@ function ConnectorsPage() {
     setDetail("");
   }
 
-  function preset(id: string) {
-    const p = CONNECTOR_PRESETS.find((x) => x.id === id);
+  function activatePreset(id: string) {
+    const p = DEFAULT_CONNECTOR_CATALOG.find((x) => x.id === id);
     if (!p) return;
+    if (isPresetActive(id)) return;
     addConnector({ label: p.label, kind: p.kind, detail: p.detail, preset: p.id });
     setList(loadConnectors());
   }
@@ -54,37 +58,104 @@ function ConnectorsPage() {
   return (
     <AppShell
       title="Connettori"
-      subtitle="Falix MCP · MEGA · Google Drive — nodi sulla rete neurale"
+      subtitle="MEGA, Drive, Falix MCP, Discord — collega con MCP o API"
     >
-      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
-        <div>
-          <p className="mb-2 text-label text-muted-foreground">Preset</p>
-          <div className="flex flex-wrap gap-2">
-            {CONNECTOR_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => preset(p.id)}
-                className="btn-matrix rounded-full border border-border px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div className="mx-auto max-w-3xl space-y-8 p-4 sm:p-6">
+        {/* Catalogo di default sempre visibile */}
+        <section className="space-y-3">
+          <p className="text-label text-primary">Catalogo di default</p>
+          <p className="text-caption text-muted-foreground">
+            Ogni servizio indica se si collega via <span className="text-primary">MCP</span> oppure{" "}
+            <span className="text-primary">API</span> (se non esiste MCP pubblico). Le credenziali si
+            inseriscono in Competenze / Host.
+          </p>
+          <ul className="space-y-3">
+            {DEFAULT_CONNECTOR_CATALOG.map((d) => {
+              const active = isPresetActive(d.id);
+              return (
+                <li
+                  key={d.id}
+                  className="rounded-lg border border-border bg-background/40 p-4 transition-colors hover:border-primary/30"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{d.label}</p>
+                        <span className="rounded-full border border-primary/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-primary">
+                          {connectModeLabel(d.connectMode)}
+                        </span>
+                        {active ? <StatusBadge status="online" label="in rete" /> : null}
+                      </div>
+                      <p className="mt-1 text-caption text-muted-foreground">{d.detail}</p>
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        {d.connectHint}
+                      </p>
+                      {d.mcpTools?.length ? (
+                        <p className="mt-1 font-mono text-[10px] text-primary/80">
+                          Tool: {d.mcpTools.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+                      {!active ? (
+                        <button
+                          type="button"
+                          onClick={() => activatePreset(d.id)}
+                          className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                        >
+                          attiva in rete
+                        </button>
+                      ) : (
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          già attivo
+                        </span>
+                      )}
+                      {d.skillsPath === "/skills" ? (
+                        <Link
+                          to="/skills"
+                          className="btn-matrix text-center text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary"
+                        >
+                          collega account →
+                        </Link>
+                      ) : null}
+                      {d.skillsPath === "/hosts" ? (
+                        <Link
+                          to="/hosts"
+                          className="btn-matrix text-center text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary"
+                        >
+                          apri Host →
+                        </Link>
+                      ) : null}
+                      {d.docsUrl ? (
+                        <a
+                          href={d.docsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-matrix inline-flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary"
+                        >
+                          docs <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
 
         <div className="panel-spacious space-y-3">
-          <p className="text-label text-primary">Nuovo connettore</p>
+          <p className="text-label text-primary">Nuovo connettore custom</p>
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Nome"
-            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
           />
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as ConnectorKind)}
-            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
           >
             {CONNECTOR_KIND_OPTIONS.map((o) => (
               <option key={o.id} value={o.id}>
@@ -96,7 +167,7 @@ function ConnectorsPage() {
             value={detail}
             onChange={(e) => setDetail(e.target.value)}
             placeholder="Dettaglio"
-            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
           />
           <button
             type="button"
@@ -107,58 +178,61 @@ function ConnectorsPage() {
           </button>
         </div>
 
-        {list.length === 0 ? (
-          <div className="panel">
-            <EmptyState
-              icon={Cable}
-              title="Nessun connettore"
-              description="Prova i preset Falix MCP, MEGA o Google Drive — compariranno come nodi sulla rete neurale."
-              action={
-                <button
-                  type="button"
-                  onClick={() => preset("falix-mcp")}
-                  className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+        <section>
+          <p className="mb-2 text-label text-muted-foreground">Attivi sulla rete neurale</p>
+          {list.length === 0 ? (
+            <div className="panel">
+              <EmptyState
+                icon={Cable}
+                title="Nessun connettore attivo"
+                description="Attiva MEGA o Falix MCP dal catalogo sopra."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => activatePreset("mega")}
+                    className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                  >
+                    attiva MEGA
+                  </button>
+                }
+              />
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {list.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-center gap-3 rounded-lg border border-border px-3 py-3 transition-colors hover:border-primary/30"
                 >
-                  aggiungi Falix MCP
-                </button>
-              }
-            />
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {list.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center gap-3 rounded-lg border border-border px-3 py-3 transition-colors hover:border-primary/30"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm text-foreground">{c.label}</p>
-                    <StatusBadge
-                      status={
-                        c.status === "online"
-                          ? "online"
-                          : c.status === "error"
-                            ? "error"
-                            : "offline"
-                      }
-                    />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm text-foreground">{c.label}</p>
+                      <StatusBadge
+                        status={
+                          c.status === "online"
+                            ? "online"
+                            : c.status === "error"
+                              ? "error"
+                              : "offline"
+                        }
+                      />
+                    </div>
+                    <p className="truncate text-caption text-muted-foreground">
+                      {c.kind} · {c.detail}
+                    </p>
                   </div>
-                  <p className="truncate text-caption text-muted-foreground">
-                    {c.kind} · {c.detail}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setList(removeConnector(c.id))}
-                  className="btn-matrix text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+                  <button
+                    type="button"
+                    onClick={() => setList(removeConnector(c.id))}
+                    className="btn-matrix text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </AppShell>
   );

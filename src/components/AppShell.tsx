@@ -8,6 +8,7 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Server,
   Sparkles,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -26,6 +27,7 @@ const NAV = [
   { to: "/network" as const, label: "Rete / pallini", icon: Network },
   { to: "/assistant" as const, label: "Chat IA", icon: MessageSquare },
   { to: "/skills" as const, label: "Competenze", icon: KeyRound },
+  { to: "/hosts" as const, label: "Host", icon: Server },
   { to: "/connectors" as const, label: "Connettori", icon: Cable },
 ];
 
@@ -65,8 +67,8 @@ function SideNav({
           <Brain className="h-3 w-3" /> sistema neurale
         </p>
         <p className="text-caption leading-relaxed text-muted-foreground">
-          Rete collegata a <span className="text-primary">Groq API</span> — azioni su account
-          Falix selezionato (Gino, Edo, …).
+          Rete collegata a <span className="text-primary">Groq API</span> — host e account in Host /
+          Competenze.
         </p>
       </div>
     </nav>
@@ -106,7 +108,6 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      {/* Desktop sidebar */}
       <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background/90 md:flex">
         <div className="border-b border-border px-4 py-4">
           <BrandBlock />
@@ -131,7 +132,6 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
-            {/* Mobile hamburger + drawer */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <button
