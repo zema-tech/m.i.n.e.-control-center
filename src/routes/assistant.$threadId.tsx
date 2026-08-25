@@ -33,7 +33,12 @@ import {
   runStorageAction,
 } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
-import { GDRIVE_MCP_TOOLS, MEGA_MCP_TOOLS } from "@/lib/mcp";
+import {
+  CONNECTOR_MCP_TOOLS,
+  GDRIVE_MCP_TOOLS,
+  MEGA_MCP_TOOLS,
+  type McpTool,
+} from "@/lib/mcp";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
   createThread,
@@ -62,9 +67,13 @@ const MODEL_KEY = "mine.groq.model";
 
 const STORAGE_TOOLS = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS];
 const STORAGE_BY_ID = new Map(STORAGE_TOOLS.map((t) => [t.name, t]));
+const CONNECTOR_BY_ID = new Map(CONNECTOR_MCP_TOOLS.map((t) => [t.name, t]));
 
 function isStorageTool(id: string) {
   return STORAGE_BY_ID.has(id);
+}
+function isConnectorTool(id: string) {
+  return CONNECTOR_BY_ID.has(id);
 }
 
 function loadModel(): GroqModelId {
@@ -91,6 +100,33 @@ function pickStorageAccount(toolId: string): ApiAccount | null {
   if (!tool) return null;
   const list = listStorageAccounts().filter((a) => a.provider === tool.provider && a.apiKey);
   return list[0] ?? null;
+}
+
+function runConnectorToolLocal(
+  tool: McpTool,
+  params: Record<string, string | number | boolean>,
+  ctx: { accountLabel: string },
+): string {
+  const p = Object.entries(params)
+    .map(([k, v]) => `${k}=${String(v)}`)
+    .join(", ");
+  switch (tool.name) {
+    case "conn_discord_status":
+      return `Discord status preparato per "${params.serverLabel ?? ctx.accountLabel}": ${params.status ?? "n/d"}. Collega un webhook reale per l'invio automatico.`;
+    case "conn_discord_notify":
+      return `Notifica Discord registrata [${params.level ?? "info"}]: ${String(params.message ?? "").slice(0, 200)}. (HITL — invio live in arrivo)`;
+    case "conn_webhook_ping":
+      return `Ping webhook registrato (${params.urlHint ?? "default"}). Payload: ${String(params.payload ?? "{}").slice(0, 120)}`;
+    case "conn_skill_check": {
+      const active = getActiveFalixAccount();
+      const skills = active?.skills?.join(", ") || "nessuna";
+      return `Skill account "${active?.label ?? "?"}": ${skills}. Richiesta: ${params.skill ?? "tutte"}.`;
+    }
+    case "conn_backup_pipeline":
+      return `Pipeline backup → ${params.target ?? "?"} proposta (path ${params.sourcePath ?? "/world"}). Approva anche mega_upload_note o gdrive_upload_note.`;
+    default:
+      return `Tool connettore ${tool.name} eseguito in locale. ${p}`;
+  }
 }
 
 function AssistantPage() {
@@ -290,12 +326,38 @@ function AssistantPage() {
     );
   }
 
+  function resolveRisk(id: string): ActionRisk {
+    if (isStorageTool(id)) return STORAGE_BY_ID.get(id)?.risk ?? "write";
+    if (isConnectorTool(id)) return CONNECTOR_BY_ID.get(id)?.risk ?? "write";
+    return getAction(id)?.risk ?? "critical";
+  }
+
   async function runCatalogAction(
     id: string,
     params: Record<string, string | number | boolean>,
     risk: ActionRisk,
   ): Promise<string> {
     const ctx = accountCtx();
+
+    if (isConnectorTool(id)) {
+      const tool = CONNECTOR_BY_ID.get(id)!;
+      if (tool.risk !== "read") {
+        if (!window.confirm(`Approvi il tool connettore "${tool.name}"?`)) {
+          logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
+          return "Azione connettore annullata.";
+        }
+      }
+      const output = runConnectorToolLocal(tool, params, ctx);
+      setConsoleOut((o) => [...o, `> connector ${id}`, output]);
+      logAiActivity({
+        ...ctx,
+        kind: "execute_action",
+        title: `Connector: ${id}`,
+        detail: output,
+        status: "done",
+      });
+      return output;
+    }
 
     if (isStorageTool(id)) {
       const tool = STORAGE_BY_ID.get(id)!;
@@ -312,17 +374,14 @@ function AssistantPage() {
         return msg;
       }
       if (tool.risk !== "read") {
-        const warn =
-          tool.risk === "critical"
-            ? `AZIONE CRITICA storage "${tool.name}". Confermi?`
-            : `Approvi il tool storage "${tool.name}" (${acc.label})?`;
-        if (!window.confirm(warn)) {
-          logAiActivity({
-            ...ctx,
-            kind: "reject",
-            title: `Rifiutata: ${id}`,
-            status: "rejected",
-          });
+        if (
+          !window.confirm(
+            tool.risk === "critical"
+              ? `AZIONE CRITICA storage "${tool.name}". Confermi?`
+              : `Approvi il tool storage "${tool.name}" (${acc.label})?`,
+          )
+        ) {
+          logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
           return "Azione storage annullata.";
         }
       }
@@ -366,12 +425,7 @@ function AssistantPage() {
           ? `AZIONE CRITICA su "${label}": "${def?.label ?? id}". Confermi?`
           : `Approvi l'azione "${def?.label ?? id}" su "${label}"?`;
       if (!window.confirm(warn)) {
-        logAiActivity({
-          ...ctx,
-          kind: "reject",
-          title: `Rifiutata: ${id}`,
-          status: "rejected",
-        });
+        logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
         return "Azione annullata.";
       }
     }
@@ -397,9 +451,7 @@ function AssistantPage() {
   }
 
   async function confirmAction(mi: number, ai: number, a: ActionProposal) {
-    const risk = isStorageTool(a.id)
-      ? (STORAGE_BY_ID.get(a.id)?.risk ?? "write")
-      : (getAction(a.id)?.risk ?? "critical");
+    const risk = resolveRisk(a.id);
     const output = await runCatalogAction(a.id, a.params, risk);
     updateAction(mi, ai, { state: "done", output });
   }
@@ -413,10 +465,7 @@ function AssistantPage() {
       setConsoleOut((o) => [...o, "Parametri JSON non validi."]);
       return;
     }
-    const risk = isStorageTool(actionId)
-      ? (STORAGE_BY_ID.get(actionId)?.risk ?? "write")
-      : (getAction(actionId)?.risk ?? "critical");
-    await runCatalogAction(actionId, params, risk);
+    await runCatalogAction(actionId, params, resolveRisk(actionId));
   }
 
   async function confirmProposal(mi: number, pi: number, cmd: string) {
@@ -460,6 +509,7 @@ function AssistantPage() {
   const actionOptions = [
     ...FALIX_ACTIONS.map((a) => ({ id: a.id, label: a.id })),
     ...STORAGE_TOOLS.map((t) => ({ id: t.name, label: `[${t.provider}] ${t.name}` })),
+    ...CONNECTOR_MCP_TOOLS.map((t) => ({ id: t.name, label: `[conn] ${t.name}` })),
   ];
 
   return (
@@ -467,8 +517,8 @@ function AssistantPage() {
       title="Chat IA"
       subtitle={
         accountLabel
-          ? `IA sul server: ${accountLabel} — azioni visibili anche in Rete neurale`
-          : "Crea account Falix in Competenze · Groq legge i log dell'account attivo"
+          ? `Expert Groq · ${accountLabel} — rete 3D + MCP connettori`
+          : "Crea account Falix in Competenze · Expert layer attivo su Groq"
       }
     >
       <div className="grid gap-4 p-4 lg:grid-cols-[200px_1fr_1fr] lg:p-6">
@@ -514,7 +564,7 @@ function AssistantPage() {
         <section className="panel flex h-[70vh] flex-col p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-section text-primary">
-              <Bot className="h-4 w-4" /> assistente
+              <Bot className="h-4 w-4" /> assistente expert
             </h2>
             <select
               value={model}
@@ -533,12 +583,9 @@ function AssistantPage() {
               <p className="text-muted-foreground">
                 Es. <span className="text-primary">"perché il server lagga?"</span>
                 {" · "}
-                <span className="text-primary">"fai backup mondo su MEGA"</span>
-                {accountLabel ? (
-                  <span className="mt-1 block text-caption">
-                    Contesto log: <span className="text-primary">{accountLabel}</span>
-                  </span>
-                ) : null}
+                <span className="text-primary">"snippet paper-global.yml view-distance"</span>
+                {" · "}
+                <span className="text-primary">"notifica discord restart"</span>
               </p>
             ) : null}
             {messages.map((m, mi) => (
@@ -588,9 +635,7 @@ function AssistantPage() {
                   </div>
                 ))}
                 {m.actions?.map((a, ai) => {
-                  const risk = isStorageTool(a.id)
-                    ? (STORAGE_BY_ID.get(a.id)?.risk ?? "write")
-                    : (getAction(a.id)?.risk ?? "critical");
+                  const risk = resolveRisk(a.id);
                   return (
                     <div key={ai} className="mt-2 rounded border border-border p-2">
                       <p className="font-mono text-xs text-primary">{a.id}</p>
@@ -610,7 +655,7 @@ function AssistantPage() {
                 })}
               </div>
             ))}
-            {busy ? <p className="text-xs text-primary">Analisi log…</p> : null}
+            {busy ? <p className="text-xs text-primary">Analisi expert…</p> : null}
           </div>
           <div className="mt-3 flex gap-2">
             <textarea
@@ -624,7 +669,7 @@ function AssistantPage() {
                 }
               }}
               rows={2}
-              placeholder="Chiedi sul server… es. backup su MEGA"
+              placeholder="Log, config, codice plugin, backup, Discord…"
               className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
             />
             <button
