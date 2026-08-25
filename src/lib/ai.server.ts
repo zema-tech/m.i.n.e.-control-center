@@ -1,6 +1,13 @@
 import { FALIX_ACTIONS } from "./falix-actions";
+import { buildExpertSystemPrompt } from "./ai-expert";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "./groq-models";
-import { MEGA_MCP_TOOLS, GDRIVE_MCP_TOOLS } from "./mcp";
+import {
+  CONNECTOR_MCP_TOOLS,
+  GDRIVE_MCP_TOOLS,
+  MEGA_MCP_TOOLS,
+  isKnownActionId,
+  mcpToolSummaryForAi,
+} from "./mcp";
 
 export type ProposedAction = {
   id: string;
@@ -20,7 +27,7 @@ const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
 ).join("\n");
 
-const STORAGE_CATALOG = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS]
+const STORAGE_CATALOG = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS, ...CONNECTOR_MCP_TOOLS]
   .map(
     (t) =>
       `${t.name} [${t.risk}] ${t.description}` +
@@ -29,10 +36,6 @@ const STORAGE_CATALOG = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS]
         : ""),
   )
   .join("\n");
-
-const STORAGE_TOOL_IDS = new Set(
-  [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS].map((t) => t.name),
-);
 
 function sanitizeParams(input: unknown): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
@@ -48,24 +51,18 @@ function sanitizeParams(input: unknown): Record<string, string | number | boolea
   return out;
 }
 
-const SYSTEM_PROMPT = `Sei M.I.N.E., assistente IA per l'amministrazione di UN server Minecraft (Paper) hostato su Falix.
-Rispondi SEMPRE in italiano, in modo tecnico ma chiaro e sintetico.
-Analizzi i log forniti, individui la causa dei problemi e proponi soluzioni concrete.
-NON esegui mai azioni da solo: PROPONI comandi console e/o azioni API Falix / tool MCP storage che l'amministratore approva.
-Le azioni con rischio "write" o "critical" richiedono approvazione esplicita: spiega sempre le conseguenze.
-
-Scope API: SOLO Falix (multi-account) + storage MEGA / Google Drive. Nessun altro host MC.
-
-Azioni Falix disponibili (id [rischio] descrizione):
-${ACTION_CATALOG}
-
-Tool MCP storage MEGA / Google Drive (id [rischio] descrizione):
-${STORAGE_CATALOG}
-
-Rispondi esclusivamente con JSON valido in questa forma:
-{"risposta":"spiegazione in italiano","comandi":[{"comando":"say ciao","motivo":"perché serve"}],"azioni":[{"id":"files.read","params":{"path":"/logs/latest.log"},"motivo":"perché serve"}]}
-Usa "comandi" solo per comandi da console Minecraft, "azioni" per operazioni sul pannello Falix O tool storage (mega_*, gdrive_*).
-Se non serve nulla usa liste vuote.`;
+function systemPrompt(): string {
+  const catalog = [
+    "Azioni Falix (id [rischio] descrizione):",
+    ACTION_CATALOG,
+    "",
+    "Tool MCP storage + connettori:",
+    STORAGE_CATALOG,
+    "",
+    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector"]).slice(0, 6000),
+  ].join("\n");
+  return buildExpertSystemPrompt(catalog);
+}
 
 export async function askGroq(
   question: string,
@@ -89,14 +86,23 @@ export async function askGroq(
     },
     body: JSON.stringify({
       model: chosen,
-      temperature: 0.3,
+      temperature: 0.28,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history.slice(-8),
+        { role: "system", content: systemPrompt() },
+        ...history.slice(-10),
         {
           role: "user",
-          content: `Log recenti del server:\n${logContext.slice(-6000)}\n\nDomanda: ${question}`,
+          content: [
+            "### Contesto operativo M.I.N.E",
+            "Usa l'expert layer: diagnosi log, comandi sicuri, snippet config solo se utili.",
+            "",
+            "### Log recenti del server",
+            logContext.slice(-7000),
+            "",
+            "### Domanda amministratore",
+            question,
+          ].join("\n"),
         },
       ],
     }),
@@ -125,11 +131,7 @@ export async function askGroq(
         : [],
       azioni: Array.isArray(parsed.azioni)
         ? parsed.azioni
-            .filter(
-              (a) =>
-                typeof a?.id === "string" &&
-                (FALIX_ACTIONS.some((d) => d.id === a.id) || STORAGE_TOOL_IDS.has(a.id)),
-            )
+            .filter((a) => typeof a?.id === "string" && isKnownActionId(a.id))
             .slice(0, 5)
             .map((a) => ({
               id: a.id,
