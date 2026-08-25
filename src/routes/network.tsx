@@ -6,6 +6,9 @@ import { Brain, Play, RefreshCw, Square } from "lucide-react";
 import { AiActivityPanel } from "@/components/AiActivityPanel";
 import { AppShell } from "@/components/AppShell";
 import { NeuralGraph, type GraphNode } from "@/components/NeuralGraph";
+import { PerformanceChart } from "@/components/PerformanceChart";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   ACTIVE_ACCOUNT_EVENT,
   credentialsPayload,
@@ -137,7 +140,6 @@ function NetworkPage() {
       },
     ];
 
-    // Solo account correlati: attivo in evidenza
     for (const acc of falixAccounts) {
       list.push({
         id: acc.id,
@@ -206,7 +208,6 @@ function NetworkPage() {
       },
     );
 
-    // Nodi dalle ultime azioni IA su QUESTO server
     for (const ev of aiEvents.slice(0, 8)) {
       list.push({
         id: `ai-ev:${ev.id}`,
@@ -321,14 +322,14 @@ function NetworkPage() {
       title="Rete / pallini"
       subtitle="Ogni server ha la sua rete neurale — seleziona Gino, Edo o il tuo e vedi come agisce l'IA"
     >
-      <div className="space-y-4 p-4 sm:p-6">
+      <div className="space-y-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
+          <label className="flex items-center gap-2 text-label text-muted-foreground">
             server
             <select
               value={activeId}
               onChange={(e) => onSelectAccount(e.target.value)}
-              className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-primary outline-none focus:border-primary"
+              className="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-primary outline-none transition-colors focus:border-primary"
             >
               {falixAccounts.length === 0 ? (
                 <option value="">Nessun account — Competenze</option>
@@ -343,11 +344,18 @@ function NetworkPage() {
             </select>
           </label>
 
+          {stats ? (
+            <StatusBadge
+              status={stats.status === "online" ? "online" : "offline"}
+              size="md"
+            />
+          ) : null}
+
           <button
             type="button"
             onClick={() => void onPower("start")}
             disabled={busy !== null}
-            className="flex items-center gap-1.5 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
+            className="btn-matrix flex items-center gap-1.5 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             <Play className="h-3 w-3" /> avvia
           </button>
@@ -355,7 +363,7 @@ function NetworkPage() {
             type="button"
             onClick={() => void onPower("stop")}
             disabled={busy !== null}
-            className="flex items-center gap-1.5 rounded-md border border-destructive px-3 py-1.5 text-[11px] uppercase tracking-widest text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            className="btn-matrix flex items-center gap-1.5 rounded-md border border-destructive px-3 py-1.5 text-[11px] uppercase tracking-widest text-destructive hover:bg-destructive/10 disabled:opacity-50"
           >
             <Square className="h-3 w-3" /> spegni
           </button>
@@ -363,7 +371,7 @@ function NetworkPage() {
             type="button"
             onClick={() => void onPower("restart")}
             disabled={busy !== null}
-            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
+            className="btn-matrix flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
           >
             <RefreshCw className="h-3 w-3" /> riavvia
           </button>
@@ -371,7 +379,7 @@ function NetworkPage() {
             type="button"
             onClick={() => void onNeural()}
             disabled={analyzing || !stats}
-            className="flex items-center gap-1.5 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
+            className="btn-matrix flex items-center gap-1.5 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
           >
             <Brain className="h-3 w-3" /> {analyzing ? "analisi…" : "analisi neurale Groq"}
           </button>
@@ -379,40 +387,55 @@ function NetworkPage() {
             type="button"
             onClick={() => void loadStats()}
             disabled={loadingStats}
-            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
+            className="btn-matrix flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
           >
             <RefreshCw className={`h-3 w-3 ${loadingStats ? "animate-spin" : ""}`} /> aggiorna
           </button>
         </div>
 
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Vista rete: <span className="text-primary">{activeLabel}</span>
           {aiEvents.length > 0 ? (
             <> · {aiEvents.length} eventi IA su questo server</>
           ) : null}
         </p>
 
-        {msg ? <p className="font-mono text-xs text-muted-foreground">{msg}</p> : null}
-        {stats?.note ? <p className="text-[11px] text-muted-foreground">{stats.note}</p> : null}
+        {msg ? <p className="text-value text-muted-foreground">{msg}</p> : null}
+        {stats?.note ? <p className="text-caption text-muted-foreground">{stats.note}</p> : null}
 
         {analysis ? (
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed text-muted-foreground">
-            <p className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-primary">
+          <div className="panel-spacious border-primary/30 bg-primary/5 text-sm leading-relaxed text-muted-foreground">
+            <p className="mb-2 flex items-center gap-2 text-label text-primary">
               <Brain className="h-3.5 w-3.5" /> briefing neurale · {activeLabel}
             </p>
             <p className="whitespace-pre-wrap text-foreground/90">{analysis}</p>
           </div>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        {/* Performance chart */}
+        {loadingStats && !stats ? (
+          <Skeleton className="h-[180px] w-full" />
+        ) : stats ? (
+          <PerformanceChart history={stats.history} />
+        ) : null}
+
+        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
           <div className="overflow-hidden rounded-lg border border-border">
             {stats ? (
               <NeuralGraph nodes={graphNodes} serverOnline={stats.status === "online"} />
+            ) : loadingStats ? (
+              <div className="space-y-3 p-6">
+                <Skeleton className="mx-auto h-40 w-40 rounded-full" />
+                <div className="flex justify-center gap-3">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-24 w-full" />
+              </div>
             ) : (
               <p className="p-8 text-center text-sm text-muted-foreground">
-                {loadingStats
-                  ? "Caricamento rete neurale…"
-                  : "Nessun dato. Aggiungi un account Falix in Competenze."}
+                Nessun dato. Aggiungi un account Falix in Competenze.
               </p>
             )}
           </div>
