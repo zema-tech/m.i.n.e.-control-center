@@ -19,7 +19,7 @@ import {
   type HostProfile,
   type HostProviderId,
 } from "@/lib/hosts";
-import type { HostResearchReport } from "@/lib/host-research.server";
+import type { HostResearchReport } from "@/lib/host-research.types";
 import { researchHost } from "@/lib/panel.functions";
 
 export const Route = createFileRoute("/hosts")({
@@ -181,15 +181,12 @@ function HostsPage() {
       subtitle="Cambia host facilmente — nome, API key, Server ID e base URL"
     >
       <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
-        {/* Host Research Agent */}
         <div className="panel-spacious space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-label text-primary">Studia questo provider</p>
-              <p className="text-caption text-muted-foreground">
-                Host Research Agent (seed + probe sito + Groq) — API, MCP, prezzi e bozza profilo
-              </p>
-            </div>
+          <div>
+            <p className="text-label text-primary">Studia questo provider</p>
+            <p className="text-caption text-muted-foreground">
+              Host Research Agent (seed + probe sito + Groq) — API, MCP, prezzi e bozza profilo
+            </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -231,9 +228,7 @@ function HostsPage() {
               </button>
             ))}
           </div>
-          {researchError ? (
-            <p className="text-caption text-destructive">{researchError}</p>
-          ) : null}
+          {researchError ? <p className="text-caption text-destructive">{researchError}</p> : null}
           {report ? (
             <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -384,9 +379,7 @@ function HostsPage() {
               placeholder="IP:porta o hostname pubblico (opz.)"
               className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
-            {def ? (
-              <p className="text-caption text-muted-foreground">{def.apiHint}</p>
-            ) : null}
+            {def ? <p className="text-caption text-muted-foreground">{def.apiHint}</p> : null}
             <div className="flex gap-2">
               <button
                 type="button"

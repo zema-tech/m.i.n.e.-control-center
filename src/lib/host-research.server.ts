@@ -6,29 +6,9 @@
 
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "./groq-models";
 import { HOST_PROVIDERS, type HostProviderId } from "./hosts";
+import type { HostResearchReport } from "./host-research.types";
 
-export type HostResearchReport = {
-  query: string;
-  providerId: HostProviderId | "unknown";
-  label: string;
-  summary: string;
-  /** API pubblica / documentata */
-  apiAvailable: boolean;
-  /** MCP ufficiale o bridge possibile */
-  mcpHint: string;
-  suggestedBaseUrl: string;
-  suggestedFields: string[];
-  pricingNotes: string;
-  riskNotes: string;
-  sources: { title: string; url: string }[];
-  /** JSON pronto per precompilare addHost */
-  draftProfile: {
-    label: string;
-    provider: HostProviderId;
-    baseUrl: string;
-    notes: string;
-  };
-};
+export type { HostResearchReport };
 
 /** Knowledge seed offline (sempre disponibile). */
 const SEED: Record<
@@ -192,7 +172,6 @@ function resolveSeed(query: string): (typeof SEED)[string] | null {
       return SEED[p.id] ?? null;
     }
   }
-  // URL host
   try {
     const u = new URL(q.startsWith("http") ? q : `https://${q}`);
     const host = u.hostname.replace(/^www\./, "");
