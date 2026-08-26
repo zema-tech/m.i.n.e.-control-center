@@ -28,8 +28,10 @@ import { getAuthState } from "@/lib/auth.functions";
 import {
   askAssistant,
   getLogs,
+  researchHost,
   runCommand,
   runFalixAction,
+  runOneHand,
   runStorageAction,
 } from "@/lib/panel.functions";
 import { FALIX_ACTIONS, getAction, riskLabel, type ActionRisk } from "@/lib/falix-actions";
@@ -37,6 +39,8 @@ import {
   CONNECTOR_MCP_TOOLS,
   GDRIVE_MCP_TOOLS,
   MEGA_MCP_TOOLS,
+  ONE_MCP_TOOLS,
+  RESEARCH_MCP_TOOLS,
   type McpTool,
 } from "@/lib/mcp";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
@@ -53,7 +57,7 @@ import {
 } from "@/lib/chats";
 
 export const Route = createFileRoute("/assistant/$threadId")({
-  head: () => ({ meta: [{ title: "Chat IA + Console — M.I.N.E" }] }),
+  head: () => ({ meta: [{ title: "Chat JARVIS — M.I.N.E" }] }),
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
@@ -68,12 +72,20 @@ const MODEL_KEY = "mine.groq.model";
 const STORAGE_TOOLS = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS];
 const STORAGE_BY_ID = new Map(STORAGE_TOOLS.map((t) => [t.name, t]));
 const CONNECTOR_BY_ID = new Map(CONNECTOR_MCP_TOOLS.map((t) => [t.name, t]));
+const ONE_BY_ID = new Map(ONE_MCP_TOOLS.map((t) => [t.name, t]));
+const RESEARCH_BY_ID = new Map(RESEARCH_MCP_TOOLS.map((t) => [t.name, t]));
 
 function isStorageTool(id: string) {
   return STORAGE_BY_ID.has(id);
 }
 function isConnectorTool(id: string) {
   return CONNECTOR_BY_ID.has(id);
+}
+function isOneTool(id: string) {
+  return ONE_BY_ID.has(id);
+}
+function isResearchTool(id: string) {
+  return RESEARCH_BY_ID.has(id);
 }
 
 function loadModel(): GroqModelId {
@@ -107,25 +119,21 @@ function runConnectorToolLocal(
   params: Record<string, string | number | boolean>,
   ctx: { accountLabel: string },
 ): string {
-  const p = Object.entries(params)
-    .map(([k, v]) => `${k}=${String(v)}`)
-    .join(", ");
   switch (tool.name) {
     case "conn_discord_status":
-      return `Discord status preparato per "${params.serverLabel ?? ctx.accountLabel}": ${params.status ?? "n/d"}. Collega un webhook reale per l'invio automatico.`;
+      return `Discord status preparato per "${params.serverLabel ?? ctx.accountLabel}": ${params.status ?? "n/d"}.`;
     case "conn_discord_notify":
-      return `Notifica Discord registrata [${params.level ?? "info"}]: ${String(params.message ?? "").slice(0, 200)}. (HITL — invio live in arrivo)`;
+      return `Notifica Discord registrata [${params.level ?? "info"}]: ${String(params.message ?? "").slice(0, 200)}.`;
     case "conn_webhook_ping":
-      return `Ping webhook registrato (${params.urlHint ?? "default"}). Payload: ${String(params.payload ?? "{}").slice(0, 120)}`;
+      return `Ping webhook registrato (${params.urlHint ?? "default"}).`;
     case "conn_skill_check": {
       const active = getActiveFalixAccount();
-      const skills = active?.skills?.join(", ") || "nessuna";
-      return `Skill account "${active?.label ?? "?"}": ${skills}. Richiesta: ${params.skill ?? "tutte"}.`;
+      return `Skill account "${active?.label ?? "?"}": ${active?.skills?.join(", ") || "nessuna"}.`;
     }
     case "conn_backup_pipeline":
-      return `Pipeline backup → ${params.target ?? "?"} proposta (path ${params.sourcePath ?? "/world"}). Approva anche mega_upload_note o gdrive_upload_note.`;
+      return `Pipeline backup → ${params.target ?? "?"} proposta (path ${params.sourcePath ?? "/world"}).`;
     default:
-      return `Tool connettore ${tool.name} eseguito in locale. ${p}`;
+      return `Tool connettore ${tool.name} eseguito in locale.`;
   }
 }
 
@@ -137,6 +145,8 @@ function AssistantPage() {
   const exec = useServerFn(runCommand);
   const execAction = useServerFn(runFalixAction);
   const execStorage = useServerFn(runStorageAction);
+  const execOne = useServerFn(runOneHand);
+  const execResearch = useServerFn(researchHost);
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -146,7 +156,7 @@ function AssistantPage() {
   const [logDemo, setLogDemo] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [command, setCommand] = useState("");
-  const [actionId, setActionId] = useState("server.status");
+  const [actionId, setActionId] = useState("list_one_integrations");
   const [actionParams, setActionParams] = useState("{}");
   const [consoleOut, setConsoleOut] = useState<string[]>([]);
   const [model, setModel] = useState<GroqModelId>(DEFAULT_GROQ_MODEL);
@@ -327,6 +337,8 @@ function AssistantPage() {
   }
 
   function resolveRisk(id: string): ActionRisk {
+    if (isOneTool(id)) return ONE_BY_ID.get(id)?.risk ?? "write";
+    if (isResearchTool(id)) return "read";
     if (isStorageTool(id)) return STORAGE_BY_ID.get(id)?.risk ?? "write";
     if (isConnectorTool(id)) return CONNECTOR_BY_ID.get(id)?.risk ?? "write";
     return getAction(id)?.risk ?? "critical";
@@ -338,6 +350,59 @@ function AssistantPage() {
     risk: ActionRisk,
   ): Promise<string> {
     const ctx = accountCtx();
+
+    if (isOneTool(id)) {
+      const tool = ONE_BY_ID.get(id)!;
+      if (tool.risk !== "read") {
+        if (
+          !window.confirm(
+            `Mani One — "${tool.name}" su app esterne. Confermi? (MCP: mcp.withone.ai)`,
+          )
+        ) {
+          logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
+          return "Azione One annullata.";
+        }
+      }
+      const res = await execOne({
+        data: {
+          tool: id as
+            | "list_one_integrations"
+            | "search_one_platform_actions"
+            | "get_one_action_knowledge"
+            | "execute_one_action",
+          params,
+          approved: tool.risk !== "read",
+        },
+      });
+      setConsoleOut((o) => [...o, `> one ${id}`, res.output]);
+      logAiActivity({
+        ...ctx,
+        kind: "execute_action",
+        title: `One: ${id}`,
+        detail: res.output.slice(0, 400),
+        status: res.ok === false ? "error" : "done",
+      });
+      return res.output;
+    }
+
+    if (isResearchTool(id)) {
+      const q = String(params.query ?? "");
+      if (!q) return "host_research richiede params.query";
+      const res = await execResearch({ data: { query: q, model } });
+      const output =
+        res.ok && "report" in res
+          ? JSON.stringify(res.report, null, 2).slice(0, 4000)
+          : (res as { message?: string }).message ?? "Research fallita";
+      setConsoleOut((o) => [...o, `> research ${q}`, output.slice(0, 500)]);
+      logAiActivity({
+        ...ctx,
+        kind: "execute_action",
+        title: `Research: ${q}`,
+        detail: output.slice(0, 400),
+        status: res.ok ? "done" : "error",
+      });
+      return output;
+    }
 
     if (isConnectorTool(id)) {
       const tool = CONNECTOR_BY_ID.get(id)!;
@@ -363,25 +428,10 @@ function AssistantPage() {
       const tool = STORAGE_BY_ID.get(id)!;
       const acc = pickStorageAccount(id);
       if (!acc) {
-        const msg = `Nessun account ${tool.provider} in Competenze. Aggiungi MEGA o Google Drive.`;
-        logAiActivity({
-          ...ctx,
-          kind: "execute_action",
-          title: `Storage: ${id}`,
-          detail: msg,
-          status: "error",
-        });
-        return msg;
+        return `Nessun account ${tool.provider} in Competenze.`;
       }
       if (tool.risk !== "read") {
-        if (
-          !window.confirm(
-            tool.risk === "critical"
-              ? `AZIONE CRITICA storage "${tool.name}". Confermi?`
-              : `Approvi il tool storage "${tool.name}" (${acc.label})?`,
-          )
-        ) {
-          logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
+        if (!window.confirm(`Approvi storage "${tool.name}" (${acc.label})?`)) {
           return "Azione storage annullata.";
         }
       }
@@ -407,25 +457,18 @@ function AssistantPage() {
         },
       });
       setConsoleOut((o) => [...o, `> storage ${id}`, res.output]);
-      logAiActivity({
-        ...ctx,
-        kind: "execute_action",
-        title: `Storage: ${id}`,
-        detail: res.output,
-        status: res.ok === false ? "error" : "done",
-      });
       return res.output;
     }
 
     if (risk !== "read") {
       const def = getAction(id);
-      const label = ctx.accountLabel;
-      const warn =
-        risk === "critical"
-          ? `AZIONE CRITICA su "${label}": "${def?.label ?? id}". Confermi?`
-          : `Approvi l'azione "${def?.label ?? id}" su "${label}"?`;
-      if (!window.confirm(warn)) {
-        logAiActivity({ ...ctx, kind: "reject", title: `Rifiutata: ${id}`, status: "rejected" });
+      if (
+        !window.confirm(
+          risk === "critical"
+            ? `AZIONE CRITICA: "${def?.label ?? id}". Confermi?`
+            : `Approvi "${def?.label ?? id}"?`,
+        )
+      ) {
         return "Azione annullata.";
       }
     }
@@ -439,13 +482,6 @@ function AssistantPage() {
       },
     });
     setConsoleOut((o) => [...o, `> azione ${id}`, res.output]);
-    logAiActivity({
-      ...ctx,
-      kind: "execute_action",
-      title: `Eseguita: ${id}`,
-      detail: res.output,
-      status: res.ok === false ? "error" : "done",
-    });
     void loadLogs();
     return res.output;
   }
@@ -490,23 +526,17 @@ function AssistantPage() {
     const cmd = command.trim();
     if (!cmd) return;
     setCommand("");
-    const ctx = accountCtx();
     const credentials = activeCredentials();
     const res = await exec({
       data: { command: cmd, ...(credentials ? { credentials } : {}) },
     });
     setConsoleOut((o) => [...o, `> ${cmd}`, res.output]);
-    logAiActivity({
-      ...ctx,
-      kind: "execute_command",
-      title: `Console: ${cmd}`,
-      detail: res.output,
-      status: res.ok === false ? "error" : "done",
-    });
     void loadLogs();
   }
 
   const actionOptions = [
+    ...ONE_MCP_TOOLS.map((t) => ({ id: t.name, label: `[one] ${t.name}` })),
+    ...RESEARCH_MCP_TOOLS.map((t) => ({ id: t.name, label: `[research] ${t.name}` })),
     ...FALIX_ACTIONS.map((a) => ({ id: a.id, label: a.id })),
     ...STORAGE_TOOLS.map((t) => ({ id: t.name, label: `[${t.provider}] ${t.name}` })),
     ...CONNECTOR_MCP_TOOLS.map((t) => ({ id: t.name, label: `[conn] ${t.name}` })),
@@ -514,11 +544,11 @@ function AssistantPage() {
 
   return (
     <AppShell
-      title="Chat IA"
+      title="Chat ops"
       subtitle={
         accountLabel
-          ? `Expert Groq · ${accountLabel} — rete 3D + MCP connettori`
-          : "Crea account Falix in Competenze · Expert layer attivo su Groq"
+          ? `JARVIS · ${accountLabel} · mani One MCP + Falix`
+          : "JARVIS — cervello Groq · mani mcp.withone.ai + Falix"
       }
     >
       <div className="grid gap-4 p-4 lg:grid-cols-[200px_1fr_1fr] lg:p-6">
@@ -530,46 +560,39 @@ function AssistantPage() {
             <Plus className="h-3.5 w-3.5" /> nuova chat
           </button>
           <div className="flex-1 space-y-1 overflow-y-auto">
-            {threads.length === 0 ? (
-              <p className="px-1 text-caption text-muted-foreground">Nessuna chat ancora.</p>
-            ) : (
-              threads.map((t) => (
-                <div
-                  key={t.id}
-                  className={`flex items-center gap-1 rounded-md border px-2 py-1.5 transition-colors ${
-                    t.id === threadId ? "border-primary bg-primary/5" : "border-border"
-                  }`}
+            {threads.map((t) => (
+              <div
+                key={t.id}
+                className={`flex items-center gap-1 rounded-md border px-2 py-1.5 ${
+                  t.id === threadId ? "border-primary bg-primary/5" : "border-border"
+                }`}
+              >
+                <button
+                  onClick={() =>
+                    void navigate({ to: "/assistant/$threadId", params: { threadId: t.id } })
+                  }
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground hover:text-primary"
                 >
-                  <button
-                    onClick={() =>
-                      void navigate({ to: "/assistant/$threadId", params: { threadId: t.id } })
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-[11px] text-muted-foreground hover:text-primary"
-                  >
-                    <MessageSquare className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{t.title}</span>
-                  </button>
-                  <button
-                    onClick={() => onDeleteChat(t.id)}
-                    className="btn-matrix text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              ))
-            )}
+                  <MessageSquare className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{t.title}</span>
+                </button>
+                <button onClick={() => onDeleteChat(t.id)} className="btn-matrix text-muted-foreground hover:text-destructive">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
           </div>
         </aside>
 
         <section className="panel flex h-[70vh] flex-col p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-section text-primary">
-              <Bot className="h-4 w-4" /> assistente expert
+              <Bot className="h-4 w-4" /> jarvis
             </h2>
             <select
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
-              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none transition-colors focus:border-primary"
+              className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary"
             >
               {GROQ_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -581,11 +604,11 @@ function AssistantPage() {
           <div className="flex-1 space-y-3 overflow-y-auto text-sm">
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
-                Es. <span className="text-primary">"perché il server lagga?"</span>
+                Es. <span className="text-primary">"perché lagga?"</span>
                 {" · "}
-                <span className="text-primary">"snippet paper-global.yml view-distance"</span>
+                <span className="text-primary">"elenca integrazioni One"</span>
                 {" · "}
-                <span className="text-primary">"notifica discord restart"</span>
+                <span className="text-primary">"cerca su gmail send email"</span>
               </p>
             ) : null}
             {messages.map((m, mi) => (
@@ -598,7 +621,7 @@ function AssistantPage() {
                 }
               >
                 <p className="mb-1 text-caption uppercase tracking-widest text-muted-foreground">
-                  {m.role === "user" ? "tu" : "m.i.n.e"}
+                  {m.role === "user" ? "tu" : "jarvis"}
                 </p>
                 <p className="whitespace-pre-wrap">{m.content}</p>
                 {m.proposals?.map((p, pi) => (
@@ -613,15 +636,7 @@ function AssistantPage() {
                           <Check className="h-3 w-3" /> conferma
                         </button>
                         <button
-                          onClick={() => {
-                            updateProposal(mi, pi, { state: "rejected" });
-                            logAiActivity({
-                              ...accountCtx(),
-                              kind: "reject",
-                              title: `Rifiutato: ${p.comando}`,
-                              status: "rejected",
-                            });
-                          }}
+                          onClick={() => updateProposal(mi, pi, { state: "rejected" })}
                           className="btn-matrix flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground"
                         >
                           <X className="h-3 w-3" /> rifiuta
@@ -639,15 +654,20 @@ function AssistantPage() {
                   return (
                     <div key={ai} className="mt-2 rounded border border-border p-2">
                       <p className="font-mono text-xs text-primary">{a.id}</p>
+                      {a.motivo ? (
+                        <p className="text-[11px] text-muted-foreground">{a.motivo}</p>
+                      ) : null}
                       {a.state === "pending" ? (
                         <button
                           onClick={() => void confirmAction(mi, ai, a)}
                           className="btn-matrix mt-2 flex items-center gap-1 rounded border border-primary px-2 py-1 text-[11px] text-primary"
                         >
-                          <ShieldAlert className="h-3 w-3" /> approva
+                          <ShieldAlert className="h-3 w-3" /> approva mani
                         </button>
                       ) : (
-                        <p className="mt-1 text-[11px] text-muted-foreground">{a.output ?? a.state}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground">
+                          {a.output ?? a.state}
+                        </p>
                       )}
                       <span className="text-[9px] text-muted-foreground">{riskLabel(risk)}</span>
                     </div>
@@ -655,7 +675,7 @@ function AssistantPage() {
                 })}
               </div>
             ))}
-            {busy ? <p className="text-xs text-primary">Analisi expert…</p> : null}
+            {busy ? <p className="text-xs text-primary">JARVIS sta ragionando…</p> : null}
           </div>
           <div className="mt-3 flex gap-2">
             <textarea
@@ -669,8 +689,8 @@ function AssistantPage() {
                 }
               }}
               rows={2}
-              placeholder="Log, config, codice plugin, backup, Discord…"
-              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
+              placeholder="Ops server, One/Gmail/Slack, host research…"
+              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             />
             <button
               onClick={() => void onAsk()}
@@ -708,7 +728,7 @@ function AssistantPage() {
                   if (e.key === "Enter") void onSendCommand();
                 }}
                 placeholder="say ciao"
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none transition-colors focus:border-primary"
+                className="flex-1 rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
               />
               <button
                 onClick={() => void onSendCommand()}
@@ -721,12 +741,15 @@ function AssistantPage() {
 
           <section className="panel p-4">
             <h2 className="mb-2 flex items-center gap-2 text-section text-primary">
-              <Zap className="h-4 w-4" /> azioni MCP
+              <Zap className="h-4 w-4" /> mani (One + MCP)
             </h2>
+            <p className="mb-2 text-caption text-muted-foreground">
+              One: mcp.withone.ai · oppure ONE_API_KEY su Vercel
+            </p>
             <select
               value={actionId}
               onChange={(e) => setActionId(e.target.value)}
-              className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none transition-colors focus:border-primary"
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
             >
               {actionOptions.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -738,13 +761,14 @@ function AssistantPage() {
               value={actionParams}
               onChange={(e) => setActionParams(e.target.value)}
               rows={2}
-              className="mb-2 w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none transition-colors focus:border-primary"
+              placeholder='{"platform":"gmail","query":"send email"}'
+              className="mb-2 w-full rounded border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-primary"
             />
             <button
               onClick={() => void onRunManualAction()}
               className="btn-matrix rounded border border-primary px-3 py-1 text-[11px] uppercase text-primary"
             >
-              esegui
+              esegui mani
             </button>
           </section>
         </div>
