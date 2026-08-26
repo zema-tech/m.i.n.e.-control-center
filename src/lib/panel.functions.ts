@@ -157,6 +157,37 @@ export const analyzeNetwork = createServerFn({ method: "POST" })
     return res;
   });
 
+/** Host Research Agent: studia provider MC / URL panel (seed + probe + Groq). */
+export const researchHost = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        query: z.string().min(1).max(200),
+        model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { researchHostProvider } = await import("./host-research.server");
+    try {
+      const res = await researchHostProvider({
+        query: data.query,
+        model: data.model ?? DEFAULT_GROQ_MODEL,
+      });
+      if (!res.ok) {
+        logAction("warn", `Host research: ${res.message}`);
+        return { ok: false as const, message: res.message };
+      }
+      logAction("info", `Host research: ${data.query.slice(0, 60)} → ${res.report.label}`);
+      return { ok: true as const, report: res.report };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("error", `Host research fallita: ${message}`);
+      return { ok: false as const, message };
+    }
+  });
+
 export const askAssistant = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z

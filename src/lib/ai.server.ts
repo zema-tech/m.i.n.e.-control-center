@@ -5,6 +5,7 @@ import {
   CONNECTOR_MCP_TOOLS,
   GDRIVE_MCP_TOOLS,
   MEGA_MCP_TOOLS,
+  RESEARCH_MCP_TOOLS,
   isKnownActionId,
   mcpToolSummaryForAi,
 } from "./mcp";
@@ -27,7 +28,12 @@ const ACTION_CATALOG = FALIX_ACTIONS.map(
   (a) => `${a.id} [${a.risk}] ${a.label}${a.body?.length ? ` (params: ${a.body.join(", ")})` : ""}`,
 ).join("\n");
 
-const STORAGE_CATALOG = [...MEGA_MCP_TOOLS, ...GDRIVE_MCP_TOOLS, ...CONNECTOR_MCP_TOOLS]
+const STORAGE_CATALOG = [
+  ...MEGA_MCP_TOOLS,
+  ...GDRIVE_MCP_TOOLS,
+  ...CONNECTOR_MCP_TOOLS,
+  ...RESEARCH_MCP_TOOLS,
+]
   .map(
     (t) =>
       `${t.name} [${t.risk}] ${t.description}` +
@@ -56,10 +62,10 @@ function systemPrompt(): string {
     "Azioni Falix (id [rischio] descrizione):",
     ACTION_CATALOG,
     "",
-    "Tool MCP storage + connettori:",
+    "Tool MCP storage + connettori + research:",
     STORAGE_CATALOG,
     "",
-    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector"]).slice(0, 6000),
+    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector", "research"]).slice(0, 6000),
   ].join("\n");
   return buildExpertSystemPrompt(catalog);
 }
@@ -96,6 +102,7 @@ export async function askGroq(
           content: [
             "### Contesto operativo M.I.N.E",
             "Usa l'expert layer: diagnosi log, comandi sicuri, snippet config solo se utili.",
+            "Per studiare un host/provider MC proponi host_research con params.query.",
             "",
             "### Log recenti del server",
             logContext.slice(-7000),

@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Server, Star, Trash2 } from "lucide-react";
+import { Loader2, Plus, Search, Server, Star, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -19,6 +19,8 @@ import {
   type HostProfile,
   type HostProviderId,
 } from "@/lib/hosts";
+import type { HostResearchReport } from "@/lib/host-research.server";
+import { researchHost } from "@/lib/panel.functions";
 
 export const Route = createFileRoute("/hosts")({
   head: () => ({ meta: [{ title: "Host — M.I.N.E" }] }),
@@ -40,6 +42,11 @@ function HostsPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [address, setAddress] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
+
+  const [researchQuery, setResearchQuery] = useState("");
+  const [researching, setResearching] = useState(false);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [report, setReport] = useState<HostResearchReport | null>(null);
 
   useEffect(() => {
     setList(ensureDefaultHosts());
@@ -117,12 +124,178 @@ function HostsPage() {
     setList(loadHosts());
   }
 
+  async function runResearch(q?: string) {
+    const query = (q ?? researchQuery).trim();
+    if (!query) return;
+    setResearching(true);
+    setResearchError(null);
+    try {
+      const res = await researchHost({ data: { query } });
+      if (!res.ok || !("report" in res) || !res.report) {
+        setResearchError(
+          "message" in res && typeof res.message === "string"
+            ? res.message
+            : "Ricerca non riuscita.",
+        );
+        setReport(null);
+        return;
+      }
+      setReport(res.report);
+    } catch (e) {
+      setResearchError(e instanceof Error ? e.message : String(e));
+      setReport(null);
+    } finally {
+      setResearching(false);
+    }
+  }
+
+  function applyReportToForm(r: HostResearchReport) {
+    const pid =
+      r.draftProfile.provider && HOST_PROVIDERS.some((p) => p.id === r.draftProfile.provider)
+        ? r.draftProfile.provider
+        : "generic";
+    setProvider(pid);
+    setLabel(r.draftProfile.label || r.label);
+    setBaseUrl(r.draftProfile.baseUrl || r.suggestedBaseUrl || "");
+    setEditId(null);
+    setOpen(true);
+  }
+
+  function saveFromReport(r: HostResearchReport) {
+    const pid =
+      r.draftProfile.provider && HOST_PROVIDERS.some((p) => p.id === r.draftProfile.provider)
+        ? r.draftProfile.provider
+        : "generic";
+    addHost({
+      label: r.draftProfile.label || r.label,
+      provider: pid,
+      baseUrl: r.draftProfile.baseUrl || r.suggestedBaseUrl,
+      notes: r.draftProfile.notes || r.mcpHint,
+    });
+    setList(loadHosts());
+  }
+
   return (
     <AppShell
       title="Host"
       subtitle="Cambia host facilmente — nome, API key, Server ID e base URL"
     >
       <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
+        {/* Host Research Agent */}
+        <div className="panel-spacious space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-label text-primary">Studia questo provider</p>
+              <p className="text-caption text-muted-foreground">
+                Host Research Agent (seed + probe sito + Groq) — API, MCP, prezzi e bozza profilo
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={researchQuery}
+              onChange={(e) => setResearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void runResearch();
+              }}
+              placeholder="es. falix, pterodactyl, aternos.org, bloom.host"
+              className="w-full flex-1 rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+            />
+            <button
+              type="button"
+              disabled={researching || !researchQuery.trim()}
+              onClick={() => void runResearch()}
+              className="btn-matrix flex items-center justify-center gap-1.5 rounded-md border border-primary px-4 py-2.5 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50"
+            >
+              {researching ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
+              studia
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {["falix", "pterodactyl", "aternos", "exaroton", "mcsmanager"].map((q) => (
+              <button
+                key={q}
+                type="button"
+                disabled={researching}
+                onClick={() => {
+                  setResearchQuery(q);
+                  void runResearch(q);
+                }}
+                className="btn-matrix rounded-full border border-border px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          {researchError ? (
+            <p className="text-caption text-destructive">{researchError}</p>
+          ) : null}
+          {report ? (
+            <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-foreground">{report.label}</p>
+                <StatusBadge
+                  status={report.apiAvailable ? "online" : "offline"}
+                  label={report.apiAvailable ? "API documentata" : "API limitata / assente"}
+                />
+              </div>
+              <p className="text-caption whitespace-pre-wrap text-muted-foreground">
+                {report.summary.slice(0, 900)}
+                {report.summary.length > 900 ? "…" : ""}
+              </p>
+              <p className="text-caption text-muted-foreground">
+                <span className="text-primary">MCP:</span> {report.mcpHint}
+              </p>
+              {report.suggestedBaseUrl ? (
+                <p className="font-mono text-[10px] text-muted-foreground/90">
+                  base: {report.suggestedBaseUrl}
+                </p>
+              ) : null}
+              <p className="text-caption text-muted-foreground">
+                {report.pricingNotes} · {report.riskNotes}
+              </p>
+              {report.sources.length > 0 ? (
+                <p className="text-caption text-muted-foreground/80">
+                  Fonti:{" "}
+                  {report.sources.map((s, i) => (
+                    <span key={s.url}>
+                      {i > 0 ? " · " : ""}
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline decoration-primary/40 hover:text-primary"
+                      >
+                        {s.title}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => saveFromReport(report)}
+                  className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                >
+                  salva profilo host
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyReportToForm(report)}
+                  className="btn-matrix rounded-md border border-border px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  precompila form
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         <div>
           <p className="mb-2 text-label text-muted-foreground">Preset host</p>
           <div className="flex flex-wrap gap-2">
@@ -283,7 +456,9 @@ function HostsPage() {
                     </div>
                     <p className="text-caption text-muted-foreground">
                       {providerLabel(h.provider)}
-                      {h.serverId ? ` · srv ${h.serverId.slice(0, 10)}${h.serverId.length > 10 ? "…" : ""}` : ""}
+                      {h.serverId
+                        ? ` · srv ${h.serverId.slice(0, 10)}${h.serverId.length > 10 ? "…" : ""}`
+                        : ""}
                       {" · "}
                       {maskKey(h.apiKey)}
                     </p>
