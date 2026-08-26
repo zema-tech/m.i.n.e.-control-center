@@ -1,5 +1,6 @@
 /**
  * Profili host multipli per M.I.N.E.
+ * Minecraft panels + cloud app hosts (Koyeb, Railway, Render, Fly…).
  * Nome host + API (key, base URL, server id) — preset di default o custom.
  */
 
@@ -16,6 +17,13 @@ export type HostProviderId =
   | "exaroton"
   | "aternos"
   | "selfhosted"
+  | "koyeb"
+  | "railway"
+  | "render"
+  | "fly"
+  | "vercel"
+  | "digitalocean"
+  | "coolify"
   | "generic";
 
 export type HostProfile = {
@@ -40,7 +48,7 @@ export const HOST_PROVIDERS: {
   blurb: string;
   falixLike: boolean;
   apiReady: boolean;
-  category: "premium" | "budget" | "free" | "panel" | "other";
+  category: "premium" | "budget" | "free" | "panel" | "cloud" | "other";
   /** Suggerimento campi API */
   apiHint: string;
   defaultBase?: string;
@@ -48,7 +56,7 @@ export const HOST_PROVIDERS: {
   {
     id: "falix",
     label: "FalixNodes",
-    blurb: "API power, console, metriche — integrazione nativa M.I.N.E",
+    blurb: "API power, console, metriche — integrazione nativa M.I.N.E (Minecraft)",
     falixLike: true,
     apiReady: true,
     category: "premium",
@@ -56,9 +64,78 @@ export const HOST_PROVIDERS: {
     defaultBase: "https://api.falixnodes.net",
   },
   {
+    id: "koyeb",
+    label: "Koyeb",
+    blurb: "Cloud app / container — deploy API e worker globali",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "API token Koyeb + App / Service ID",
+    defaultBase: "https://app.koyeb.com/v1",
+  },
+  {
+    id: "railway",
+    label: "Railway",
+    blurb: "Deploy app e DB con API GraphQL / token account",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "Railway API token + Project / Service ID",
+    defaultBase: "https://backboard.railway.app/graphql/v2",
+  },
+  {
+    id: "render",
+    label: "Render",
+    blurb: "Web services, workers e cron — API REST",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "API Key Render + Service ID",
+    defaultBase: "https://api.render.com/v1",
+  },
+  {
+    id: "fly",
+    label: "Fly.io",
+    blurb: "App globali edge — Machines API",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "Fly API token + App name",
+    defaultBase: "https://api.machines.dev/v1",
+  },
+  {
+    id: "vercel",
+    label: "Vercel",
+    blurb: "Frontend / serverless — deploy e env via API",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "Vercel token + Project / Team ID",
+    defaultBase: "https://api.vercel.com",
+  },
+  {
+    id: "digitalocean",
+    label: "DigitalOcean",
+    blurb: "Droplet, App Platform, Kubernetes",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "Personal Access Token + resource ID",
+    defaultBase: "https://api.digitalocean.com/v2",
+  },
+  {
+    id: "coolify",
+    label: "Coolify",
+    blurb: "Self-host PaaS (alternativa open a Heroku/Vercel)",
+    falixLike: false,
+    apiReady: true,
+    category: "cloud",
+    apiHint: "Coolify API token + base URL della tua istanza",
+  },
+  {
     id: "pterodactyl",
     label: "Pterodactyl",
-    blurb: "Panel open-source usato da molti host",
+    blurb: "Panel open-source usato da molti host game",
     falixLike: true,
     apiReady: true,
     category: "panel",
@@ -148,7 +225,7 @@ export const HOST_PROVIDERS: {
   {
     id: "selfhosted",
     label: "Self-hosted / VPS",
-    blurb: "Docker, RCON, IP pubblico",
+    blurb: "Docker, RCON, IP pubblico, panel custom",
     falixLike: false,
     apiReady: false,
     category: "other",
@@ -156,7 +233,7 @@ export const HOST_PROVIDERS: {
   },
   {
     id: "generic",
-    label: "Altro host",
+    label: "Altro host / app",
     blurb: "Qualsiasi provider — nome + API custom",
     falixLike: false,
     apiReady: false,
@@ -316,6 +393,7 @@ export function providerLabel(id: HostProviderId): string {
 
 export function hostsByCategory() {
   const groups: Record<string, typeof HOST_PROVIDERS> = {
+    cloud: [],
     premium: [],
     budget: [],
     free: [],

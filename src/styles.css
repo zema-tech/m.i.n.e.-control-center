@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * M.I.N.E design system — Matrix / terminal.
- * Verde neon #00ff41 su nero #0a0a0a. Solo dark theme.
+ * M.I.N.E design system — Matrix / terminal professionale.
+ * Verde neon su nero. Solo dark theme. Micro-animazioni e profondità.
  */
 
 @theme inline {
@@ -39,15 +39,16 @@
   --font-display: "Orbitron", ui-sans-serif, system-ui;
   --shadow-glow: 0 0 24px oklch(0.86 0.28 145 / 0.35);
   --shadow-glow-soft: 0 0 12px oklch(0.86 0.28 145 / 0.18);
+  --shadow-card: 0 4px 24px oklch(0 0 0 / 0.35), 0 0 0 1px oklch(0.86 0.28 145 / 0.06);
 }
 
 :root {
-  --radius: 0.25rem;
-  --background: oklch(0.12 0 0);
+  --radius: 0.35rem;
+  --background: oklch(0.11 0.005 150);
   --foreground: oklch(0.93 0.06 145);
-  --card: oklch(0.16 0.01 150);
+  --card: oklch(0.15 0.015 150);
   --card-foreground: oklch(0.93 0.06 145);
-  --popover: oklch(0.16 0.01 150);
+  --popover: oklch(0.15 0.015 150);
   --popover-foreground: oklch(0.93 0.06 145);
   --primary: oklch(0.86 0.28 145);
   --primary-dim: oklch(0.55 0.17 145);
@@ -76,9 +77,10 @@
     color: var(--color-foreground);
     font-family: var(--font-mono);
     background-image:
-      linear-gradient(oklch(0.86 0.28 145 / 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, oklch(0.86 0.28 145 / 0.035) 1px, transparent 1px);
-    background-size: 32px 32px;
+      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.86 0.28 145 / 0.07), transparent),
+      linear-gradient(oklch(0.86 0.28 145 / 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.86 0.28 145 / 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
   }
 
   h1,
@@ -132,19 +134,27 @@
 }
 
 @utility panel {
-  background-color: color-mix(in oklab, var(--color-card) 70%, transparent);
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--color-card) 88%, transparent),
+    color-mix(in oklab, var(--color-card) 55%, transparent)
+  );
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-glow-soft);
-  backdrop-filter: blur(2px);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(6px);
 }
 
 @utility panel-spacious {
-  background-color: color-mix(in oklab, var(--color-card) 70%, transparent);
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--color-card) 88%, transparent),
+    color-mix(in oklab, var(--color-card) 55%, transparent)
+  );
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-glow-soft);
-  backdrop-filter: blur(2px);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(6px);
   padding: 1.25rem;
 }
 
@@ -200,6 +210,67 @@
   }
 }
 
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes border-breathe {
+  0%,
+  100% {
+    border-color: oklch(0.35 0.09 145 / 0.35);
+    box-shadow: 0 0 0 transparent;
+  }
+  50% {
+    border-color: oklch(0.86 0.28 145 / 0.45);
+    box-shadow: 0 0 16px oklch(0.86 0.28 145 / 0.1);
+  }
+}
+
+@keyframes soft-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
 @utility animate-flicker {
   animation: flicker 4s infinite;
 }
@@ -212,6 +283,22 @@
   animation: skeleton-glow 1.6s ease-in-out infinite;
 }
 
+@utility animate-fade-in-up {
+  animation: fade-in-up 0.45s ease-out both;
+}
+
+@utility animate-fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+@utility animate-border-breathe {
+  animation: border-breathe 3.2s ease-in-out infinite;
+}
+
+@utility animate-soft-float {
+  animation: soft-float 4s ease-in-out infinite;
+}
+
 @layer components {
   .btn-matrix {
     transition:
@@ -219,7 +306,8 @@
       background-color 160ms ease,
       border-color 160ms ease,
       box-shadow 160ms ease,
-      opacity 160ms ease;
+      opacity 160ms ease,
+      transform 160ms ease;
   }
 
   .btn-matrix:hover:not(:disabled) {
@@ -228,5 +316,50 @@
 
   .btn-matrix:active:not(:disabled) {
     transform: scale(0.98);
+  }
+
+  .card-interactive {
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      transform 180ms ease,
+      background-color 180ms ease;
+  }
+
+  .card-interactive:hover {
+    border-color: oklch(0.86 0.28 145 / 0.35);
+    box-shadow: var(--shadow-glow-soft), var(--shadow-card);
+    transform: translateY(-2px);
+  }
+
+  .page-enter {
+    animation: fade-in-up 0.4s ease-out both;
+  }
+
+  .shimmer-line {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.86 0.28 145 / 0.25) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.4s linear infinite;
+  }
+
+  .nav-item-active {
+    position: relative;
+  }
+
+  .nav-item-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--color-primary);
+    box-shadow: 0 0 8px oklch(0.86 0.28 145 / 0.6);
   }
 }
