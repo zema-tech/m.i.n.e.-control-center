@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { KeyRound, Network, Server, Terminal } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { CreeperMascot } from "@/components/CreeperMascot";
 import { getAuthState } from "@/lib/auth.functions";
 
 export const Route = createFileRoute("/mine")({
@@ -39,7 +40,8 @@ const LINKS = [
 
 function MineSection() {
   return (
-    <AppShell title="M.I.N.E" subtitle="Host Minecraft · nero e verde">
+    <AppShell title="M.I.N.E" subtitle="Host Minecraft · nero e verde · mascotte Creeper">
+      <CreeperMascot />
       <div className="mx-auto max-w-4xl space-y-8 px-4 py-8 sm:px-6">
         <section className="panel-spacious relative overflow-hidden animate-fade-in-up">
           <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-emerald-400/20 blur-3xl animate-aurora" />
@@ -55,7 +57,8 @@ function MineSection() {
               </span>
             </h2>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
-              Controllo server, rete neurale, log e power. Estetica matrix premium — verde su nero.
+              Controllo server, rete neurale, log e power. Il Creeper verde è la mascotte: toccalo
+              o trascinalo — attento…
             </p>
           </div>
         </section>
