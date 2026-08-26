@@ -245,7 +245,6 @@ export const askAssistant = createServerFn({ method: "POST" })
     }
   });
 
-/** Coding agent JARVIS — modalità Code / Architect / Ask / Debug / Review. */
 export const askCodeAgent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -291,6 +290,32 @@ export const askCodeAgent = createServerFn({ method: "POST" })
         nextSteps: [] as string[],
       };
     }
+  });
+
+/** Mani One MCP — list / search / knowledge / execute. */
+export const runOneHand = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        tool: z.enum([
+          "list_one_integrations",
+          "search_one_platform_actions",
+          "get_one_action_knowledge",
+          "execute_one_action",
+        ]),
+        params: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+          .default({}),
+        approved: z.boolean().default(false),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { runOneHand: run } = await import("./one-hands.server");
+    const res = await run(data.tool, data.params, data.approved);
+    logAction(res.ok ? "info" : "warn", `One hand ${data.tool}: ${res.output.slice(0, 120)}`);
+    return { ok: res.ok, output: res.output };
   });
 
 export const runFalixAction = createServerFn({ method: "POST" })
