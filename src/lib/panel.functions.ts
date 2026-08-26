@@ -204,6 +204,8 @@ export const askAssistant = createServerFn({ method: "POST" })
         model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
         credentials: credSchema,
         accountLabel: z.string().max(80).optional(),
+        /** 4 pilastri: carattere + memoria + mani + regole (dal client) */
+        brainContext: z.string().max(12000).optional(),
       })
       .parse(input),
   )
@@ -232,6 +234,7 @@ export const askAssistant = createServerFn({ method: "POST" })
         logContext,
         data.history,
         data.model ?? DEFAULT_GROQ_MODEL,
+        data.brainContext,
       );
       logAction(
         "info",
@@ -292,7 +295,6 @@ export const askCodeAgent = createServerFn({ method: "POST" })
     }
   });
 
-/** Mani One MCP — list / search / knowledge / execute. */
 export const runOneHand = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
