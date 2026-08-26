@@ -369,6 +369,45 @@ html[data-section="code"] {
   }
 }
 
+@keyframes creeper-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes creeper-boom {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes creeper-particle {
+  0% {
+    transform: translate(-50%, -50%) rotate(var(--a)) translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(var(--a)) translateY(calc(var(--d) * -1)) scale(0.2);
+    opacity: 0;
+  }
+}
+
 @utility animate-status-pulse {
   animation: status-pulse 2s ease-out infinite;
 }
@@ -542,7 +581,6 @@ html[data-section="code"] {
     backdrop-filter: blur(20px) saturate(1.2);
   }
 
-  /* —— Hub cards sezioni —— */
   .section-card {
     position: relative;
     display: block;
@@ -608,7 +646,6 @@ html[data-section="code"] {
     box-shadow: 0 20px 50px oklch(0.4 0.14 265 / 0.4);
   }
 
-  /* —— Backdrop orb per sezione —— */
   .section-backdrop .orb {
     position: absolute;
     border-radius: 9999px;
@@ -688,5 +725,19 @@ html[data-section="code"] {
       linear-gradient(90deg, oklch(1 0 0 / 0.02) 1px, transparent 1px);
     background-size: 48px 48px;
     mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black, transparent);
+  }
+
+  /* —— Creeper mascotte M.I.N.E —— */
+  .creeper-wiggle {
+    animation: creeper-wiggle 0.45s ease-in-out infinite;
+  }
+
+  .creeper-explode {
+    animation: creeper-boom 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .creeper-particle {
+    animation: creeper-particle 0.7s ease-out forwards;
+    box-shadow: 0 0 8px #34d399;
   }
 }
