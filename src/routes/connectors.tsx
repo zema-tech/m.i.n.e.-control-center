@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Cable, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { Cable, Cloud, ExternalLink, Plus, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/connectors")({
 function ConnectorsPage() {
   const [list, setList] = useState<CustomConnector[]>([]);
   const [label, setLabel] = useState("");
-  const [kind, setKind] = useState<ConnectorKind>("storage");
+  const [kind, setKind] = useState<ConnectorKind>("cloud");
   const [detail, setDetail] = useState("");
 
   useEffect(() => {
@@ -55,27 +55,88 @@ function ConnectorsPage() {
     setList(loadConnectors());
   }
 
+  const cloud = DEFAULT_CONNECTOR_CATALOG.filter((d) => d.kind === "cloud");
+  const core = DEFAULT_CONNECTOR_CATALOG.filter((d) => d.kind !== "cloud");
+
   return (
     <AppShell
       title="Connettori"
-      subtitle="MEGA, Drive, Falix MCP, Discord — collega con MCP o API"
+      subtitle="Storage, MCP, cloud app (Koyeb, Railway…) e webhook"
     >
       <div className="mx-auto max-w-3xl space-y-8 p-4 sm:p-6">
-        {/* Catalogo di default sempre visibile */}
         <section className="space-y-3">
-          <p className="text-label text-primary">Catalogo di default</p>
+          <div className="flex items-center gap-2">
+            <Cloud className="h-3.5 w-3.5 text-primary" />
+            <p className="text-label text-primary">Cloud & app host</p>
+          </div>
           <p className="text-caption text-muted-foreground">
-            Ogni servizio indica se si collega via <span className="text-primary">MCP</span> oppure{" "}
-            <span className="text-primary">API</span> (se non esiste MCP pubblico). Le credenziali si
-            inseriscono in Competenze / Host.
+            Oltre Minecraft: collega Koyeb, Railway, Render, Fly e simili via API. Profilo in Host,
+            ricerca con Host Research.
           </p>
-          <ul className="space-y-3">
-            {DEFAULT_CONNECTOR_CATALOG.map((d) => {
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {cloud.map((d, i) => {
               const active = isPresetActive(d.id);
               return (
                 <li
                   key={d.id}
-                  className="rounded-lg border border-border bg-background/40 p-4 transition-colors hover:border-primary/30"
+                  style={{ animationDelay: `${i * 40}ms` }}
+                  className="card-interactive animate-fade-in-up rounded-lg border border-border bg-background/40 p-4"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">{d.label}</p>
+                    <span className="rounded-full border border-primary/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-primary">
+                      {connectModeLabel(d.connectMode)}
+                    </span>
+                    {active ? <StatusBadge status="online" label="in rete" /> : null}
+                  </div>
+                  <p className="mt-1 text-caption text-muted-foreground">{d.detail}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {!active ? (
+                      <button
+                        type="button"
+                        onClick={() => activatePreset(d.id)}
+                        className="btn-matrix rounded-md border border-primary px-2.5 py-1 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
+                      >
+                        attiva
+                      </button>
+                    ) : null}
+                    <Link
+                      to="/hosts"
+                      className="btn-matrix text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary"
+                    >
+                      Host →
+                    </Link>
+                    {d.docsUrl ? (
+                      <a
+                        href={d.docsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-matrix inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-primary"
+                      >
+                        docs <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        <section className="space-y-3">
+          <p className="text-label text-primary">Catalogo core</p>
+          <p className="text-caption text-muted-foreground">
+            Ogni servizio indica se si collega via <span className="text-primary">MCP</span> oppure{" "}
+            <span className="text-primary">API</span>.
+          </p>
+          <ul className="space-y-3">
+            {core.map((d, i) => {
+              const active = isPresetActive(d.id);
+              return (
+                <li
+                  key={d.id}
+                  style={{ animationDelay: `${i * 35}ms` }}
+                  className="card-interactive animate-fade-in-up rounded-lg border border-border bg-background/40 p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -150,7 +211,7 @@ function ConnectorsPage() {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Nome"
-            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+            className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
           />
           <select
             value={kind}
@@ -185,14 +246,14 @@ function ConnectorsPage() {
               <EmptyState
                 icon={Cable}
                 title="Nessun connettore attivo"
-                description="Attiva MEGA o Falix MCP dal catalogo sopra."
+                description="Attiva MEGA, Koyeb o Falix MCP dal catalogo sopra."
                 action={
                   <button
                     type="button"
-                    onClick={() => activatePreset("mega")}
+                    onClick={() => activatePreset("koyeb")}
                     className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
                   >
-                    attiva MEGA
+                    attiva Koyeb
                   </button>
                 }
               />
@@ -202,7 +263,7 @@ function ConnectorsPage() {
               {list.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center gap-3 rounded-lg border border-border px-3 py-3 transition-colors hover:border-primary/30"
+                  className="card-interactive flex items-center gap-3 rounded-lg border border-border px-3 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

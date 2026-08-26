@@ -1,10 +1,9 @@
 /**
- * Connettori storage / MCP sulla rete neurale.
- * Catalogo di default sempre visibile (MEGA, Drive, Falix MCP, Discord…)
- * con link MCP oppure API se il servizio non espone MCP.
+ * Connettori storage / MCP / cloud sulla rete neurale.
+ * Catalogo di default: MEGA, Drive, Falix, Discord, Koyeb, Railway, GitHub…
  */
 
-export type ConnectorKind = "storage" | "backup" | "mcp" | "service";
+export type ConnectorKind = "storage" | "backup" | "mcp" | "service" | "cloud";
 
 /** Come collegare l'account al sito */
 export type ConnectMode = "mcp" | "api" | "webhook" | "skills";
@@ -25,15 +24,10 @@ export type DefaultConnectorDef = {
   label: string;
   kind: ConnectorKind;
   detail: string;
-  /** mcp | api | webhook | skills */
   connectMode: ConnectMode;
-  /** Testo guida sotto il bottone */
   connectHint: string;
-  /** Link esterno (docs API / MCP) se disponibile */
   docsUrl?: string;
-  /** Dove inserire le credenziali in M.I.N.E */
   skillsPath?: "/skills" | "/hosts" | "/connectors";
-  /** Tool MCP interni esposti all'IA */
   mcpTools?: string[];
 };
 
@@ -44,16 +38,16 @@ function canUseStorage() {
   return typeof window !== "undefined";
 }
 
-/** Catalogo fisso mostrato in sezione Connettori (anche a lista vuota). */
+/** Catalogo fisso mostrato in sezione Connettori. */
 export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
   {
     id: "mega",
     label: "MEGA",
     kind: "storage",
-    detail: "Cloud MEGA per backup mondi e archivi server",
+    detail: "Cloud MEGA per backup mondi, archivi e dump app",
     connectMode: "api",
     connectHint:
-      "MEGA non offre un server MCP pubblico ufficiale. Collega email + password/session in Competenze (provider MEGA). I tool MCP interni mega_* restano disponibili all'IA.",
+      "MEGA non offre un server MCP pubblico ufficiale. Collega credenziali in Competenze (provider MEGA). Tool interni mega_*.",
     docsUrl: "https://mega.io/developers",
     skillsPath: "/skills",
     mcpTools: ["mega_status", "mega_list", "mega_upload_note", "mega_share_link"],
@@ -65,7 +59,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     detail: "Google Drive API — backup e cartelle condivise",
     connectMode: "api",
     connectHint:
-      "Nessun MCP ufficiale richiesto: usa API key o Service Account JSON in Competenze (provider Google Drive). Tool gdrive_* per l'IA.",
+      "Usa API key o Service Account in Competenze (Google Drive). Tool gdrive_* per l'IA.",
     docsUrl: "https://developers.google.com/drive/api",
     skillsPath: "/skills",
     mcpTools: ["gdrive_status", "gdrive_list", "gdrive_upload_note", "gdrive_create_folder"],
@@ -77,10 +71,63 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     detail: "Catalogo tool API Falix (power, console, files, backup…)",
     connectMode: "mcp",
     connectHint:
-      "MCP interno M.I.N.E mappato sulle API Falix. Aggiungi API Key + Server ID in Competenze o in Host. Nessun server MCP esterno da installare.",
+      "MCP interno M.I.N.E sulle API Falix. Aggiungi API Key + Server ID in Competenze o Host.",
     docsUrl: "https://falixnodes.net",
     skillsPath: "/skills",
     mcpTools: ["falix_* (catalogo completo)"],
+  },
+  {
+    id: "koyeb",
+    label: "Koyeb",
+    kind: "cloud",
+    detail: "Deploy container e API su edge Koyeb",
+    connectMode: "api",
+    connectHint:
+      "Crea un API token su Koyeb e registra host in Host (provider Koyeb). Azioni live dedicate in roadmap; profilo + research già attivi.",
+    docsUrl: "https://www.koyeb.com/docs/api",
+    skillsPath: "/hosts",
+  },
+  {
+    id: "railway",
+    label: "Railway",
+    kind: "cloud",
+    detail: "Progetti, servizi e variabili via API Railway",
+    connectMode: "api",
+    connectHint:
+      "Token account Railway + Project/Service ID in Host. Ideale per bot, API e worker accanto ai server MC.",
+    docsUrl: "https://docs.railway.com/guides/public-api",
+    skillsPath: "/hosts",
+  },
+  {
+    id: "render",
+    label: "Render",
+    kind: "cloud",
+    detail: "Web services e background workers",
+    connectMode: "api",
+    connectHint: "API Key Render in Host (provider Render). Usa Host Research per studiare i docs.",
+    docsUrl: "https://api-docs.render.com",
+    skillsPath: "/hosts",
+  },
+  {
+    id: "fly",
+    label: "Fly.io",
+    kind: "cloud",
+    detail: "Machines API — app globali",
+    connectMode: "api",
+    connectHint: "Fly API token + app name in Host (provider Fly.io).",
+    docsUrl: "https://fly.io/docs/machines/api/",
+    skillsPath: "/hosts",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    kind: "service",
+    detail: "Repo, deploy hooks e status CI",
+    connectMode: "api",
+    connectHint:
+      "Personal Access Token (fine-grained) per repo privati. Utile con Vercel/Railway deploy da git.",
+    docsUrl: "https://docs.github.com/en/rest",
+    skillsPath: "/connectors",
   },
   {
     id: "connector-mcp",
@@ -89,7 +136,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     detail: "Tool conn_*: Discord, webhook, skill check, pipeline backup",
     connectMode: "mcp",
     connectHint:
-      "Pack MCP interno: conn_discord_status, conn_discord_notify, conn_webhook_ping, conn_skill_check, conn_backup_pipeline. Attivalo sulla rete con un click.",
+      "Pack MCP interno: conn_discord_status, conn_discord_notify, conn_webhook_ping, conn_skill_check, conn_backup_pipeline.",
     skillsPath: "/connectors",
     mcpTools: [
       "conn_discord_status",
@@ -103,13 +150,33 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     id: "discord",
     label: "Discord",
     kind: "service",
-    detail: "Stato server on/off e notifiche via webhook",
+    detail: "Stato servizi e notifiche via webhook",
     connectMode: "webhook",
     connectHint:
-      "Discord non usa MCP per i webhook classici. Crea un Incoming Webhook nel canale e registra il connettore; l'IA propone conn_discord_*.",
+      "Incoming Webhook nel canale; l'IA propone conn_discord_*. Vale per server MC e app cloud.",
     docsUrl: "https://discord.com/developers/docs/resources/webhook",
     skillsPath: "/connectors",
     mcpTools: ["conn_discord_status", "conn_discord_notify"],
+  },
+  {
+    id: "webhook-generic",
+    label: "Webhook generico",
+    kind: "service",
+    detail: "Ping HTTP verso automazioni (n8n, Make, custom)",
+    connectMode: "webhook",
+    connectHint: "Registra un connettore con URL webhook; tool conn_webhook_ping in chat IA.",
+    skillsPath: "/connectors",
+    mcpTools: ["conn_webhook_ping"],
+  },
+  {
+    id: "host-research",
+    label: "Host Research",
+    kind: "mcp",
+    detail: "Studia provider MC e cloud (API, prezzi, bozza profilo)",
+    connectMode: "mcp",
+    connectHint: "Tool host_research — disponibile in Host e come proposta IA.",
+    skillsPath: "/hosts",
+    mcpTools: ["host_research"],
   },
   {
     id: "groq",
@@ -139,7 +206,6 @@ export function saveConnectors(list: CustomConnector[]) {
   window.localStorage.setItem(KEY, JSON.stringify(list));
 }
 
-/** Prima visita: attiva i preset principali sulla rete neurale. */
 export function ensureDefaultConnectors(): CustomConnector[] {
   if (!canUseStorage()) return [];
   const existing = loadConnectors();
@@ -158,7 +224,7 @@ export function ensureDefaultConnectors(): CustomConnector[] {
     }
     return existing;
   }
-  const seedIds = ["falix-mcp", "mega", "gdrive", "connector-mcp", "discord"];
+  const seedIds = ["falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp", "discord"];
   const seeded: CustomConnector[] = seedIds.map((id, i) => {
     const def = DEFAULT_CONNECTOR_CATALOG.find((d) => d.id === id)!;
     return {
@@ -214,12 +280,12 @@ export function isPresetActive(presetId: string): boolean {
 
 export const CONNECTOR_KIND_OPTIONS: { id: ConnectorKind; label: string }[] = [
   { id: "mcp", label: "MCP tool pack" },
+  { id: "cloud", label: "Cloud / PaaS" },
   { id: "storage", label: "Storage / cloud" },
   { id: "backup", label: "Backup" },
   { id: "service", label: "Servizio" },
 ];
 
-/** Alias compatibile con UI precedente */
 export const CONNECTOR_PRESETS = DEFAULT_CONNECTOR_CATALOG.map((d) => ({
   id: d.id,
   label: d.label,

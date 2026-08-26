@@ -52,7 +52,7 @@ function SideNav({
             onClick={onNavigate}
             className={`btn-matrix flex items-center gap-2 rounded-md px-3 py-2.5 text-xs uppercase tracking-widest ${
               active
-                ? "border border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.12)]"
+                ? "nav-item-active border border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.12)]"
                 : "border border-transparent text-muted-foreground hover:border-border hover:text-foreground"
             }`}
           >
@@ -62,13 +62,13 @@ function SideNav({
         );
       })}
 
-      <div className="mt-4 rounded-md border border-border/60 bg-background/50 p-3">
+      <div className="mt-4 animate-border-breathe rounded-md border border-border/60 bg-background/50 p-3">
         <p className="mb-1.5 flex items-center gap-1.5 text-label text-primary">
-          <Brain className="h-3 w-3" /> sistema neurale
+          <Brain className="h-3 w-3 animate-soft-float" /> sistema neurale
         </p>
         <p className="text-caption leading-relaxed text-muted-foreground">
-          Rete collegata a <span className="text-primary">Groq API</span> — host e account in Host /
-          Competenze.
+          Rete collegata a <span className="text-primary">Groq</span> — MC, Koyeb, Railway e altri
+          host in Host / Competenze.
         </p>
       </div>
     </nav>
@@ -82,7 +82,7 @@ function BrandBlock() {
         M.I.N.E
       </span>
       <span className="mt-0.5 block text-caption uppercase tracking-[0.2em] text-muted-foreground">
-        network engine
+        multi-app network engine
       </span>
     </Link>
   );
@@ -108,7 +108,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background/90 md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background/90 backdrop-blur-sm md:flex">
         <div className="border-b border-border px-4 py-4">
           <BrandBlock />
           <div className="mt-3">
@@ -130,7 +130,7 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3 sm:px-6">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-background/80 px-3 py-3 backdrop-blur-md sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -166,7 +166,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
 
-            <div className="min-w-0">
+            <div className="min-w-0 animate-fade-in">
               {title ? (
                 <h1 className="text-title text-glow text-primary">{title}</h1>
               ) : null}
@@ -179,12 +179,12 @@ export function AppShell({
           <div className="flex items-center gap-3">
             <AccountSelector className="md:hidden" />
             <span className="hidden items-center gap-1.5 text-caption uppercase tracking-widest text-muted-foreground sm:flex">
-              <Sparkles className="h-3 w-3 text-primary" /> groq online
+              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> groq online
             </span>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div className="page-enter flex-1 overflow-auto">{children}</div>
       </div>
     </div>
   );
