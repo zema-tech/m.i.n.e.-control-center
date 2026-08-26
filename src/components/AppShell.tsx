@@ -36,10 +36,10 @@ type NavTo =
   | "/connectors";
 
 const NAV_CORE: { to: NavTo; label: string; icon: typeof Home }[] = [
-  { to: "/agent", label: "Jarvis", icon: Home },
-  { to: "/assistant", label: "Chat ops", icon: MessageSquare },
+  { to: "/agent", label: "Agente", icon: Home },
+  { to: "/assistant", label: "Chat", icon: MessageSquare },
   { to: "/code", label: "Codice", icon: Code2 },
-  { to: "/network", label: "Rete neurale", icon: Network },
+  { to: "/network", label: "Rete", icon: Network },
 ];
 
 const NAV_CAP: { to: NavTo; label: string; icon: typeof Home }[] = [
@@ -67,13 +67,17 @@ function NavLink({
     <Link
       to={to}
       onClick={onNavigate}
-      className={`btn-matrix flex items-center gap-2 rounded-md px-3 py-2.5 text-xs uppercase tracking-widest ${
+      className={`btn-matrix group relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium tracking-wide ${
         active
-          ? "nav-item-active border border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.12)]"
-          : "border border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+          ? "nav-item-active"
+          : "border border-transparent text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
       }`}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <Icon
+        className={`h-4 w-4 shrink-0 transition-colors ${
+          active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+        }`}
+      />
       {label}
     </Link>
   );
@@ -89,27 +93,28 @@ function SideNav({
   agentName: string;
 }) {
   return (
-    <nav className="flex flex-1 flex-col gap-1 p-3">
-      <p className="mb-1 px-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground/80">
-        core
+    <nav className="flex flex-1 flex-col gap-0.5 p-3">
+      <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+        Principie
       </p>
       {NAV_CORE.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
-      <p className="mb-1 mt-3 px-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground/80">
-        capacità
+      <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+        Capacità
       </p>
       {NAV_CAP.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
-      <div className="mt-4 animate-border-breathe rounded-md border border-border/60 bg-background/50 p-3">
-        <p className="mb-1.5 flex items-center gap-1.5 text-label text-primary">
-          <Brain className="h-3 w-3 animate-soft-float" /> {agentName}
+      <div className="mt-auto rounded-xl border border-white/[0.06] bg-white/[0.03] p-3.5">
+        <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+          <Brain className="h-3.5 w-3.5" />
+          {agentName}
         </p>
-        <p className="text-caption leading-relaxed text-muted-foreground">
-          Agente personale · ops + coding · <span className="text-primary">Groq</span>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          4 pilastri attivi · Groq · One MCP
         </p>
       </div>
     </nav>
@@ -118,12 +123,12 @@ function SideNav({
 
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
-    <Link to="/agent" className="block">
-      <span className="text-glow font-display text-lg font-bold tracking-widest text-primary">
+    <Link to="/agent" className="block group">
+      <span className="logo-gradient font-display text-[1.35rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
         {agentName}
       </span>
-      <span className="mt-0.5 block text-caption uppercase tracking-[0.2em] text-muted-foreground">
-        personal jarvis
+      <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
+        Agente personale
       </span>
     </Link>
   );
@@ -153,36 +158,37 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background/90 backdrop-blur-sm md:flex">
-        <div className="border-b border-border px-4 py-4">
+    <div className="flex min-h-screen text-foreground">
+      <aside className="shell-aside hidden w-[240px] shrink-0 flex-col md:flex">
+        <div className="border-b border-white/[0.05] px-4 py-5">
           <BrandBlock agentName={agentName} />
-          <div className="mt-3">
+          <div className="mt-4">
             <AccountSelector />
           </div>
         </div>
 
         <SideNav pathname={pathname} agentName={agentName} />
 
-        <div className="border-t border-border p-3">
+        <div className="border-t border-white/[0.05] p-3">
           <button
             type="button"
             onClick={() => void onLogout()}
-            className="btn-matrix flex w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-xs uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary"
+            className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
           >
-            <LogOut className="h-3.5 w-3.5" /> esci
+            <LogOut className="h-4 w-4" />
+            Esci
           </button>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-background/80 px-3 py-3 backdrop-blur-md sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
+        <header className="shell-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <button
                   type="button"
-                  className="btn-matrix inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:border-primary hover:text-primary md:hidden"
+                  className="btn-matrix inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/8 text-muted-foreground hover:border-primary/30 hover:text-primary md:hidden"
                   aria-label="Apri menu"
                 >
                   <Menu className="h-4 w-4" />
@@ -190,12 +196,12 @@ export function AppShell({
               </SheetTrigger>
               <SheetContent
                 side="left"
-                className="flex w-[min(100%,18rem)] flex-col border-border bg-background p-0"
+                className="flex w-[min(100%,17.5rem)] flex-col border-border bg-background p-0"
               >
-                <SheetHeader className="border-b border-border px-4 py-4 text-left">
+                <SheetHeader className="border-b border-white/[0.05] px-4 py-5 text-left">
                   <SheetTitle className="sr-only">Navigazione</SheetTitle>
                   <BrandBlock agentName={agentName} />
-                  <div className="mt-3">
+                  <div className="mt-4">
                     <AccountSelector />
                   </div>
                 </SheetHeader>
@@ -204,13 +210,14 @@ export function AppShell({
                   agentName={agentName}
                   onNavigate={() => setMobileOpen(false)}
                 />
-                <div className="mt-auto border-t border-border p-3">
+                <div className="mt-auto border-t border-white/[0.05] p-3">
                   <button
                     type="button"
                     onClick={() => void onLogout()}
-                    className="btn-matrix flex w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-xs uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary"
+                    className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-muted-foreground hover:bg-white/[0.04]"
                   >
-                    <LogOut className="h-3.5 w-3.5" /> esci
+                    <LogOut className="h-4 w-4" />
+                    Esci
                   </button>
                 </div>
               </SheetContent>
@@ -218,18 +225,21 @@ export function AppShell({
 
             <div className="min-w-0 animate-fade-in">
               {title ? (
-                <h1 className="text-title text-glow text-primary">{title}</h1>
+                <h1 className="text-title text-foreground">{title}</h1>
               ) : null}
-              {subtitle ? (
-                <p className="text-caption text-muted-foreground">{subtitle}</p>
-              ) : null}
+              {subtitle ? <p className="text-caption mt-0.5">{subtitle}</p> : null}
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <AccountSelector className="md:hidden" />
-            <span className="hidden items-center gap-1.5 text-caption uppercase tracking-widest text-muted-foreground sm:flex">
-              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> jarvis online
+            <span className="hidden items-center gap-1.5 rounded-full border border-white/6 bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-40" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+              </span>
+              <Sparkles className="h-3 w-3 text-primary" />
+              Online
             </span>
           </div>
         </header>
