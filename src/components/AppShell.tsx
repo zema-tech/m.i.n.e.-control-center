@@ -6,16 +6,19 @@ import {
   Code2,
   Home,
   KeyRound,
+  LayoutGrid,
   LogOut,
   Menu,
   MessageSquare,
   Network,
+  Palette,
   Server,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AccountSelector } from "@/components/AccountSelector";
+import { SectionBackdrop } from "@/components/SectionTheme";
 import {
   Sheet,
   SheetContent,
@@ -25,24 +28,37 @@ import {
 } from "@/components/ui/sheet";
 import { loadAgentProfile } from "@/lib/agent-profile";
 import { logout } from "@/lib/auth.functions";
+import { sectionFromPath } from "@/lib/section-themes";
 
 type NavTo =
+  | "/home"
+  | "/jarvis"
+  | "/mine"
+  | "/design"
+  | "/code"
   | "/agent"
   | "/assistant"
-  | "/code"
   | "/network"
   | "/skills"
   | "/hosts"
   | "/connectors";
 
-const NAV_CORE: { to: NavTo; label: string; icon: typeof Home }[] = [
-  { to: "/agent", label: "Agente", icon: Home },
-  { to: "/assistant", label: "Chat", icon: MessageSquare },
-  { to: "/code", label: "Codice", icon: Code2 },
-  { to: "/network", label: "Rete", icon: Network },
+const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
+  { to: "/home", label: "Hub", icon: LayoutGrid },
+  { to: "/jarvis", label: "JARVIS", icon: Sparkles },
+  { to: "/mine", label: "M.I.N.E", icon: TerminalIcon },
+  { to: "/design", label: "Design", icon: Palette },
+  { to: "/code", label: "Code", icon: Code2 },
 ];
 
-const NAV_CAP: { to: NavTo; label: string; icon: typeof Home }[] = [
+function TerminalIcon(props: React.ComponentProps<typeof Network>) {
+  return <Network {...props} />;
+}
+
+const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
+  { to: "/assistant", label: "Chat", icon: MessageSquare },
+  { to: "/agent", label: "Pilastri", icon: Brain },
+  { to: "/network", label: "Rete", icon: Network },
   { to: "/skills", label: "Competenze", icon: KeyRound },
   { to: "/hosts", label: "Host", icon: Server },
   { to: "/connectors", label: "Connettori", icon: Cable },
@@ -62,7 +78,9 @@ function NavLink({
   onNavigate?: () => void;
 }) {
   const active =
-    pathname === to || (to === "/assistant" && pathname.startsWith("/assistant"));
+    pathname === to ||
+    (to === "/assistant" && pathname.startsWith("/assistant")) ||
+    (to === "/code" && pathname.startsWith("/code"));
   return (
     <Link
       to={to}
@@ -92,19 +110,20 @@ function SideNav({
   onNavigate?: () => void;
   agentName: string;
 }) {
+  const section = sectionFromPath(pathname);
   return (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
       <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
-        Principie
+        Mondi
       </p>
-      {NAV_CORE.map((item) => (
+      {NAV_WORLDS.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
       <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
-        Capacità
+        Strumenti
       </p>
-      {NAV_CAP.map((item) => (
+      {NAV_TOOLS.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
@@ -113,8 +132,8 @@ function SideNav({
           <Brain className="h-3.5 w-3.5" />
           {agentName}
         </p>
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          4 pilastri attivi · Groq · One MCP
+        <p className="text-[11px] capitalize leading-relaxed text-muted-foreground">
+          Tema attivo: {section}
         </p>
       </div>
     </nav>
@@ -123,12 +142,12 @@ function SideNav({
 
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
-    <Link to="/agent" className="block group">
+    <Link to="/home" className="block group">
       <span className="logo-gradient font-display text-[1.35rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
         {agentName}
       </span>
       <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
-        Agente personale
+        Hub · 4 sezioni
       </span>
     </Link>
   );
@@ -150,6 +169,7 @@ export function AppShell({
 
   useEffect(() => {
     setAgentName(loadAgentProfile().name || "JARVIS");
+    document.documentElement.setAttribute("data-section", sectionFromPath(pathname));
   }, [pathname]);
 
   async function onLogout() {
@@ -158,8 +178,10 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen text-foreground">
-      <aside className="shell-aside hidden w-[240px] shrink-0 flex-col md:flex">
+    <div className="relative flex min-h-screen text-foreground">
+      <SectionBackdrop />
+
+      <aside className="shell-aside relative z-10 hidden w-[240px] shrink-0 flex-col md:flex">
         <div className="border-b border-white/[0.05] px-4 py-5">
           <BrandBlock agentName={agentName} />
           <div className="mt-4">
@@ -181,7 +203,7 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <header className="shell-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -224,9 +246,7 @@ export function AppShell({
             </Sheet>
 
             <div className="min-w-0 animate-fade-in">
-              {title ? (
-                <h1 className="text-title text-foreground">{title}</h1>
-              ) : null}
+              {title ? <h1 className="text-title text-foreground">{title}</h1> : null}
               {subtitle ? <p className="text-caption mt-0.5">{subtitle}</p> : null}
             </div>
           </div>
@@ -238,7 +258,6 @@ export function AppShell({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-40" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
               </span>
-              <Sparkles className="h-3 w-3 text-primary" />
               Online
             </span>
           </div>

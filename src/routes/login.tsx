@@ -9,15 +9,12 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Accedi — JARVIS" },
-      {
-        name: "description",
-        content: "Accesso al tuo agente IA personale.",
-      },
+      { name: "description", content: "Accesso al tuo agente IA personale." },
     ],
   }),
   beforeLoad: async () => {
     const { authenticated } = await getAuthState();
-    if (authenticated) throw redirect({ to: "/agent" });
+    if (authenticated) throw redirect({ to: "/home" });
   },
   component: LoginPage,
 });
@@ -37,7 +34,7 @@ function LoginPage() {
     setBusy(false);
     if (res.ok) {
       await router.invalidate();
-      await router.navigate({ to: "/agent" });
+      await router.navigate({ to: "/home" });
     } else {
       setError(res.message);
       setPassword("");
@@ -46,14 +43,18 @@ function LoginPage() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
-      {/* Ambient orbs */}
       <div
-        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-primary/15 blur-[100px] animate-aurora"
+        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-sky-500/20 blur-[100px] animate-aurora"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -right-16 bottom-1/4 h-64 w-64 rounded-full bg-violet-500/10 blur-[90px] animate-aurora"
+        className="pointer-events-none absolute -right-16 bottom-1/4 h-64 w-64 rounded-full bg-emerald-500/15 blur-[90px] animate-aurora"
         style={{ animationDelay: "-4s" }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute left-1/3 top-1/2 h-48 w-48 rounded-full bg-violet-500/10 blur-[80px] animate-aurora"
+        style={{ animationDelay: "-7s" }}
         aria-hidden
       />
 
@@ -61,27 +62,19 @@ function LoginPage() {
         <div className="mb-10 text-center">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/4 px-3.5 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground backdrop-blur-md">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Agente personale
+            Quattro mondi · un agente
           </div>
           <h1 className="logo-gradient font-display text-5xl font-bold tracking-tight sm:text-6xl">
             JARVIS
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-            Il tuo Claude personale —
-            <br className="hidden sm:block" />
-            carattere, memoria, mani e regole.
+            JARVIS · M.I.N.E · Design · Code
           </p>
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="panel space-y-6 p-7 sm:p-8"
-        >
+        <form onSubmit={onSubmit} className="panel space-y-6 p-7 sm:p-8">
           <div className="space-y-2">
-            <label
-              htmlFor="password"
-              className="flex items-center gap-2 text-label"
-            >
+            <label htmlFor="password" className="flex items-center gap-2 text-label">
               <Lock className="h-3.5 w-3.5 text-primary" />
               Password amministratore
             </label>
@@ -112,15 +105,11 @@ function LoginPage() {
               "Verifica…"
             ) : (
               <>
-                Entra nell&apos;agente
+                Entra nell&apos;hub
                 <ArrowRight className="h-4 w-4" />
               </>
             )}
           </button>
-
-          <p className="text-center text-[12px] leading-relaxed text-muted-foreground">
-            Sessione sicura · 4 pilastri · One MCP · codice
-          </p>
         </form>
       </div>
     </main>
