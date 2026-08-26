@@ -1,5 +1,5 @@
 /**
- * Profilo dell'agente M.I.N.E — identità locale (come «il tuo Claude»).
+ * Profilo JARVIS / M.I.N.E — identità locale dell'agente personale.
  */
 
 export type AgentProfile = {
@@ -13,9 +13,10 @@ export type AgentProfile = {
 const KEY = "mine.agent.profile.v1";
 
 export const DEFAULT_AGENT_PROFILE: AgentProfile = {
-  name: "M.I.N.E",
-  tagline: "Il tuo agente multi-app",
-  focus: "Server Minecraft, host cloud, connettori One e automazioni sicure",
+  name: "JARVIS",
+  tagline: "Il tuo agente personale",
+  focus:
+    "Operazioni host, connettori, e coding agent (stile Kilo / Claude Code) — sempre con conferma sulle azioni critiche",
   language: "italiano",
   updatedAt: 0,
 };
@@ -54,13 +55,20 @@ export function saveAgentProfile(patch: Partial<AgentProfile>): AgentProfile {
   return next;
 }
 
-/** Sezioni prodotto agente — mappa mentale tipo Claude. */
+/** Sezioni prodotto agente — Jarvis hub. */
 export const AGENT_SECTIONS = [
   {
     id: "chat",
     to: "/assistant" as const,
-    title: "Chat",
-    blurb: "Parla con M.I.N.E — log, diagnosi, proposte azioni",
+    title: "Chat ops",
+    blurb: "Diagnosi server, log, azioni Falix / host",
+    group: "core" as const,
+  },
+  {
+    id: "code",
+    to: "/code" as const,
+    title: "Codice",
+    blurb: "Coding agent — Code, Architect, Debug, Review",
     group: "core" as const,
   },
   {
@@ -81,14 +89,14 @@ export const AGENT_SECTIONS = [
     id: "hosts",
     to: "/hosts" as const,
     title: "Host",
-    blurb: "MC + cloud (Koyeb, Railway…) e research",
+    blurb: "MC + cloud e research provider",
     group: "capabilities" as const,
   },
   {
     id: "connectors",
     to: "/connectors" as const,
     title: "Connettori",
-    blurb: "One MCP 700+ app, MEGA, Discord, webhook",
+    blurb: "One MCP, MEGA, Discord, webhook",
     group: "capabilities" as const,
   },
 ] as const;
