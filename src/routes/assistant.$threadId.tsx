@@ -23,6 +23,7 @@ import {
   listStorageAccounts,
   type ApiAccount,
 } from "@/lib/accounts";
+import { buildBrainContextForPrompt } from "@/lib/agent-brain";
 import { logAiActivity } from "@/lib/ai-activity";
 import { getAuthState } from "@/lib/auth.functions";
 import {
@@ -259,6 +260,7 @@ function AssistantPage() {
           question,
           history: messages.slice(-8).map((m) => ({ role: m.role, content: m.content })),
           model,
+          brainContext: buildBrainContextForPrompt(),
           ...credPayload(),
         },
       });
@@ -547,8 +549,8 @@ function AssistantPage() {
       title="Chat ops"
       subtitle={
         accountLabel
-          ? `JARVIS · ${accountLabel} · mani One MCP + Falix`
-          : "JARVIS — cervello Groq · mani mcp.withone.ai + Falix"
+          ? `JARVIS · ${accountLabel} · 4 pilastri + mani One`
+          : "JARVIS — carattere · memoria · mani · regole"
       }
     >
       <div className="grid gap-4 p-4 lg:grid-cols-[200px_1fr_1fr] lg:p-6">
@@ -604,11 +606,8 @@ function AssistantPage() {
           <div className="flex-1 space-y-3 overflow-y-auto text-sm">
             {messages.length === 0 ? (
               <p className="text-muted-foreground">
-                Es. <span className="text-primary">"perché lagga?"</span>
-                {" · "}
-                <span className="text-primary">"elenca integrazioni One"</span>
-                {" · "}
-                <span className="text-primary">"cerca su gmail send email"</span>
+                Configura i 4 pilastri in{" "}
+                <span className="text-primary">/agent</span> poi chiedi pure.
               </p>
             ) : null}
             {messages.map((m, mi) => (
