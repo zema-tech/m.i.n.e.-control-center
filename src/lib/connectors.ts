@@ -1,11 +1,18 @@
 /**
- * Connettori storage / MCP / cloud sulla rete neurale.
- * Catalogo di default: MEGA, Drive, Falix, Discord, Koyeb, Railway, GitHub…
+ * Connettori storage / MCP / cloud / One (withoneai).
  */
 
-export type ConnectorKind = "storage" | "backup" | "mcp" | "service" | "cloud";
+import {
+  ONE_CLI_REPO,
+  ONE_DOCS_URL,
+  ONE_MCP_TOOL_NAMES,
+  ONE_MCP_URL,
+  ONE_PLATFORMS,
+  type OnePlatform,
+} from "@/lib/one-platforms";
 
-/** Come collegare l'account al sito */
+export type ConnectorKind = "storage" | "backup" | "mcp" | "service" | "cloud" | "one";
+
 export type ConnectMode = "mcp" | "api" | "webhook" | "skills";
 
 export type CustomConnector = {
@@ -29,6 +36,8 @@ export type DefaultConnectorDef = {
   docsUrl?: string;
   skillsPath?: "/skills" | "/hosts" | "/connectors";
   mcpTools?: string[];
+  /** true se proviene dal catalogo One */
+  onePlatform?: boolean;
 };
 
 const KEY = "mine.connectors.v1";
@@ -38,8 +47,18 @@ function canUseStorage() {
   return typeof window !== "undefined";
 }
 
-/** Catalogo fisso mostrato in sezione Connettori. */
-export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
+const NATIVE_CATALOG: DefaultConnectorDef[] = [
+  {
+    id: "one-mcp",
+    label: "One MCP (withoneai)",
+    kind: "one",
+    detail: "Gateway unico → 700+ app (Gmail, Slack, Stripe, Notion…). 4 tool MCP.",
+    connectMode: "mcp",
+    connectHint: `Collega il remote MCP ${ONE_MCP_URL} (OAuth) oppure CLI: npm i -g @withone/cli && one init. Repo: ${ONE_CLI_REPO}. Dopo il collegamento usa list_one_integrations per tutte le piattaforme live.`,
+    docsUrl: ONE_DOCS_URL,
+    skillsPath: "/connectors",
+    mcpTools: [...ONE_MCP_TOOL_NAMES],
+  },
   {
     id: "mega",
     label: "MEGA",
@@ -54,12 +73,12 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
   },
   {
     id: "gdrive",
-    label: "Google Drive",
+    label: "Google Drive (nativo)",
     kind: "storage",
-    detail: "Google Drive API — backup e cartelle condivise",
+    detail: "Google Drive API nativa M.I.N.E — oppure via One MCP",
     connectMode: "api",
     connectHint:
-      "Usa API key o Service Account in Competenze (Google Drive). Tool gdrive_* per l'IA.",
+      "Usa API key in Competenze oppure collega Google Drive tramite One MCP per OAuth gestito.",
     docsUrl: "https://developers.google.com/drive/api",
     skillsPath: "/skills",
     mcpTools: ["gdrive_status", "gdrive_list", "gdrive_upload_note", "gdrive_create_folder"],
@@ -83,7 +102,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     detail: "Deploy container e API su edge Koyeb",
     connectMode: "api",
     connectHint:
-      "Crea un API token su Koyeb e registra host in Host (provider Koyeb). Azioni live dedicate in roadmap; profilo + research già attivi.",
+      "API token Koyeb in Host (provider Koyeb). Profilo + research attivi; azioni live in roadmap.",
     docsUrl: "https://www.koyeb.com/docs/api",
     skillsPath: "/hosts",
   },
@@ -93,8 +112,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     kind: "cloud",
     detail: "Progetti, servizi e variabili via API Railway",
     connectMode: "api",
-    connectHint:
-      "Token account Railway + Project/Service ID in Host. Ideale per bot, API e worker accanto ai server MC.",
+    connectHint: "Token Railway + Project/Service ID in Host.",
     docsUrl: "https://docs.railway.com/guides/public-api",
     skillsPath: "/hosts",
   },
@@ -104,7 +122,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     kind: "cloud",
     detail: "Web services e background workers",
     connectMode: "api",
-    connectHint: "API Key Render in Host (provider Render). Usa Host Research per studiare i docs.",
+    connectHint: "API Key Render in Host (provider Render).",
     docsUrl: "https://api-docs.render.com",
     skillsPath: "/hosts",
   },
@@ -114,20 +132,9 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     kind: "cloud",
     detail: "Machines API — app globali",
     connectMode: "api",
-    connectHint: "Fly API token + app name in Host (provider Fly.io).",
+    connectHint: "Fly API token + app name in Host.",
     docsUrl: "https://fly.io/docs/machines/api/",
     skillsPath: "/hosts",
-  },
-  {
-    id: "github",
-    label: "GitHub",
-    kind: "service",
-    detail: "Repo, deploy hooks e status CI",
-    connectMode: "api",
-    connectHint:
-      "Personal Access Token (fine-grained) per repo privati. Utile con Vercel/Railway deploy da git.",
-    docsUrl: "https://docs.github.com/en/rest",
-    skillsPath: "/connectors",
   },
   {
     id: "connector-mcp",
@@ -147,13 +154,12 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     ],
   },
   {
-    id: "discord",
-    label: "Discord",
+    id: "discord-native",
+    label: "Discord (webhook nativo)",
     kind: "service",
-    detail: "Stato servizi e notifiche via webhook",
+    detail: "Stato servizi e notifiche via webhook M.I.N.E",
     connectMode: "webhook",
-    connectHint:
-      "Incoming Webhook nel canale; l'IA propone conn_discord_*. Vale per server MC e app cloud.",
+    connectHint: "Incoming Webhook; oppure Discord via One MCP per bot/API complete.",
     docsUrl: "https://discord.com/developers/docs/resources/webhook",
     skillsPath: "/connectors",
     mcpTools: ["conn_discord_status", "conn_discord_notify"],
@@ -164,7 +170,7 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     kind: "service",
     detail: "Ping HTTP verso automazioni (n8n, Make, custom)",
     connectMode: "webhook",
-    connectHint: "Registra un connettore con URL webhook; tool conn_webhook_ping in chat IA.",
+    connectHint: "Registra un connettore; tool conn_webhook_ping in chat IA.",
     skillsPath: "/connectors",
     mcpTools: ["conn_webhook_ping"],
   },
@@ -185,9 +191,30 @@ export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
     detail: "Motore chat e analisi neurale — chiave lato server",
     connectMode: "api",
     connectHint:
-      "Configura GROQ_API_KEY sulle variabili d'ambiente del deploy (Vercel). Non si inserisce nel browser.",
+      "Configura GROQ_API_KEY sulle variabili d'ambiente del deploy (Vercel).",
     docsUrl: "https://console.groq.com/keys",
   },
+];
+
+function onePlatformToDef(p: OnePlatform): DefaultConnectorDef {
+  return {
+    id: `one:${p.id}`,
+    label: p.label,
+    kind: "one",
+    detail: `${p.detail} — via One MCP`,
+    connectMode: "mcp",
+    connectHint: `Piattaforma One (slug: ${p.id}). Attiva il gateway «One MCP», poi autorizza ${p.label} su app.withone.ai o con CLI: one add ${p.id}. Tool: ${ONE_MCP_TOOL_NAMES.join(", ")}.`,
+    docsUrl: ONE_DOCS_URL,
+    skillsPath: "/connectors",
+    mcpTools: [...ONE_MCP_TOOL_NAMES],
+    onePlatform: true,
+  };
+}
+
+/** Catalogo completo: nativi M.I.N.E + piattaforme One documentate. */
+export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
+  ...NATIVE_CATALOG,
+  ...ONE_PLATFORMS.map(onePlatformToDef),
 ];
 
 export function loadConnectors(): CustomConnector[] {
@@ -224,9 +251,9 @@ export function ensureDefaultConnectors(): CustomConnector[] {
     }
     return existing;
   }
-  const seedIds = ["falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp", "discord"];
+  const seedIds = ["one-mcp", "falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp"];
   const seeded: CustomConnector[] = seedIds.map((id, i) => {
-    const def = DEFAULT_CONNECTOR_CATALOG.find((d) => d.id === id)!;
+    const def = NATIVE_CATALOG.find((d) => d.id === id)!;
     return {
       id: `conn:default:${id}`,
       label: def.label,
@@ -256,7 +283,7 @@ export function addConnector(input: {
 }): CustomConnector {
   const item: CustomConnector = {
     id: `conn:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    label: input.label.trim().slice(0, 40),
+    label: input.label.trim().slice(0, 48),
     kind: input.kind,
     detail: (input.detail ?? "Connettore").slice(0, 160),
     status: input.status ?? "online",
@@ -279,6 +306,7 @@ export function isPresetActive(presetId: string): boolean {
 }
 
 export const CONNECTOR_KIND_OPTIONS: { id: ConnectorKind; label: string }[] = [
+  { id: "one", label: "One / SaaS (withoneai)" },
   { id: "mcp", label: "MCP tool pack" },
   { id: "cloud", label: "Cloud / PaaS" },
   { id: "storage", label: "Storage / cloud" },
@@ -305,3 +333,5 @@ export function connectModeLabel(mode: ConnectMode): string {
       return "Competenze";
   }
 }
+
+export { ONE_MCP_URL, ONE_DOCS_URL, ONE_CLI_REPO };

@@ -1,14 +1,13 @@
 /**
  * MCP-style tool registry per M.I.N.E.
- * - Falix: tool mappati sulle API reali
- * - MEGA / Google Drive: storage backup
- * - Connettori: Discord webhook, status, skill hooks (human-in-the-loop)
- * - Host research: studio provider MC / siti panel
+ * - Falix / storage / connector / research nativi
+ * - One (withoneai): 4 tool universali → 700+ app
  */
 
 import { FALIX_ACTIONS, type ActionRisk } from "@/lib/falix-actions";
+import { ONE_MCP_TOOL_NAMES } from "@/lib/one-platforms";
 
-export type McpProvider = "falix" | "mega" | "gdrive" | "connector" | "research";
+export type McpProvider = "falix" | "mega" | "gdrive" | "connector" | "research" | "one";
 
 export type McpTool = {
   name: string;
@@ -17,7 +16,6 @@ export type McpTool = {
   risk: ActionRisk;
   params: { name: string; required: boolean; hint: string }[];
   falixActionId?: string;
-  /** Skill M.I.N.E. correlata (power, logs, backup, …) */
   skill?: string;
 };
 
@@ -141,7 +139,6 @@ export const GDRIVE_MCP_TOOLS: McpTool[] = [
   },
 ];
 
-/** Tool MCP legati ai connettori (Discord, webhook, skill hooks). */
 export const CONNECTOR_MCP_TOOLS: McpTool[] = [
   {
     name: "conn_discord_status",
@@ -199,21 +196,69 @@ export const CONNECTOR_MCP_TOOLS: McpTool[] = [
   },
 ];
 
-/** Ricerca provider hosting / siti panel MC (pattern company-research, su Groq). */
 export const RESEARCH_MCP_TOOLS: McpTool[] = [
   {
     name: "host_research",
     provider: "research",
     description:
-      "Studia un host o sito panel Minecraft (nome o URL): API, MCP, prezzi, rischi e bozza profilo host",
+      "Studia un host o sito panel Minecraft/cloud (nome o URL): API, MCP, prezzi e bozza profilo host",
     risk: "read",
     skill: "status",
     params: [
       {
         name: "query",
         required: true,
-        hint: "Es. falix, pterodactyl, aternos.org, bloom.host",
+        hint: "Es. falix, koyeb, pterodactyl, aternos.org",
       },
+    ],
+  },
+];
+
+/** Gateway One — 4 tool per 700+ app (https://github.com/withoneai/cli). */
+export const ONE_MCP_TOOLS: McpTool[] = [
+  {
+    name: ONE_MCP_TOOL_NAMES[0],
+    provider: "one",
+    description:
+      "Lista piattaforme One disponibili e connessioni attive (access policy inclusa)",
+    risk: "read",
+    skill: "status",
+    params: [],
+  },
+  {
+    name: ONE_MCP_TOOL_NAMES[1],
+    provider: "one",
+    description: "Cerca azioni API su una piattaforma One (es. gmail, slack, stripe)",
+    risk: "read",
+    skill: "status",
+    params: [
+      { name: "platform", required: true, hint: "Slug piattaforma es. gmail" },
+      { name: "query", required: true, hint: "Linguaggio naturale es. send email" },
+    ],
+  },
+  {
+    name: ONE_MCP_TOOL_NAMES[2],
+    provider: "one",
+    description: "Documentazione completa di un'azione One (schema, params, esempi)",
+    risk: "read",
+    skill: "status",
+    params: [
+      { name: "platform", required: true, hint: "Slug piattaforma" },
+      { name: "actionId", required: true, hint: "ID azione da search" },
+    ],
+  },
+  {
+    name: ONE_MCP_TOOL_NAMES[3],
+    provider: "one",
+    description:
+      "Esegue un'azione API su piattaforma One collegata — richiede conferma human-in-the-loop",
+    risk: "write",
+    skill: "status",
+    params: [
+      { name: "platform", required: true, hint: "Slug piattaforma" },
+      { name: "actionId", required: true, hint: "ID azione" },
+      { name: "connectionKey", required: false, hint: "Chiave connessione One" },
+      { name: "data", required: false, hint: "JSON body" },
     ],
   },
 ];
@@ -224,6 +269,7 @@ export const ALL_MCP_TOOLS: McpTool[] = [
   ...GDRIVE_MCP_TOOLS,
   ...CONNECTOR_MCP_TOOLS,
   ...RESEARCH_MCP_TOOLS,
+  ...ONE_MCP_TOOLS,
 ];
 
 export function mcpToolsByProvider(provider: McpProvider): McpTool[] {
@@ -231,10 +277,10 @@ export function mcpToolsByProvider(provider: McpProvider): McpTool[] {
 }
 
 export function mcpToolSummaryForAi(
-  providers: McpProvider[] = ["falix", "mega", "gdrive", "connector", "research"],
+  providers: McpProvider[] = ["falix", "mega", "gdrive", "connector", "research", "one"],
 ): string {
   const tools = ALL_MCP_TOOLS.filter((t) => providers.includes(t.provider));
-  const lines = tools.slice(0, 90).map(
+  const lines = tools.slice(0, 100).map(
     (t) =>
       `- ${t.name} [${t.provider}/${t.risk}${t.skill ? `/${t.skill}` : ""}]: ${t.description}` +
       (t.params.length
@@ -242,15 +288,15 @@ export function mcpToolSummaryForAi(
         : ""),
   );
   return [
-    "Catalogo tool MCP M.I.N.E (Falix + storage + connettori + research):",
+    "Catalogo tool MCP M.I.N.E (Falix + storage + connettori + research + One gateway):",
     ...lines,
-    tools.length > 90 ? `… e altri ${tools.length - 90} tool.` : "",
+    tools.length > 100 ? `… e altri ${tools.length - 100} tool.` : "",
+    "One: 700+ app via 4 tool — collega https://mcp.withone.ai/mcp (OAuth).",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-/** Id validi per proposte IA (Falix action id + storage + connector + research). */
 export function isKnownActionId(id: string): boolean {
   if (FALIX_ACTIONS.some((a) => a.id === id)) return true;
   return ALL_MCP_TOOLS.some((t) => t.name === id || t.falixActionId === id);
@@ -278,6 +324,10 @@ export const MCP_PROVIDER_META: Record<
   },
   research: {
     label: "Host Research",
-    blurb: "Studia provider MC e siti panel: API, MCP, prezzi, bozza profilo",
+    blurb: "Studia provider MC e cloud: API, MCP, prezzi, bozza profilo",
+  },
+  one: {
+    label: "One (withoneai)",
+    blurb: "Gateway MCP 700+ app — Gmail, Slack, Stripe, Notion… via 4 tool",
   },
 };
