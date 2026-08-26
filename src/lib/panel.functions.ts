@@ -157,7 +157,6 @@ export const analyzeNetwork = createServerFn({ method: "POST" })
     return res;
   });
 
-/** Host Research Agent: studia provider MC / URL panel (seed + probe + Groq). */
 export const researchHost = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -246,6 +245,54 @@ export const askAssistant = createServerFn({ method: "POST" })
     }
   });
 
+/** Coding agent JARVIS — modalità Code / Architect / Ask / Debug / Review. */
+export const askCodeAgent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        prompt: z.string().min(1).max(8000),
+        mode: z.enum(["code", "architect", "ask", "debug", "review"]),
+        language: z.string().min(1).max(40),
+        context: z.string().max(12000).optional(),
+        history: z
+          .array(
+            z.object({
+              role: z.enum(["user", "assistant"]),
+              content: z.string().max(4000),
+            }),
+          )
+          .max(16)
+          .default([]),
+        model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { askCodeAgent: run } = await import("./code.server");
+    try {
+      const reply = await run({
+        prompt: data.prompt,
+        mode: data.mode,
+        language: data.language,
+        context: data.context,
+        history: data.history,
+        model: data.model ?? DEFAULT_GROQ_MODEL,
+      });
+      logAction("info", `Code agent [${data.mode}]: ${data.prompt.slice(0, 60)}`);
+      return { ok: true as const, ...reply };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logAction("error", `Code agent fallito: ${message}`);
+      return {
+        ok: false as const,
+        risposta: message,
+        files: [] as { path: string; language: string; content: string }[],
+        nextSteps: [] as string[],
+      };
+    }
+  });
+
 export const runFalixAction = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -285,7 +332,6 @@ export const runFalixAction = createServerFn({ method: "POST" })
     }
   });
 
-/** MCP storage: status / list-note / upload-note (MEGA · Google Drive). */
 export const runStorageAction = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
