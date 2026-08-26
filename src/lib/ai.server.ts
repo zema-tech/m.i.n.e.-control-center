@@ -5,6 +5,7 @@ import {
   CONNECTOR_MCP_TOOLS,
   GDRIVE_MCP_TOOLS,
   MEGA_MCP_TOOLS,
+  ONE_MCP_TOOLS,
   RESEARCH_MCP_TOOLS,
   isKnownActionId,
   mcpToolSummaryForAi,
@@ -33,6 +34,7 @@ const STORAGE_CATALOG = [
   ...GDRIVE_MCP_TOOLS,
   ...CONNECTOR_MCP_TOOLS,
   ...RESEARCH_MCP_TOOLS,
+  ...ONE_MCP_TOOLS,
 ]
   .map(
     (t) =>
@@ -62,10 +64,10 @@ function systemPrompt(): string {
     "Azioni Falix (id [rischio] descrizione):",
     ACTION_CATALOG,
     "",
-    "Tool MCP storage + connettori + research:",
+    "Tool MCP storage + connettori + research + One gateway:",
     STORAGE_CATALOG,
     "",
-    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector", "research"]).slice(0, 6000),
+    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector", "research", "one"]).slice(0, 6000),
   ].join("\n");
   return buildExpertSystemPrompt(catalog);
 }
@@ -102,7 +104,8 @@ export async function askGroq(
           content: [
             "### Contesto operativo M.I.N.E",
             "Usa l'expert layer: diagnosi log, comandi sicuri, snippet config solo se utili.",
-            "Per studiare un host/provider MC proponi host_research con params.query.",
+            "Per studiare un host/provider proponi host_research con params.query.",
+            "Per app SaaS (Gmail, Slack, Stripe…) proponi i tool One: list_one_integrations, search_one_platform_actions, get_one_action_knowledge, execute_one_action (write richiede conferma).",
             "",
             "### Log recenti del server",
             logContext.slice(-7000),
