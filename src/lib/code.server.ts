@@ -1,5 +1,5 @@
 /**
- * Jarvis Code Agent — chiamate Groq in modalità Kilo/Claude Code.
+ * Jarvis Code Agent — cervello potenziato (Kilo/Claude Code style).
  */
 
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "./groq-models";
@@ -14,28 +14,27 @@ export type CodeAgentReply = {
 function buildCodeSystemPrompt(mode: CodeModeId, language: string): string {
   const m = getCodeMode(mode);
   return [
-    "Sei JARVIS, l'agente personale del proprietario di M.I.N.E — stile assistente competente, proattivo, chiaro.",
-    "Sei anche un coding agent ispirato a Kilo Code e Claude Code: ragioni per task, non solo autocomplete.",
-    "Rispondi SEMPRE in italiano (codice e identificatori restano nella lingua del progetto).",
+    "Sei JARVIS — coding agent del proprietario (stile Kilo Code + Claude Code).",
+    "CERVELLO = ragionamento. MANI per SaaS esterne = One MCP (https://mcp.withone.ai/mcp), non inventare integrazioni.",
+    "Rispondi in italiano; codice nella lingua del progetto.",
     "",
     m.systemHint,
     "",
-    `Linguaggio preferito del workspace: ${language}.",
+    `Linguaggio workspace: ${language}.`,
     "",
-    "Linee guida:",
-    "- Codice corretto, tipizzato dove ha senso, senza placeholder finti tipo TODO ovunque.",
-    "- Se il contesto è incompleto, dichiara assunzioni.",
-    "- Non inventare API inesistenti.",
-    "- Per sicurezza: evita eval, secrets hardcoded, SQL injection; segnala rischi.",
-    "- Human-in-the-loop: non pretendere di aver eseguito comandi sul sistema dell'utente.",
+    "Protocollo qualità:",
+    "1) Capisci il task e i vincoli.",
+    "2) Se manca contesto, dichiara assunzioni esplicite.",
+    "3) Preferisci soluzioni semplici e corrette a over-engineering.",
+    "4) Codice completo, tipizzato dove serve, zero TODO finti.",
+    "5) Sicurezza: no secrets, no eval, valida input.",
+    "6) Non fingere di aver scritto su disco o eseguito test.",
     "",
-    "Rispondi SOLO con JSON valido:",
-    JSON.stringify({
-      risposta: "spiegazione breve",
-      files: [{ path: "relativo/file.ts", language: "typescript", content: "..." }],
-      nextSteps: ["passo successivo opzionale"],
-    }),
-    "files può essere []. content deve essere il file intero o patch chiara. Max 6 file. Max 5 nextSteps.",
+    "Nella risposta testuale: breve piano (2-4 bullet) poi spiegazione; i file vanno in files[].",
+    "",
+    "JSON obbligatorio:",
+    '{"risposta":"...","files":[{"path":"...","language":"...","content":"..."}],"nextSteps":["..."]}',
+    "Max 6 file, max 5 nextSteps. files può essere [].",
   ].join("\n");
 }
 
@@ -55,7 +54,7 @@ export async function askCodeAgent(input: {
     ? (input.model as string)
     : (process.env["GROQ_MODEL"] ?? DEFAULT_GROQ_MODEL);
 
-  const history = (input.history ?? []).slice(-8);
+  const history = (input.history ?? []).slice(-10);
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -65,7 +64,8 @@ export async function askCodeAgent(input: {
     },
     body: JSON.stringify({
       model: chosen,
-      temperature: input.mode === "architect" ? 0.35 : 0.22,
+      temperature: input.mode === "architect" ? 0.3 : 0.15,
+      max_tokens: 8192,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: buildCodeSystemPrompt(input.mode, input.language) },
@@ -74,13 +74,12 @@ export async function askCodeAgent(input: {
           role: "user",
           content: [
             input.context?.trim()
-              ? `### Contesto / codice allegato\n${input.context.trim().slice(0, 12000)}`
-              : "",
-            "### Richiesta",
+              ? `### Contesto / codice allegato\n${input.context.trim().slice(0, 14000)}`
+              : "(nessun contesto file allegato)",
+            "### Task",
             input.prompt,
-          ]
-            .filter(Boolean)
-            .join("\n\n"),
+            "Ragiona bene. Qualità da senior engineer.",
+          ].join("\n\n"),
         },
       ],
     }),

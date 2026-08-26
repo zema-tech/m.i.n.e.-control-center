@@ -10,6 +10,7 @@ import {
   isKnownActionId,
   mcpToolSummaryForAi,
 } from "./mcp";
+import { oneHandsStatus } from "./one-hands.server";
 
 export type ProposedAction = {
   id: string;
@@ -60,14 +61,18 @@ function sanitizeParams(input: unknown): Record<string, string | number | boolea
 }
 
 function systemPrompt(): string {
+  const hands = oneHandsStatus();
   const catalog = [
-    "Azioni Falix (id [rischio] descrizione):",
+    "=== MANI FALIX ===",
     ACTION_CATALOG,
     "",
-    "Tool MCP storage + connettori + research + One gateway:",
+    "=== MANI MCP (storage, connector, research, ONE) ===",
     STORAGE_CATALOG,
     "",
-    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector", "research", "one"]).slice(0, 6000),
+    mcpToolSummaryForAi(["falix", "mega", "gdrive", "connector", "research", "one"]).slice(0, 5500),
+    "",
+    `Stato mani One: ${hands.message}`,
+    `MCP URL: ${hands.mcpUrl}`,
   ].join("\n");
   return buildExpertSystemPrompt(catalog);
 }
@@ -94,24 +99,28 @@ export async function askGroq(
     },
     body: JSON.stringify({
       model: chosen,
-      temperature: 0.28,
+      temperature: 0.18,
+      max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt() },
-        ...history.slice(-10),
+        ...history.slice(-12),
         {
           role: "user",
           content: [
-            "### Contesto operativo M.I.N.E",
-            "Usa l'expert layer: diagnosi log, comandi sicuri, snippet config solo se utili.",
-            "Per studiare un host/provider proponi host_research con params.query.",
-            "Per app SaaS (Gmail, Slack, Stripe…) proponi i tool One: list_one_integrations, search_one_platform_actions, get_one_action_knowledge, execute_one_action (write richiede conferma).",
+            "### Ruolo",
+            "Sei il CERVELLO. Le MANI sono i tool (Falix + One MCP). Non inventare risultati di azioni non proposte.",
+            "Usa il protocollo CAPISCO → DATI → IPOTESI → PIANO MANI → RISCHIO nella risposta.",
+            "Per SaaS (email, Slack, Stripe, Notion…): prioritizza tool One (list/search/knowledge/execute).",
+            "Per server MC: log + Falix. Per host sconosciuti: host_research.",
             "",
-            "### Log recenti del server",
-            logContext.slice(-7000),
+            "### Log / contesto server",
+            logContext.slice(-8000) || "(nessun log)",
             "",
-            "### Domanda amministratore",
+            "### Richiesta umana",
             question,
+            "",
+            "Rispondi solo JSON. Sii preciso, non generico.",
           ].join("\n"),
         },
       ],
