@@ -3,11 +3,12 @@
  * - Falix: tool mappati sulle API reali
  * - MEGA / Google Drive: storage backup
  * - Connettori: Discord webhook, status, skill hooks (human-in-the-loop)
+ * - Host research: studio provider MC / siti panel
  */
 
 import { FALIX_ACTIONS, type ActionRisk } from "@/lib/falix-actions";
 
-export type McpProvider = "falix" | "mega" | "gdrive" | "connector";
+export type McpProvider = "falix" | "mega" | "gdrive" | "connector" | "research";
 
 export type McpTool = {
   name: string;
@@ -198,11 +199,31 @@ export const CONNECTOR_MCP_TOOLS: McpTool[] = [
   },
 ];
 
+/** Ricerca provider hosting / siti panel MC (pattern company-research, su Groq). */
+export const RESEARCH_MCP_TOOLS: McpTool[] = [
+  {
+    name: "host_research",
+    provider: "research",
+    description:
+      "Studia un host o sito panel Minecraft (nome o URL): API, MCP, prezzi, rischi e bozza profilo host",
+    risk: "read",
+    skill: "status",
+    params: [
+      {
+        name: "query",
+        required: true,
+        hint: "Es. falix, pterodactyl, aternos.org, bloom.host",
+      },
+    ],
+  },
+];
+
 export const ALL_MCP_TOOLS: McpTool[] = [
   ...FALIX_MCP_TOOLS,
   ...MEGA_MCP_TOOLS,
   ...GDRIVE_MCP_TOOLS,
   ...CONNECTOR_MCP_TOOLS,
+  ...RESEARCH_MCP_TOOLS,
 ];
 
 export function mcpToolsByProvider(provider: McpProvider): McpTool[] {
@@ -210,7 +231,7 @@ export function mcpToolsByProvider(provider: McpProvider): McpTool[] {
 }
 
 export function mcpToolSummaryForAi(
-  providers: McpProvider[] = ["falix", "mega", "gdrive", "connector"],
+  providers: McpProvider[] = ["falix", "mega", "gdrive", "connector", "research"],
 ): string {
   const tools = ALL_MCP_TOOLS.filter((t) => providers.includes(t.provider));
   const lines = tools.slice(0, 90).map(
@@ -221,7 +242,7 @@ export function mcpToolSummaryForAi(
         : ""),
   );
   return [
-    "Catalogo tool MCP M.I.N.E (Falix + storage + connettori):",
+    "Catalogo tool MCP M.I.N.E (Falix + storage + connettori + research):",
     ...lines,
     tools.length > 90 ? `… e altri ${tools.length - 90} tool.` : "",
   ]
@@ -229,7 +250,7 @@ export function mcpToolSummaryForAi(
     .join("\n");
 }
 
-/** Id validi per proposte IA (Falix action id + storage + connector tool name). */
+/** Id validi per proposte IA (Falix action id + storage + connector + research). */
 export function isKnownActionId(id: string): boolean {
   if (FALIX_ACTIONS.some((a) => a.id === id)) return true;
   return ALL_MCP_TOOLS.some((t) => t.name === id || t.falixActionId === id);
@@ -254,5 +275,9 @@ export const MCP_PROVIDER_META: Record<
   connector: {
     label: "Connettori MCP",
     blurb: "Discord status/notify, webhook, skill check, pipeline backup",
+  },
+  research: {
+    label: "Host Research",
+    blurb: "Studia provider MC e siti panel: API, MCP, prezzi, bozza profilo",
   },
 };
