@@ -82,6 +82,7 @@ export async function askGroq(
   logContext: string,
   history: { role: "user" | "assistant"; content: string }[],
   model: string = DEFAULT_GROQ_MODEL,
+  brainContext?: string,
 ): Promise<AssistantReply> {
   const key = process.env["GROQ_API_KEY"];
   if (!key) throw new Error("GROQ_API_KEY non configurata sul server.");
@@ -90,6 +91,8 @@ export async function askGroq(
   const chosen = allowed.includes(model as GroqModelId)
     ? model
     : (process.env["GROQ_MODEL"] ?? DEFAULT_GROQ_MODEL);
+
+  const brain = (brainContext ?? "").trim().slice(0, 10000);
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -108,11 +111,18 @@ export async function askGroq(
         {
           role: "user",
           content: [
+            brain
+              ? [
+                  "### I 4 PILASTRI DELL'ASSISTENTE (obbligatori)",
+                  "Rispetta carattere, memoria, mani e regole seguenti:",
+                  brain,
+                  "",
+                ].join("\n")
+              : "",
             "### Ruolo",
             "Sei il CERVELLO. Le MANI sono i tool (Falix + One MCP). Non inventare risultati di azioni non proposte.",
-            "Usa il protocollo CAPISCO → DATI → IPOTESI → PIANO MANI → RISCHIO nella risposta.",
-            "Per SaaS (email, Slack, Stripe, Notion…): prioritizza tool One (list/search/knowledge/execute).",
-            "Per server MC: log + Falix. Per host sconosciuti: host_research.",
+            "Protocollo: CAPISCO → DATI → IPOTESI → PIANO MANI → RISCHIO.",
+            "SaaS → One MCP. Server MC → Falix/log. Host sconosciuti → host_research.",
             "",
             "### Log / contesto server",
             logContext.slice(-8000) || "(nessun log)",
@@ -121,7 +131,9 @@ export async function askGroq(
             question,
             "",
             "Rispondi solo JSON. Sii preciso, non generico.",
-          ].join("\n"),
+          ]
+            .filter(Boolean)
+            .join("\n"),
         },
       ],
     }),
