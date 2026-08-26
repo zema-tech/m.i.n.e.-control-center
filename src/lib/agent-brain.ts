@@ -6,7 +6,7 @@
  * 4. Regole     — cosa non deve fare           → rules (CLAUDE.md-style)
  */
 
-import { loadAgentProfile, type AgentProfile } from "./agent-profile";
+import { loadAgentProfile, saveAgentProfile, type AgentProfile } from "./agent-profile";
 
 const KEY_IDENTITY = "mine.brain.identity.v1";
 const KEY_MEMORY = "mine.brain.memory.v1";
@@ -20,15 +20,23 @@ export type MemoryNote = {
 };
 
 export type AgentIdentityDoc = {
-  /** identity.md — chi è e come parla */
   character: string;
   updatedAt: number;
 };
 
 export type AgentRulesDoc = {
-  /** CLAUDE.md / regole operative */
   rules: string;
   updatedAt: number;
+};
+
+/** Backup completo cervello (export/import). */
+export type BrainBackup = {
+  version: 1;
+  exportedAt: number;
+  profile: AgentProfile;
+  identity: AgentIdentityDoc;
+  rules: AgentRulesDoc;
+  memory: MemoryNote[];
 };
 
 function canUse() {
@@ -137,6 +145,68 @@ export function addMemoryNote(title: string, body: string): MemoryNote {
 
 export function removeMemoryNote(id: string) {
   saveMemoryNotes(loadMemoryNotes().filter((n) => n.id !== id));
+}
+
+export function exportBrainBackup(): BrainBackup {
+  return {
+    version: 1,
+    exportedAt: Date.now(),
+    profile: loadAgentProfile(),
+    identity: loadIdentityDoc(),
+    rules: loadRulesDoc(),
+    memory: loadMemoryNotes(),
+  };
+}
+
+export function importBrainBackup(data: unknown): { ok: boolean; message: string } {
+  try {
+    const b = data as Partial<BrainBackup>;
+    if (!b || b.version !== 1) {
+      return { ok: false, message: "File non valido: serve version 1" };
+    }
+    if (b.profile) {
+      saveAgentProfile({
+        name: b.profile.name,
+        tagline: b.profile.tagline,
+        focus: b.profile.focus,
+        language: b.profile.language,
+      });
+    }
+    if (b.identity?.character) saveIdentityDoc(String(b.identity.character));
+    if (b.rules?.rules) saveRulesDoc(String(b.rules.rules));
+    if (Array.isArray(b.memory)) {
+      saveMemoryNotes(
+        b.memory
+          .filter((n) => n && typeof n.body === "string")
+          .map((n) => ({
+            id: String(n.id ?? `mem:${Date.now().toString(36)}`),
+            title: String(n.title ?? "Nota").slice(0, 80),
+            body: String(n.body).slice(0, 2000),
+            createdAt: typeof n.createdAt === "number" ? n.createdAt : Date.now(),
+          }))
+          .slice(0, 80),
+      );
+    }
+    return { ok: true, message: "Cervello importato (profilo, carattere, regole, memoria)" };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Import fallito",
+    };
+  }
+}
+
+export function downloadBrainBackup() {
+  if (!canUse()) return;
+  const blob = new Blob([JSON.stringify(exportBrainBackup(), null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `jarvis-brain-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Testo da iniettare nel prompt (cervello completo). */
