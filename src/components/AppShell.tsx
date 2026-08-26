@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Brain,
   Cable,
+  Code2,
   Home,
   KeyRound,
   LogOut,
@@ -25,16 +26,26 @@ import {
 import { loadAgentProfile } from "@/lib/agent-profile";
 import { logout } from "@/lib/auth.functions";
 
-const NAV_CORE = [
-  { to: "/agent" as const, label: "Agente", icon: Home },
-  { to: "/assistant" as const, label: "Chat", icon: MessageSquare },
-  { to: "/network" as const, label: "Rete neurale", icon: Network },
+type NavTo =
+  | "/agent"
+  | "/assistant"
+  | "/code"
+  | "/network"
+  | "/skills"
+  | "/hosts"
+  | "/connectors";
+
+const NAV_CORE: { to: NavTo; label: string; icon: typeof Home }[] = [
+  { to: "/agent", label: "Jarvis", icon: Home },
+  { to: "/assistant", label: "Chat ops", icon: MessageSquare },
+  { to: "/code", label: "Codice", icon: Code2 },
+  { to: "/network", label: "Rete neurale", icon: Network },
 ];
 
-const NAV_CAP = [
-  { to: "/skills" as const, label: "Competenze", icon: KeyRound },
-  { to: "/hosts" as const, label: "Host", icon: Server },
-  { to: "/connectors" as const, label: "Connettori", icon: Cable },
+const NAV_CAP: { to: NavTo; label: string; icon: typeof Home }[] = [
+  { to: "/skills", label: "Competenze", icon: KeyRound },
+  { to: "/hosts", label: "Host", icon: Server },
+  { to: "/connectors", label: "Connettori", icon: Cable },
 ];
 
 function NavLink({
@@ -44,7 +55,7 @@ function NavLink({
   pathname,
   onNavigate,
 }: {
-  to: "/agent" | "/assistant" | "/network" | "/skills" | "/hosts" | "/connectors";
+  to: NavTo;
   label: string;
   icon: typeof Home;
   pathname: string;
@@ -98,8 +109,7 @@ function SideNav({
           <Brain className="h-3 w-3 animate-soft-float" /> {agentName}
         </p>
         <p className="text-caption leading-relaxed text-muted-foreground">
-          Agente collegato a <span className="text-primary">Groq</span> — host, One MCP e azioni con
-          conferma.
+          Agente personale · ops + coding · <span className="text-primary">Groq</span>
         </p>
       </div>
     </nav>
@@ -113,7 +123,7 @@ function BrandBlock({ agentName }: { agentName: string }) {
         {agentName}
       </span>
       <span className="mt-0.5 block text-caption uppercase tracking-[0.2em] text-muted-foreground">
-        personal ai agent
+        personal jarvis
       </span>
     </Link>
   );
@@ -131,10 +141,10 @@ export function AppShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const doLogout = useServerFn(logout);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [agentName, setAgentName] = useState("M.I.N.E");
+  const [agentName, setAgentName] = useState("JARVIS");
 
   useEffect(() => {
-    setAgentName(loadAgentProfile().name || "M.I.N.E");
+    setAgentName(loadAgentProfile().name || "JARVIS");
   }, [pathname]);
 
   async function onLogout() {
@@ -219,7 +229,7 @@ export function AppShell({
           <div className="flex items-center gap-3">
             <AccountSelector className="md:hidden" />
             <span className="hidden items-center gap-1.5 text-caption uppercase tracking-widest text-muted-foreground sm:flex">
-              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> agente online
+              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> jarvis online
             </span>
           </div>
         </header>
