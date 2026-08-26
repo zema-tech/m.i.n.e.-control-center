@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { ModeBadge } from "@/components/ModeBadge";
 import { cn } from "@/lib/utils";
 
 export type LogLineView = {
@@ -39,6 +40,7 @@ export function LogViewer({
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   const visible = expanded ? lines : lines.slice(-maxCollapsed);
+  const isDemo = Boolean(demo) || Boolean(error);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -64,8 +66,20 @@ export function LogViewer({
 
   return (
     <section className={cn("panel relative p-4", className)}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-section text-primary">{title ?? "Log"}</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-section text-primary">{title ?? "Log"}</h2>
+          <ModeBadge
+            mode={isDemo ? "demo" : "live"}
+            detail={
+              error
+                ? "errore"
+                : demo
+                  ? "no Falix attivo"
+                  : "Falix"
+            }
+          />
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -95,11 +109,13 @@ export function LogViewer({
         </div>
       </div>
 
-      {(demo || error) && (
-        <p className="mb-2 text-caption text-warning">
-          {error ?? "Log demo — collega un account Falix per i log reali"}
+      {isDemo ? (
+        <p className="mb-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100/90">
+          {error
+            ? `Errore log: ${error}`
+            : "Modalità DEMO — i log non arrivano da un server reale. Aggiungi un account Falix in Competenze e impostalo attivo."}
         </p>
-      )}
+      ) : null}
 
       <div
         ref={scrollerRef}
@@ -132,7 +148,7 @@ export function LogViewer({
         <button
           type="button"
           onClick={jumpBottom}
-          className="btn-matrix absolute bottom-3 right-3 rounded-full border border-primary/50 bg-background/90 px-2.5 py-1 text-[9px] uppercase tracking-wider text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.2)]"
+          className="btn-matrix absolute bottom-3 right-3 rounded-full border border-primary/50 bg-background/90 px-2.5 py-1 text-[9px] uppercase tracking-wider text-primary"
         >
           ↓ fine
         </button>

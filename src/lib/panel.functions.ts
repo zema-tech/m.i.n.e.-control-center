@@ -26,6 +26,13 @@ async function requireAdmin() {
   }
 }
 
+/** Stato env (senza rivelare secret). */
+export const getSystemHealth = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const { getSystemHealth: run } = await import("./system-health.server");
+  return run();
+});
+
 export const getLogs = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -204,7 +211,6 @@ export const askAssistant = createServerFn({ method: "POST" })
         model: z.enum(modelIds as [typeof DEFAULT_GROQ_MODEL, ...string[]]).optional(),
         credentials: credSchema,
         accountLabel: z.string().max(80).optional(),
-        /** 4 pilastri: carattere + memoria + mani + regole (dal client) */
         brainContext: z.string().max(12000).optional(),
       })
       .parse(input),
