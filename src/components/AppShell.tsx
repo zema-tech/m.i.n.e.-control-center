@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Brain,
   Cable,
+  Home,
   KeyRound,
   LogOut,
   Menu,
@@ -11,7 +12,7 @@ import {
   Server,
   Sparkles,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { AccountSelector } from "@/components/AccountSelector";
 import {
@@ -21,68 +22,98 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { loadAgentProfile } from "@/lib/agent-profile";
 import { logout } from "@/lib/auth.functions";
 
-const NAV = [
-  { to: "/network" as const, label: "Rete / pallini", icon: Network },
-  { to: "/assistant" as const, label: "Chat IA", icon: MessageSquare },
+const NAV_CORE = [
+  { to: "/agent" as const, label: "Agente", icon: Home },
+  { to: "/assistant" as const, label: "Chat", icon: MessageSquare },
+  { to: "/network" as const, label: "Rete neurale", icon: Network },
+];
+
+const NAV_CAP = [
   { to: "/skills" as const, label: "Competenze", icon: KeyRound },
   { to: "/hosts" as const, label: "Host", icon: Server },
   { to: "/connectors" as const, label: "Connettori", icon: Cable },
 ];
 
-function SideNav({
+function NavLink({
+  to,
+  label,
+  icon: Icon,
   pathname,
   onNavigate,
 }: {
+  to: "/agent" | "/assistant" | "/network" | "/skills" | "/hosts" | "/connectors";
+  label: string;
+  icon: typeof Home;
   pathname: string;
   onNavigate?: () => void;
 }) {
+  const active =
+    pathname === to || (to === "/assistant" && pathname.startsWith("/assistant"));
+  return (
+    <Link
+      to={to}
+      onClick={onNavigate}
+      className={`btn-matrix flex items-center gap-2 rounded-md px-3 py-2.5 text-xs uppercase tracking-widest ${
+        active
+          ? "nav-item-active border border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.12)]"
+          : "border border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" />
+      {label}
+    </Link>
+  );
+}
+
+function SideNav({
+  pathname,
+  onNavigate,
+  agentName,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+  agentName: string;
+}) {
   return (
     <nav className="flex flex-1 flex-col gap-1 p-3">
-      {NAV.map((item) => {
-        const active =
-          pathname === item.to ||
-          (item.to === "/assistant" && pathname.startsWith("/assistant"));
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={`btn-matrix flex items-center gap-2 rounded-md px-3 py-2.5 text-xs uppercase tracking-widest ${
-              active
-                ? "nav-item-active border border-primary/40 bg-primary/10 text-primary shadow-[0_0_12px_oklch(0.86_0.28_145_/_0.12)]"
-                : "border border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
-            {item.label}
-          </Link>
-        );
-      })}
+      <p className="mb-1 px-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground/80">
+        core
+      </p>
+      {NAV_CORE.map((item) => (
+        <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
+      ))}
+
+      <p className="mb-1 mt-3 px-1 text-[9px] uppercase tracking-[0.2em] text-muted-foreground/80">
+        capacità
+      </p>
+      {NAV_CAP.map((item) => (
+        <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
+      ))}
 
       <div className="mt-4 animate-border-breathe rounded-md border border-border/60 bg-background/50 p-3">
         <p className="mb-1.5 flex items-center gap-1.5 text-label text-primary">
-          <Brain className="h-3 w-3 animate-soft-float" /> sistema neurale
+          <Brain className="h-3 w-3 animate-soft-float" /> {agentName}
         </p>
         <p className="text-caption leading-relaxed text-muted-foreground">
-          Rete collegata a <span className="text-primary">Groq</span> — MC, Koyeb, Railway e altri
-          host in Host / Competenze.
+          Agente collegato a <span className="text-primary">Groq</span> — host, One MCP e azioni con
+          conferma.
         </p>
       </div>
     </nav>
   );
 }
 
-function BrandBlock() {
+function BrandBlock({ agentName }: { agentName: string }) {
   return (
-    <Link to="/network" className="block">
+    <Link to="/agent" className="block">
       <span className="text-glow font-display text-lg font-bold tracking-widest text-primary">
-        M.I.N.E
+        {agentName}
       </span>
       <span className="mt-0.5 block text-caption uppercase tracking-[0.2em] text-muted-foreground">
-        multi-app network engine
+        personal ai agent
       </span>
     </Link>
   );
@@ -100,6 +131,11 @@ export function AppShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const doLogout = useServerFn(logout);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [agentName, setAgentName] = useState("M.I.N.E");
+
+  useEffect(() => {
+    setAgentName(loadAgentProfile().name || "M.I.N.E");
+  }, [pathname]);
 
   async function onLogout() {
     await doLogout({});
@@ -110,13 +146,13 @@ export function AppShell({
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background/90 backdrop-blur-sm md:flex">
         <div className="border-b border-border px-4 py-4">
-          <BrandBlock />
+          <BrandBlock agentName={agentName} />
           <div className="mt-3">
             <AccountSelector />
           </div>
         </div>
 
-        <SideNav pathname={pathname} />
+        <SideNav pathname={pathname} agentName={agentName} />
 
         <div className="border-t border-border p-3">
           <button
@@ -148,12 +184,16 @@ export function AppShell({
               >
                 <SheetHeader className="border-b border-border px-4 py-4 text-left">
                   <SheetTitle className="sr-only">Navigazione</SheetTitle>
-                  <BrandBlock />
+                  <BrandBlock agentName={agentName} />
                   <div className="mt-3">
                     <AccountSelector />
                   </div>
                 </SheetHeader>
-                <SideNav pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+                <SideNav
+                  pathname={pathname}
+                  agentName={agentName}
+                  onNavigate={() => setMobileOpen(false)}
+                />
                 <div className="mt-auto border-t border-border p-3">
                   <button
                     type="button"
@@ -179,7 +219,7 @@ export function AppShell({
           <div className="flex items-center gap-3">
             <AccountSelector className="md:hidden" />
             <span className="hidden items-center gap-1.5 text-caption uppercase tracking-widest text-muted-foreground sm:flex">
-              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> groq online
+              <Sparkles className="h-3 w-3 text-primary animate-soft-float" /> agente online
             </span>
           </div>
         </header>
