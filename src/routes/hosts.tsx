@@ -178,14 +178,14 @@ function HostsPage() {
   return (
     <AppShell
       title="Host"
-      subtitle="Cambia host facilmente — nome, API key, Server ID e base URL"
+      subtitle="Minecraft + cloud app — Falix, Koyeb, Railway, Render, Fly…"
     >
       <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
         <div className="panel-spacious space-y-3">
           <div>
             <p className="text-label text-primary">Studia questo provider</p>
             <p className="text-caption text-muted-foreground">
-              Host Research Agent (seed + probe sito + Groq) — API, MCP, prezzi e bozza profilo
+              Host Research Agent — panel MC e cloud (Koyeb, Railway…): API, prezzi, bozza profilo
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -195,8 +195,8 @@ function HostsPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") void runResearch();
               }}
-              placeholder="es. falix, pterodactyl, aternos.org, bloom.host"
-              className="w-full flex-1 rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              placeholder="es. koyeb, railway, falix, render.com"
+              className="w-full flex-1 rounded border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
             />
             <button
               type="button"
@@ -213,7 +213,7 @@ function HostsPage() {
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {["falix", "pterodactyl", "aternos", "exaroton", "mcsmanager"].map((q) => (
+            {["falix", "koyeb", "railway", "render", "fly", "pterodactyl"].map((q) => (
               <button
                 key={q}
                 type="button"
@@ -230,7 +230,7 @@ function HostsPage() {
           </div>
           {researchError ? <p className="text-caption text-destructive">{researchError}</p> : null}
           {report ? (
-            <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <div className="animate-fade-in-up space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm text-foreground">{report.label}</p>
                 <StatusBadge
@@ -294,24 +294,24 @@ function HostsPage() {
         <div>
           <p className="mb-2 text-label text-muted-foreground">Preset host</p>
           <div className="flex flex-wrap gap-2">
-            {HOST_PROVIDERS.filter((p) => p.apiReady || p.id === "falix" || p.id === "generic").map(
-              (p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => quickAdd(p.id)}
-                  className="btn-matrix rounded-full border border-border px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary"
-                  title={p.apiHint}
-                >
-                  {p.label}
-                  {p.apiReady ? " · API" : ""}
-                </button>
-              ),
-            )}
+            {HOST_PROVIDERS.filter(
+              (p) => p.apiReady || p.category === "cloud" || p.id === "falix" || p.id === "generic",
+            ).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => quickAdd(p.id)}
+                className="btn-matrix rounded-full border border-border px-3 py-1.5 text-[11px] uppercase tracking-wider text-muted-foreground hover:border-primary hover:text-primary"
+                title={p.apiHint}
+              >
+                {p.label}
+                {p.category === "cloud" ? " · cloud" : p.apiReady ? " · API" : ""}
+              </button>
+            ))}
           </div>
           <p className="mt-2 text-caption text-muted-foreground">
-            Falix è pronto per le azioni live. Altri host: salvi nome + API per switch rapido; le
-            azioni live restano su account Falix in Competenze finché non estendi il adapter.
+            Falix resta l&apos;unico con azioni live complete. Koyeb / Railway / Render: salvi profilo +
+            API per switch e research; adapter live in estensione.
           </p>
         </div>
 
@@ -331,7 +331,7 @@ function HostsPage() {
         </div>
 
         {open ? (
-          <div className="panel-spacious space-y-3">
+          <div className="panel-spacious animate-fade-in-up space-y-3">
             <p className="text-label text-primary">
               {editId ? "Modifica host" : "Aggiungi host"}
             </p>
@@ -343,14 +343,14 @@ function HostsPage() {
               {HOST_PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
-                  {p.apiReady ? " (API)" : ""}
+                  {p.category === "cloud" ? " (cloud)" : p.apiReady ? " (API)" : ""}
                 </option>
               ))}
             </select>
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Nome host (es. SMP Gino, Falix main)"
+              placeholder="Nome (es. API bot Koyeb, SMP Gino)"
               className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             <input
@@ -364,7 +364,7 @@ function HostsPage() {
             <input
               value={serverId}
               onChange={(e) => setServerId(e.target.value)}
-              placeholder="Server ID / Instance ID"
+              placeholder="Server / App / Service ID"
               className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             <input
@@ -376,7 +376,7 @@ function HostsPage() {
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="IP:porta o hostname pubblico (opz.)"
+              placeholder="Hostname pubblico / IP (opz.)"
               className="w-full rounded border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             {def ? <p className="text-caption text-muted-foreground">{def.apiHint}</p> : null}
@@ -404,14 +404,14 @@ function HostsPage() {
             <EmptyState
               icon={Server}
               title="Nessun host"
-              description="Aggiungi Falix o un altro provider con nome e API."
+              description="Aggiungi Falix, Koyeb o un altro provider con nome e API."
               action={
                 <button
                   type="button"
-                  onClick={() => quickAdd("falix")}
+                  onClick={() => quickAdd("koyeb")}
                   className="btn-matrix rounded-md border border-primary px-3 py-1.5 text-[10px] uppercase tracking-widest text-primary hover:bg-primary/10"
                 >
-                  aggiungi FalixNodes
+                  aggiungi Koyeb
                 </button>
               }
             />
@@ -421,10 +421,8 @@ function HostsPage() {
             {list.map((h) => (
               <li
                 key={h.id}
-                className={`rounded-lg border px-3 py-3 transition-colors ${
-                  h.primary
-                    ? "border-primary/40 bg-primary/5"
-                    : "border-border hover:border-primary/30"
+                className={`card-interactive rounded-lg border px-3 py-3 ${
+                  h.primary ? "border-primary/40 bg-primary/5" : "border-border"
                 }`}
               >
                 <div className="flex items-start gap-2">
@@ -450,7 +448,7 @@ function HostsPage() {
                     <p className="text-caption text-muted-foreground">
                       {providerLabel(h.provider)}
                       {h.serverId
-                        ? ` · srv ${h.serverId.slice(0, 10)}${h.serverId.length > 10 ? "…" : ""}`
+                        ? ` · id ${h.serverId.slice(0, 10)}${h.serverId.length > 10 ? "…" : ""}`
                         : ""}
                       {" · "}
                       {maskKey(h.apiKey)}
