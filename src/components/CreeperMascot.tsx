@@ -5,17 +5,18 @@ import { cn } from "@/lib/utils";
 type Pos = { x: number; y: number };
 
 /**
- * Mascotte Creeper M.I.N.E — trascinabile, si muove da sola, esplode al tocco.
+ * Mascotte Creeper M.I.N.E — PNG trasparente, trascinabile, esplode al tocco.
  */
 export function CreeperMascot({ className }: { className?: string }) {
   const [pos, setPos] = useState<Pos>({ x: 24, y: 140 });
   const [dragging, setDragging] = useState(false);
   const [exploding, setExploding] = useState(false);
   const [face, setFace] = useState<"idle" | "happy" | "boom">("idle");
+  const [loaded, setLoaded] = useState(false);
   const [bob, setBob] = useState(0);
   const dragOffset = useRef({ x: 0, y: 0 });
   const startPtr = useRef({ x: 0, y: 0 });
-  const size = 96;
+  const size = 112;
 
   useEffect(() => {
     if (dragging || exploding) return;
@@ -103,7 +104,7 @@ export function CreeperMascot({ className }: { className?: string }) {
         type="button"
         aria-label="Mascotte Creeper — trascina o tocca per far esplodere"
         className={cn(
-          "pointer-events-auto absolute touch-none select-none",
+          "pointer-events-auto absolute touch-none select-none bg-transparent p-0 border-0",
           "cursor-grab active:cursor-grabbing",
           exploding && "creeper-explode",
         )}
@@ -114,6 +115,7 @@ export function CreeperMascot({ className }: { className?: string }) {
           height: size,
           transform: `translateY(${floatY}px) scale(${dragging ? 1.1 : 1})`,
           transition: dragging ? "none" : "transform 0.12s ease",
+          background: "transparent",
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -124,11 +126,18 @@ export function CreeperMascot({ className }: { className?: string }) {
           src={CREEPER_MASCOT_SRC}
           alt="Creeper — mascotte M.I.N.E"
           draggable={false}
+          width={size}
+          height={size}
+          onLoad={() => setLoaded(true)}
           className={cn(
-            "h-full w-full object-contain drop-shadow-[0_10px_24px_rgba(16,185,129,0.5)]",
+            "h-full w-full object-contain object-center",
+            "drop-shadow-[0_10px_24px_rgba(16,185,129,0.45)]",
             face === "happy" && "creeper-wiggle",
             exploding && "opacity-0",
+            !loaded && "opacity-0",
+            loaded && "opacity-100 transition-opacity duration-300",
           )}
+          style={{ backgroundColor: "transparent", background: "none" }}
         />
         {!exploding ? (
           <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-emerald-400/35 bg-black/55 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300 backdrop-blur-sm">
