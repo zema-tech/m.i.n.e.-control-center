@@ -1,9 +1,82 @@
 <!DOCTYPE html>
-<html lang="it">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Omnicore — One core. Every capability.</title>
-  <meta http-equiv="refresh" content="0;url=./hub-full.html" />
-  <p>Redirecting… If not, open <a href="./hub-full.html">hub-full.html</a>.</p>
-</html>
+<html lang="it"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Omnicore</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#050508;--text:#f4f4f7;--muted:#8b8b9a;--accent:#38bdf8;--border:rgba(255,255,255,.08)}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+body::before{content:"";position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(56,189,248,.12),transparent 55%);pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:2;width:min(1120px,calc(100% - 2.5rem));margin:0 auto}
+nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:1rem 0;background:rgba(5,5,8,.75);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:.65rem;font-family:Space Grotesk,sans-serif;font-weight:700;font-size:1.15rem;text-decoration:none;color:inherit}
+.logo-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#38bdf8,#6366f1 55%,#a78bfa);display:grid;place-items:center;font-size:.7rem;color:#050508;font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:.45rem;padding:.65rem 1.15rem;font-size:.875rem;font-weight:600;border-radius:999px;border:none;cursor:pointer;text-decoration:none;color:inherit;font-family:inherit}
+.btn-primary{background:linear-gradient(135deg,#38bdf8,#6366f1);color:#050508;box-shadow:0 4px 24px rgba(56,189,248,.25)}
+.btn-outline{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.03)}
+.hero{padding:8.5rem 0 4rem;display:grid;grid-template-columns:1.1fr .9fr;gap:3rem;align-items:center}
+@media(max-width:900px){.hero{grid-template-columns:1fr}}
+h1{font-family:Space Grotesk,sans-serif;font-size:clamp(2.4rem,5vw,3.8rem);line-height:1.05;letter-spacing:-.03em;margin:1rem 0}
+.grad{background:linear-gradient(120deg,#e0f2fe,#38bdf8 40%,#818cf8 70%,#c4b5fd);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--muted);max-width:34rem;margin-bottom:1.75rem;font-size:1.05rem}
+.cta{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:2rem}
+.agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;padding:3rem 0}
+.card{padding:1.35rem;border-radius:16px;border:1px solid var(--border);background:rgba(255,255,255,.03)}
+.card h3{font-family:Space Grotesk,sans-serif;margin-bottom:.25rem}
+.card .role{font-size:.75rem;color:var(--accent);margin-bottom:.5rem}
+.card p{font-size:.9rem;color:var(--muted)}
+.band{margin:2rem 0;padding:2rem;border-radius:20px;border:1px solid rgba(255,255,255,.12);background:radial-gradient(ellipse at 20% 0%,rgba(56,189,248,.12),transparent 50%),rgba(255,255,255,.02);display:flex;flex-wrap:wrap;justify-content:space-between;gap:1.5rem;align-items:center}
+footer{padding:2.5rem 0;border-top:1px solid var(--border);color:#5c5c6e;font-size:.85rem}
+.modal-root{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.65);backdrop-filter:blur(8px)}
+.modal-root.open{display:flex}
+.modal{width:min(400px,100%);background:#0c0c14;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:1.75rem;position:relative}
+.modal h2{font-family:Space Grotesk,sans-serif;margin-bottom:.35rem}
+.tabs{display:flex;gap:.25rem;padding:.25rem;border-radius:10px;background:rgba(255,255,255,.04);margin:1rem 0}
+.tabs button{flex:1;padding:.5rem;border:none;background:transparent;color:var(--muted);border-radius:8px;cursor:pointer;font-family:inherit}
+.tabs button.active{background:rgba(255,255,255,.08);color:var(--text)}
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:.75rem;color:var(--muted);margin-bottom:.35rem}
+.field input{width:100%;padding:.75rem;border-radius:10px;border:1px solid var(--border);background:rgba(0,0,0,.35);color:var(--text);font-size:.95rem}
+.err{color:#f87171;font-size:.8rem;min-height:1.2em;margin-bottom:.5rem}
+.visual{border-radius:24px;overflow:hidden;border:1px solid rgba(255,255,255,.12);aspect-ratio:4/5;max-height:520px;background:#0a0a10;position:relative}
+.visual img,.visual video{width:100%;height:100%;object-fit:cover}
+</style></head><body>
+<header><nav><div class="wrap nav-inner"><a class="logo" href="#"><span class="logo-mark">OC</span>Omnicore</a>
+<div style="display:flex;gap:.5rem"><button class="btn" type="button" data-open="login">Accedi</button><button class="btn btn-primary" type="button" data-open="signup">Crea account</button></div></div></nav></header>
+<main class="wrap"><section class="hero"><div>
+<p style="font-size:.75rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase">Sistema multi-agente</p>
+<h1>One core.<br><span class="grad">Every capability.</span></h1>
+<p class="lead">Omnicore coordina cinque IA specializzate. J.A.R.V.I.S orchestra; E.D.I.T, M.I.N.E, P.R.O.M.P.T e A.R.T eseguono. Self-host o accedi al Control Center.</p>
+<div class="cta"><button class="btn btn-primary" type="button" data-open="signup">Inizia gratis</button>
+<a class="btn btn-outline" href="https://github.com/zema-tech/omnicore-agent" target="_blank" rel="noopener">Hostalo tu</a></div></div>
+<div class="visual"><img src="character.jpg" alt="Omnicore"/><video autoplay muted loop playsinline poster="character.jpg"><source src="hero-web.mp4" type="video/mp4"/></video></div></section>
+<section class="agents">
+<article class="card"><h3>J.A.R.V.I.S</h3><div class="role">IA principale</div><p>Orchestratore: memoria, regole, chat e azioni con conferma umana.</p></article>
+<article class="card"><h3>E.D.I.T</h3><div class="role">Social</div><p>Contenuti e presenza online.</p></article>
+<article class="card"><h3>M.I.N.E</h3><div class="role">Gaming</div><p>Host Minecraft / Falix, log e console.</p></article>
+<article class="card"><h3>P.R.O.M.P.T</h3><div class="role">Coding</div><p>Architect, debug e review agentici.</p></article>
+<article class="card"><h3>A.R.T</h3><div class="role">Design</div><p>Identità visiva e componenti.</p></article>
+</section>
+<section class="band" id="host"><div><h2 style="font-family:Space Grotesk,sans-serif;margin-bottom:.35rem">Hostalo tu</h2><p style="color:var(--muted);max-width:28rem">Repo pubblico omnicore-agent — BYOK Groq/OpenRouter o Ollama.</p></div>
+<a class="btn btn-primary" href="https://github.com/zema-tech/omnicore-agent" target="_blank" rel="noopener">Apri su GitHub</a></section></main>
+<footer><div class="wrap">Omnicore · zema-tech · <a href="https://github.com/zema-tech/omnicore-agent" style="color:#8b8b9a">omnicore-agent</a></div></footer>
+<div class="modal-root" id="auth"><div class="modal"><h2 id="authTitle">Benvenuto</h2><p style="color:var(--muted);font-size:.875rem;margin-bottom:.5rem" id="authSub">Control Center Omnicore</p>
+<div class="tabs"><button type="button" class="active" data-tab="login">Accedi</button><button type="button" data-tab="signup">Crea account</button></div>
+<form id="authForm"><div class="field" id="nameField" hidden><label>Nome</label><input id="name" type="text"/></div>
+<div class="field"><label>Email</label><input id="email" type="email" required/></div>
+<div class="field"><label>Password</label><input id="password" type="password" required minlength="8"/></div>
+<p class="err" id="err"></p><button class="btn btn-primary" style="width:100%" type="submit" id="submitBtn">Accedi</button>
+<p style="font-size:.75rem;color:#5c5c6e;margin-top:1rem;text-align:center">Demo locale (localStorage). In produzione → backend Control Center.</p></form>
+<button type="button" id="closeAuth" style="position:absolute;top:1rem;right:1rem;background:none;border:none;color:#5c5c6e;cursor:pointer;font-size:1.1rem">✕</button></div></div>
+<script>
+const KEY="omnicore.accounts.v1",SK="omnicore.session.v1";
+let mode="login";
+const modal=document.getElementById("auth");
+function openAuth(m){mode=m;modal.classList.add("open");document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===m));document.getElementById("nameField").hidden=m!=="signup";document.getElementById("authTitle").textContent=m==="signup"?"Crea account":"Bentornato";document.getElementById("submitBtn").textContent=m==="signup"?"Crea account":"Accedi";}
+document.querySelectorAll("[data-open]").forEach(el=>el.onclick=()=>openAuth(el.dataset.open));
+document.getElementById("closeAuth").onclick=()=>modal.classList.remove("open");
+modal.addEventListener("click",e=>{if(e.target===modal)modal.classList.remove("open")});
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>openAuth(b.dataset.tab));
+async function hash(p,s){const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s+":"+p));return[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("")}
+document.getElementById("authForm").onsubmit=async e=>{e.preventDefault();const err=document.getElementById("err");err.textContent="";const email=document.getElementById("email").value.trim().toLowerCase();const password=document.getElementById("password").value;const name=document.getElementById("name").value.trim();if(!email.includes("@")){err.textContent="Email non valida";return}if(password.length<8){err.textContent="Minimo 8 caratteri";return}let accounts=[];try{accounts=JSON.parse(localStorage.getItem(KEY)||"[]")}catch{}if(mode==="signup"){if(accounts.some(a=>a.email===email)){err.textContent="Email già registrata";return}const salt=crypto.randomUUID();accounts.push({email,name:name||email.split("@")[0],salt,hash:await hash(password,salt),createdAt:Date.now()});localStorage.setItem(KEY,JSON.stringify(accounts));localStorage.setItem(SK,JSON.stringify({email,at:Date.now()}));modal.classList.remove("open");alert("Account creato (demo locale)");return}const u=accounts.find(a=>a.email===email);if(!u||u.hash!==await hash(password,u.salt)){err.textContent="Credenziali non valide";return}localStorage.setItem(SK,JSON.stringify({email,at:Date.now()}));modal.classList.remove("open");alert("Accesso ok — "+ (u.name||email));};
+</script></body></html>
