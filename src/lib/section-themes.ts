@@ -1,8 +1,9 @@
 /**
- * Quattro mondi del prodotto — ciascuno con palette e destinazioni.
+ * Omnicore — mondi del prodotto.
+ * Ogni sezione è un agente specializzato sotto un unico nucleo.
  */
 
-export type SectionId = "jarvis" | "mine" | "design" | "code";
+export type SectionId = "jarvis" | "edit" | "mine" | "prompt" | "art";
 
 export type SectionDef = {
   id: SectionId;
@@ -17,10 +18,10 @@ export type SectionDef = {
 export const SECTIONS: SectionDef[] = [
   {
     id: "jarvis",
-    title: "JARVIS",
-    tagline: "Agente personale",
+    title: "J.A.R.V.I.S",
+    tagline: "IA principale",
     description:
-      "Cervello, chat, 4 pilastri, connettori One MCP. Azzurro e nero — il tuo Claude.",
+      "Orchestratore Omnicore: cervello, chat, 4 pilastri, connettori. Azzurro e nero.",
     colors: "Azzurro · Nero",
     href: "/jarvis",
     links: [
@@ -31,11 +32,21 @@ export const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    id: "edit",
+    title: "E.D.I.T",
+    tagline: "Social & content",
+    description:
+      "Assistente per social, contenuti e presenza online. Rosa e nero.",
+    colors: "Rosa · Nero",
+    href: "/edit",
+    links: [{ label: "Hub E.D.I.T", to: "/edit" }],
+  },
+  {
     id: "mine",
     title: "M.I.N.E",
-    tagline: "Host Minecraft",
+    tagline: "Gaming & host",
     description:
-      "Server Falix, rete neurale, log, power e host MC. Nero e verde matrix.",
+      "Server Minecraft/Falix, rete, log, power e host. Verde matrix e nero.",
     colors: "Verde · Nero",
     href: "/mine",
     links: [
@@ -46,30 +57,32 @@ export const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    id: "design",
-    title: "DESIGN",
-    tagline: "Identità visiva",
-    description:
-      "Palette, tipografia, motion e componenti. Laboratorio estetico premium.",
-    colors: "Violetto · Oro",
-    href: "/design",
-    links: [{ label: "Studio design", to: "/design" }],
-  },
-  {
-    id: "code",
-    title: "CODE",
+    id: "prompt",
+    title: "P.R.O.M.P.T",
     tagline: "Coding agent",
     description:
-      "Code, Architect, Debug, Review — stile Kilo / Claude Code. Blu scuro e nero.",
+      "Code, Architect, Debug, Review — stile agentic coding. Blu scuro e nero.",
     colors: "Blu scuro · Nero",
     href: "/code",
     links: [{ label: "Workspace codice", to: "/code" }],
   },
+  {
+    id: "art",
+    title: "A.R.T",
+    tagline: "Design",
+    description:
+      "Identità visiva, palette, tipografia, motion e componenti. Violetto e oro.",
+    colors: "Violetto · Oro",
+    href: "/design",
+    links: [{ label: "Studio design", to: "/design" }],
+  },
 ];
 
+/** Retro-compat: path storici /code e /design restano validi. */
 export function sectionFromPath(pathname: string): SectionId {
-  if (pathname.startsWith("/code")) return "code";
-  if (pathname.startsWith("/design")) return "design";
+  if (pathname.startsWith("/code")) return "prompt";
+  if (pathname.startsWith("/design")) return "art";
+  if (pathname.startsWith("/edit")) return "edit";
   if (
     pathname.startsWith("/mine") ||
     pathname.startsWith("/network") ||
