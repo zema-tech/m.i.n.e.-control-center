@@ -46,7 +46,7 @@ const STORAGE_CATALOG = [
   )
   .join("\n");
 
-function sanitizeParams(input: unknown): Record<string, string | number | boolean> {
+export function sanitizeParams(input: unknown): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
   if (input && typeof input === "object") {
     for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
@@ -60,7 +60,7 @@ function sanitizeParams(input: unknown): Record<string, string | number | boolea
   return out;
 }
 
-function systemPrompt(): string {
+export function assistantSystemPrompt(): string {
   const hands = oneHandsStatus();
   const catalog = [
     "=== MANI FALIX ===",
@@ -106,7 +106,7 @@ export async function askGroq(
       max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: systemPrompt() },
+        { role: "system", content: assistantSystemPrompt() },
         ...history.slice(-12),
         {
           role: "user",
@@ -169,6 +169,30 @@ export async function askGroq(
               params: sanitizeParams(a.params),
               motivo: a.motivo ?? "",
             }))
+        : [],
+    };
+  } catch {
+    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [], azioni: [] };
+  }
+}
+
+/** Parser condiviso della risposta JSON dell'assistente. */
+export function parseAssistantReply(content: string): AssistantReply {
+  try {
+    const parsed = JSON.parse(content) as Partial<AssistantReply>;
+    return {
+      risposta: parsed.risposta ?? content,
+      comandi: Array.isArray(parsed.comandi)
+        ? parsed.comandi
+            .filter((c) => typeof c?.comando === "string" && c.comando.trim().length > 0)
+            .slice(0, 5)
+            .map((c) => ({ comando: c.comando.trim(), motivo: c.motivo ?? "" }))
+        : [],
+      azioni: Array.isArray(parsed.azioni)
+        ? parsed.azioni
+            .filter((a) => typeof a?.id === "string" && isKnownActionId(a.id))
+            .slice(0, 5)
+            .map((a) => ({ id: a.id, params: sanitizeParams(a.params), motivo: a.motivo ?? "" }))
         : [],
     };
   } catch {
