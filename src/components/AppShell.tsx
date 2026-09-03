@@ -46,14 +46,10 @@ type NavTo =
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
   { to: "/jarvis", label: "JARVIS", icon: Sparkles },
-  { to: "/mine", label: "M.I.N.E", icon: TerminalIcon },
+  { to: "/mine", label: "M.I.N.E", icon: Network },
   { to: "/design", label: "Design", icon: Palette },
   { to: "/code", label: "Code", icon: Code2 },
 ];
-
-function TerminalIcon(props: React.ComponentProps<typeof Network>) {
-  return <Network {...props} />;
-}
 
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/assistant", label: "Chat", icon: MessageSquare },
