@@ -102,7 +102,7 @@ export async function recordEvent(input: {
       summary: input.summary.slice(0, 2000),
       provider: input.provider ?? null,
       model: input.model ?? null,
-      detail: input.detail ?? {},
+      detail: (input.detail ?? {}) as never,
       ok: input.ok ?? true,
     });
   } catch {
