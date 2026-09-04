@@ -212,6 +212,8 @@ export const askAssistant = createServerFn({ method: "POST" })
         credentials: credSchema,
         accountLabel: z.string().max(80).optional(),
         brainContext: z.string().max(12000).optional(),
+        swarmMode: z.enum(["auto", "rapido", "swarm", "deep"]).optional(),
+
       })
       .parse(input),
   )
