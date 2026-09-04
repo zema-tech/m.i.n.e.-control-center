@@ -4,6 +4,7 @@ import {
   Brain,
   Cable,
   Code2,
+  Database,
   Home,
   KeyRound,
   LayoutGrid,
@@ -41,7 +42,8 @@ type NavTo =
   | "/network"
   | "/skills"
   | "/hosts"
-  | "/connectors";
+  | "/connectors"
+  | "/memory";
 
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
@@ -54,6 +56,7 @@ const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/assistant", label: "Chat", icon: MessageSquare },
   { to: "/agent", label: "Pilastri", icon: Brain },
+  { to: "/memory", label: "Memoria", icon: Database },
   { to: "/network", label: "Rete", icon: Network },
   { to: "/skills", label: "Competenze", icon: KeyRound },
   { to: "/hosts", label: "Host", icon: Server },
