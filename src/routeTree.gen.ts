@@ -18,6 +18,7 @@ import { Route as HomeRouteImport } from './routes/home'
 import { Route as HostsRouteImport } from './routes/hosts'
 import { Route as JarvisRouteImport } from './routes/jarvis'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as MineRouteImport } from './routes/mine'
 import { Route as NetworkRouteImport } from './routes/network'
 import { Route as SkillsRouteImport } from './routes/skills'
@@ -69,6 +70,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MemoryRoute = MemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MineRoute = MineRouteImport.update({
   id: '/mine',
   path: '/mine',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
   '/login': typeof LoginRoute
+  '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
   '/skills': typeof SkillsRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
   '/login': typeof LoginRoute
+  '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
   '/skills': typeof SkillsRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
   '/login': typeof LoginRoute
+  '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
   '/skills': typeof SkillsRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/hosts'
     | '/jarvis'
     | '/login'
+    | '/memory'
     | '/mine'
     | '/network'
     | '/skills'
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/hosts'
     | '/jarvis'
     | '/login'
+    | '/memory'
     | '/mine'
     | '/network'
     | '/skills'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/hosts'
     | '/jarvis'
     | '/login'
+    | '/memory'
     | '/mine'
     | '/network'
     | '/skills'
@@ -205,6 +217,7 @@ export interface RootRouteChildren {
   HostsRoute: typeof HostsRoute
   JarvisRoute: typeof JarvisRoute
   LoginRoute: typeof LoginRoute
+  MemoryRoute: typeof MemoryRoute
   MineRoute: typeof MineRoute
   NetworkRoute: typeof NetworkRoute
   SkillsRoute: typeof SkillsRoute
@@ -277,6 +290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/memory': {
+      id: '/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof MemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mine': {
       id: '/mine'
       path: '/mine'
@@ -325,6 +345,7 @@ const rootRouteChildren: RootRouteChildren = {
   HostsRoute: HostsRoute,
   JarvisRoute: JarvisRoute,
   LoginRoute: LoginRoute,
+  MemoryRoute: MemoryRoute,
   MineRoute: MineRoute,
   NetworkRoute: NetworkRoute,
   SkillsRoute: SkillsRoute,
