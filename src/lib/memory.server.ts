@@ -21,7 +21,7 @@ export type EventRow = {
   provider: string | null;
   model: string | null;
   summary: string;
-  detail: Record<string, unknown>;
+  detail: string;
   ok: boolean;
   created_at: string;
 };
@@ -118,5 +118,8 @@ export async function listEvents(limit = 80): Promise<EventRow[]> {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return (data ?? []) as EventRow[];
+  return (data ?? []).map((row) => ({
+    ...(row as Omit<EventRow, "detail">),
+    detail: JSON.stringify((row as { detail?: unknown }).detail ?? {}),
+  }));
 }
