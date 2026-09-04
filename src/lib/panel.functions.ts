@@ -212,6 +212,8 @@ export const askAssistant = createServerFn({ method: "POST" })
         credentials: credSchema,
         accountLabel: z.string().max(80).optional(),
         brainContext: z.string().max(12000).optional(),
+        swarmMode: z.enum(["auto", "rapido", "swarm", "deep"]).optional(),
+
       })
       .parse(input),
   )
@@ -235,24 +237,57 @@ export const askAssistant = createServerFn({ method: "POST" })
     }
 
     try {
-      const reply = await askGroq(
-        data.question,
+      const { askSwarm } = await import("./swarm.server");
+      const { memoryContext, recordEvent } = await import("./memory.server");
+      const memory = await memoryContext(25);
+
+      const reply = await askSwarm({
+        question: data.question,
         logContext,
-        data.history,
-        data.model ?? DEFAULT_GROQ_MODEL,
-        data.brainContext,
-      );
-      logAction(
-        "info",
-        `IA su "${label}" (${data.model ?? DEFAULT_GROQ_MODEL}): ${data.question.slice(0, 80)}`,
-      );
-      return { ok: true as const, ...reply, logDemo };
+        history: data.history,
+        mode: data.swarmMode ?? "auto",
+        brainContext: data.brainContext,
+        memoryContext: memory,
+      });
+
+      const usati = reply.steps
+        .filter((s) => s.ok)
+        .map((s) => `${s.provider}:${s.model.split("/").pop()}`)
+        .join(", ");
+      logAction("info", `IA (${reply.mode}) su "${label}": ${data.question.slice(0, 70)}`);
+      await recordEvent({
+        kind: "chat",
+        summary: `[${reply.mode}] ${data.question.slice(0, 200)}`,
+        detail: { modelli: usati, azioni: reply.azioni.map((a) => a.id) },
+      });
+
+      return {
+        ok: true as const,
+        ...reply,
+        steps: reply.steps.map((s) => ({
+          fase: s.fase,
+          provider: s.provider,
+          model: s.model,
+          ok: s.ok,
+          ms: s.ms,
+        })),
+        logDemo,
+      };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logAction("error", `Richiesta IA fallita: ${message}`);
-      return { ok: false as const, risposta: message, comandi: [], azioni: [], logDemo };
+      return {
+        ok: false as const,
+        risposta: message,
+        comandi: [],
+        azioni: [],
+        mode: "rapido" as const,
+        steps: [],
+        logDemo,
+      };
     }
   });
+
 
 export const askCodeAgent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
