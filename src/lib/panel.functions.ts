@@ -220,7 +220,7 @@ export const askAssistant = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await requireAdmin();
     const { fetchServerLogs } = await import("./falix.server");
-    const { askGroq } = await import("./ai.server");
+    
 
     let logContext = "";
     let logDemo = true;
