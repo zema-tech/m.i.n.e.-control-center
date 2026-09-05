@@ -1,6 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, RefreshCw, Upload } from "lucide-react";
+import {
+  Download,
+  RefreshCw,
+  Sparkles,
+  Upload,
+  Archive,
+  Check,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { AccountsPanel } from "@/components/AccountsPanel";
@@ -10,13 +17,22 @@ import {
   downloadBrainBackup,
   importBrainBackup,
 } from "@/lib/agent-brain";
+import {
+  loadPatterns,
+  type ObservedPattern,
+} from "@/lib/agent-patterns";
+import {
+  loadAgentSkills,
+  setSkillStatus,
+  type AgentSkill,
+} from "@/lib/agent-skills";
 import { loadAccounts, SKILL_META, type ApiAccount, type SkillId } from "@/lib/accounts";
 import { getAuthState } from "@/lib/auth.functions";
 import { getSystemHealth } from "@/lib/panel.functions";
 import type { SystemHealth } from "@/lib/system-health.server";
 
 export const Route = createFileRoute("/skills")({
-  head: () => ({ meta: [{ title: "Competenze — Health" }] }),
+  head: () => ({ meta: [{ title: "Competenze — JARVIS" }] }),
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
@@ -31,10 +47,18 @@ function SkillsPage() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [healthErr, setHealthErr] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([]);
+  const [patterns, setPatterns] = useState<ObservedPattern[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  function refreshLocal() {
+    setAgentSkills(loadAgentSkills());
+    setPatterns(loadPatterns());
+  }
 
   useEffect(() => {
     setAccounts(loadAccounts());
+    refreshLocal();
   }, []);
 
   async function loadHealth() {
@@ -72,16 +96,115 @@ function SkillsPage() {
     reader.readAsText(file);
   }
 
+  function activateSkill(id: string) {
+    setSkillStatus(id, "active");
+    refreshLocal();
+  }
+
+  function archiveSkill(id: string) {
+    setSkillStatus(id, "archived");
+    refreshLocal();
+  }
+
   return (
     <AppShell
       title="Competenze"
-      subtitle="Account · health env · backup cervello"
+      subtitle="Skill agente · pattern · account · health"
     >
       <div className="mx-auto grid max-w-5xl gap-6 p-4 sm:grid-cols-2 sm:p-6">
         <div className="space-y-4">
+          <div className="panel-spacious space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h2 className="text-section text-primary">Skill JARVIS</h2>
+            </div>
+            <p className="text-caption">
+              Procedimenti riusabili (stile Hermes). L'agente propone in{" "}
+              <span className="text-primary">draft</span>; tu attivi. Write sempre con conferma.
+            </p>
+            <ul className="space-y-2">
+              {agentSkills.length === 0 ? (
+                <li className="text-caption">Nessuna skill — nascono dalla chat o dai seed.</li>
+              ) : (
+                agentSkills.map((s) => (
+                  <li
+                    key={s.id}
+                    className="rounded-lg border border-border/70 bg-background/30 px-3 py-2.5"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[12px] text-foreground">{s.name}</span>
+                      <span
+                        className={`rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                          s.status === "active"
+                            ? "border-emerald-400/40 text-emerald-300"
+                            : s.status === "draft"
+                              ? "border-amber-400/40 text-amber-200"
+                              : "border-border text-muted-foreground"
+                        }`}
+                      >
+                        {s.status}
+                      </span>
+                      <span className="text-[9px] uppercase text-muted-foreground">
+                        {s.source} · ×{s.useCount}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-muted-foreground">{s.description}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {s.status !== "active" ? (
+                        <button
+                          type="button"
+                          onClick={() => activateSkill(s.id)}
+                          className="btn-matrix inline-flex items-center gap-1 rounded border border-primary/40 px-2 py-0.5 text-[9px] uppercase tracking-wider text-primary hover:bg-primary/10"
+                        >
+                          <Check className="h-3 w-3" /> attiva
+                        </button>
+                      ) : null}
+                      {s.status !== "archived" ? (
+                        <button
+                          type="button"
+                          onClick={() => archiveSkill(s.id)}
+                          className="btn-matrix inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                        >
+                          <Archive className="h-3 w-3" /> archivia
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          <div className="panel-spacious space-y-3">
+            <h2 className="text-section text-primary">Pattern osservati</h2>
+            <p className="text-caption">
+              Abitudini che JARVIS registra. A ≥3 ripetizioni può proporre memoria o skill.
+            </p>
+            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+              {patterns.length === 0 ? (
+                <li className="text-caption">Ancora vuoto — emergono dall'uso in chat.</li>
+              ) : (
+                patterns.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-start justify-between gap-2 rounded-md border border-border/50 px-2.5 py-1.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] text-foreground">{p.label}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {p.detail || p.key}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] text-primary">×{p.count}</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
           <div className="panel-spacious">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="text-section text-primary">Operatività</h2>
+              <h2 className="text-section text-primary">Operatività account</h2>
               <ModeBadge
                 mode={hasLiveFalix ? "live" : "demo"}
                 detail={hasLiveFalix ? active?.label : "nessun Falix attivo"}
@@ -98,8 +221,8 @@ function SkillsPage() {
           <div className="panel-spacious">
             <h2 className="mb-2 text-section text-primary">Backup cervello</h2>
             <p className="text-caption mb-3">
-              Esporta carattere, memoria e regole (JSON). Utile prima di cancellare i dati del
-              browser.
+              Esporta SOUL / USER / MEMORY (JSON). Skill e pattern restano nel browser finché non li
+              includiamo nel backup v3.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -182,8 +305,8 @@ function SkillsPage() {
                   ))}
                 </ul>
                 <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  Imposta le variabili su Vercel. Per le mani One reali:{" "}
-                  <span className="text-primary">ONE_API_KEY</span> (dashboard withone).
+                  Imposta le variabili su Vercel. Mani One:{" "}
+                  <span className="text-primary">ONE_API_KEY</span>.
                 </p>
               </>
             ) : (
@@ -201,7 +324,7 @@ function SkillsPage() {
                 </>
               ) : null}
             </p>
-            <h2 className="mb-3 text-xs uppercase tracking-[0.2em] text-primary">Mappa competenze</h2>
+            <h2 className="mb-3 text-xs uppercase tracking-[0.2em] text-primary">Mappa API account</h2>
             <ul className="space-y-2">
               {allSkills.map((s) => (
                 <li key={s} className="rounded-md border border-border/60 px-3 py-2">
