@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Cpu,
   FileStack,
+  FileText,
   Hand,
   MessageSquare,
   Monitor,
@@ -19,7 +20,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { getAuthState } from "@/lib/auth.functions";
 import { loadAgentProfile } from "@/lib/agent-profile";
-import { loadRulesDoc } from "@/lib/agent-brain";
+import { loadSoul } from "@/lib/agent-brain";
 
 export const Route = createFileRoute("/jarvis")({
   head: () => ({
@@ -33,7 +34,7 @@ export const Route = createFileRoute("/jarvis")({
   component: JarvisSection,
 });
 
-/** Regole fisse stabilite — sempre visibili, non negoziabili. */
+/** Guardrail operativi — non negoziabili (anche se SOUL è editabile). */
 const FIXED_RULES = [
   {
     title: "Conferma umana",
@@ -65,42 +66,42 @@ const CAPABILITIES = [
   {
     icon: MessageSquare,
     title: "Chat agentica",
-    blurb: "Ragionamento strutturato stile Claude: capisco → dati → ipotesi → piano → rischio. Proposte tool, non finte esecuzioni.",
+    blurb: "Proposte tool, non finte esecuzioni. Conferma su write/critical.",
     to: "/assistant" as const,
     badge: "Core",
   },
   {
-    icon: Brain,
-    title: "4 pilastri",
-    blurb: "Carattere, memoria, mani, regole — il cervello editabile. Come un Claude personalizzato + personalità Grok.",
+    icon: FileText,
+    title: "SOUL · USER · MEMORY",
+    blurb: "Identità e memoria file-based stile Hermes. Edit in /agent.",
     to: "/agent" as const,
-    badge: "Identity",
+    badge: "Brain",
   },
   {
     icon: Monitor,
     title: "Desktop Control",
-    blurb: "Visione: controllo PC (app, file, finestre) via bridge locale. Oggi: host, storage e app SaaS. Sempre con conferma.",
+    blurb: "Bridge locale per app/file/PC — previsto. Oggi: host, storage, SaaS.",
     to: "/agent" as const,
-    badge: "Mani",
+    badge: "Tools",
   },
   {
     icon: FileStack,
     title: "File & storage",
-    blurb: "File host, MEGA, Drive — lettura, upload note, cartelle. Write solo dopo approvazione.",
+    blurb: "File host, MEGA, Drive. Write solo dopo approvazione.",
     to: "/skills" as const,
-    badge: "Mani",
+    badge: "Tools",
   },
   {
     icon: Cable,
     title: "App & One MCP",
-    blurb: "700+ integrazioni (Gmail, Slack, CRM…). Catena list → search → knowledge → execute.",
+    blurb: "list → search → knowledge → execute sulle app collegate.",
     to: "/connectors" as const,
-    badge: "Mani",
+    badge: "Tools",
   },
   {
     icon: Terminal,
     title: "Host & console",
-    blurb: "Power, log, comandi server Minecraft/cloud. Diagnosi lag/crash con evidenze, non indovinelli.",
+    blurb: "Power, log, comandi server. Diagnosi con evidenze.",
     to: "/hosts" as const,
     badge: "Ops",
   },
@@ -109,31 +110,30 @@ const CAPABILITIES = [
 const PERSONALITY = [
   {
     label: "Claude",
-    points: ["Strutturato e cauto", "Artifacts / proposte chiare", "Conferma sulle azioni critiche"],
+    points: ["Strutturato e cauto", "Proposte chiare", "Conferma sulle azioni critiche"],
   },
   {
     label: "Grok",
-    points: ["Diretto, un po' ironico", "Curioso e proattivo", "Senza fuffa, risposte utili"],
+    points: ["Diretto", "Curioso e proattivo", "Senza fuffa"],
   },
   {
     label: "JARVIS",
-    points: ["Italiano nativo", "Ops + codice + app", "Il tuo assistente personale"],
+    points: ["Italiano nativo", "Ops + codice + app", "Assistente personale"],
   },
 ] as const;
 
 function JarvisSection() {
   const [name, setName] = useState("JARVIS");
-  const [rulesPreview, setRulesPreview] = useState("");
+  const [soulPreview, setSoulPreview] = useState("");
 
   useEffect(() => {
     setName(loadAgentProfile().name || "JARVIS");
-    setRulesPreview(loadRulesDoc().rules.slice(0, 280));
+    setSoulPreview(loadSoul().content.slice(0, 320));
   }, []);
 
   return (
-    <AppShell title="JARVIS" subtitle="Agente principale · stile Claude + Grok · azzurro e nero">
+    <AppShell title="JARVIS" subtitle="Agente principale · SOUL/USER/MEMORY · azzurro e nero">
       <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
-        {/* Hero */}
         <section className="panel-spacious relative overflow-hidden animate-fade-in-up">
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-sky-400/20 blur-3xl animate-aurora" />
           <div
@@ -151,10 +151,9 @@ function JarvisSection() {
               </span>
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Il tuo assistente personale: ragiona come <strong className="text-sky-200/90">Claude</strong>,
-              parla con il carattere di <strong className="text-sky-200/90">Grok</strong>, agisce con le{" "}
-              <strong className="text-sky-200/90">mani</strong> (host, file, app SaaS) e — con bridge e conferma —
-              può estendersi al controllo del PC.
+              Assistente personale: identità in <strong className="text-sky-200/90">SOUL.md</strong>,
+              profilo in <strong className="text-sky-200/90">USER.md</strong>, note in{" "}
+              <strong className="text-sky-200/90">MEMORY.md</strong>. Tool con conferma umana su write/critical.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
@@ -169,21 +168,17 @@ function JarvisSection() {
                 className="btn-matrix inline-flex items-center gap-2 rounded-lg border border-sky-400/30 px-4 py-2.5 text-sm text-sky-200 no-underline hover:bg-sky-500/10"
               >
                 <Brain className="h-4 w-4" />
-                Pilastri & regole
+                SOUL · USER · MEMORY
               </Link>
             </div>
           </div>
         </section>
 
-        {/* Personality — Claude + Grok */}
         <section className="animate-fade-in-up" style={{ animationDelay: "40ms" }}>
           <p className="mb-3 text-label">Personalità · Claude × Grok × JARVIS</p>
           <div className="grid gap-3 sm:grid-cols-3">
             {PERSONALITY.map((p) => (
-              <div
-                key={p.label}
-                className="panel rounded-2xl border border-sky-400/10 p-4"
-              >
+              <div key={p.label} className="panel rounded-2xl border border-sky-400/10 p-4">
                 <p className="text-sm font-semibold text-sky-200">{p.label}</p>
                 <ul className="mt-2 space-y-1.5">
                   {p.points.map((pt) => (
@@ -198,12 +193,11 @@ function JarvisSection() {
           </div>
         </section>
 
-        {/* Capabilities */}
         <section className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <p className="text-label">Cosa può fare</p>
             <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-sky-300/70">
-              <Hand className="h-3 w-3" /> mani + cervello
+              <Hand className="h-3 w-3" /> tools + memory
             </span>
           </div>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -227,7 +221,6 @@ function JarvisSection() {
           </ul>
         </section>
 
-        {/* Desktop / PC control callout */}
         <section
           className="panel-spacious relative overflow-hidden border border-cyan-400/20 animate-fade-in-up"
           style={{ animationDelay: "120ms" }}
@@ -242,43 +235,39 @@ function JarvisSection() {
                 Controllo PC · app · file
               </h3>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                <strong className="text-cyan-200/90">Oggi</strong>: JARVIS agisce su host (Falix),
-                file server, storage cloud e app collegate via One MCP — sempre proponendo azioni e
-                chiedendo conferma su write/critical.
+                <strong className="text-cyan-200/90">Oggi</strong>: host (Falix), file server, storage e
+                One MCP — sempre con proposta e conferma su write/critical.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                <strong className="text-cyan-200/90">Desktop Control</strong> (stile Mark-LI): bridge
-                locale per finestre, app e filesystem del PC. Non è abilitato nel browser puro — richiede
-                un agente locale e le regole fisse sotto. Quando lo attiveremo, le stesse regole di
-                conferma restano non negoziabili.
+                <strong className="text-cyan-200/90">Desktop</strong>: bridge locale previsto; stesse
+                regole di conferma.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                  <Zap className="h-3 w-3" /> Host & console attivi
+                  <Zap className="h-3 w-3" /> Host & console
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                  <FileStack className="h-3 w-3" /> File / storage attivi
+                  <FileStack className="h-3 w-3" /> File / storage
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-200">
-                  <Monitor className="h-3 w-3" /> Desktop: bridge previsto
+                  <Monitor className="h-3 w-3" /> Desktop: previsto
                 </span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Fixed rules */}
         <section className="animate-fade-in-up" style={{ animationDelay: "160ms" }}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <p className="flex items-center gap-2 text-label">
               <Scale className="h-3.5 w-3.5 text-rose-300/80" />
-              Regole fisse stabilite
+              Guardrail fissi
             </p>
             <Link
               to="/agent"
               className="text-[10px] uppercase tracking-wider text-sky-300/80 no-underline hover:text-sky-200"
             >
-              modifica in Pilastri →
+              modifica SOUL →
             </Link>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -295,20 +284,19 @@ function JarvisSection() {
               </div>
             ))}
           </div>
-          {rulesPreview ? (
+          {soulPreview ? (
             <div className="mt-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
               <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                Anteprima regole attive (cervello)
+                Anteprima SOUL.md
               </p>
               <pre className="max-h-28 overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground/90">
-                {rulesPreview}
-                {rulesPreview.length >= 280 ? "…" : ""}
+                {soulPreview}
+                {soulPreview.length >= 320 ? "…" : ""}
               </pre>
             </div>
           ) : null}
         </section>
 
-        {/* Quick links */}
         <section
           className="grid gap-3 sm:grid-cols-3 animate-fade-in-up"
           style={{ animationDelay: "200ms" }}
@@ -320,7 +308,7 @@ function JarvisSection() {
             <MessageSquare className="h-5 w-5 text-sky-300" />
             <div>
               <p className="text-sm font-semibold">Chat</p>
-              <p className="text-caption">Parla e proponi azioni</p>
+              <p className="text-caption">Proposte e azioni</p>
             </div>
           </Link>
           <Link
@@ -329,8 +317,8 @@ function JarvisSection() {
           >
             <Brain className="h-5 w-5 text-sky-300" />
             <div>
-              <p className="text-sm font-semibold">Pilastri</p>
-              <p className="text-caption">Carattere · memoria · regole</p>
+              <p className="text-sm font-semibold">Brain</p>
+              <p className="text-caption">SOUL · USER · MEMORY</p>
             </div>
           </Link>
           <Link
@@ -340,7 +328,7 @@ function JarvisSection() {
             <Cable className="h-5 w-5 text-sky-300" />
             <div>
               <p className="text-sm font-semibold">Connettori</p>
-              <p className="text-caption">One MCP · app · webhook</p>
+              <p className="text-caption">One MCP · app</p>
             </div>
           </Link>
         </section>
