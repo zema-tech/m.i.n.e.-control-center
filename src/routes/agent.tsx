@@ -4,13 +4,11 @@ import {
   Brain,
   Cable,
   Code2,
-  Eye,
-  Hand,
+  FileText,
   KeyRound,
   MessageSquare,
   Network,
   Plus,
-  Scale,
   Server,
   Sparkles,
   Trash2,
@@ -20,17 +18,15 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { getAuthState } from "@/lib/auth.functions";
 import {
-  addMemoryNote,
-  DEFAULT_CHARACTER,
-  DEFAULT_RULES,
-  loadIdentityDoc,
-  loadMemoryNotes,
-  loadRulesDoc,
-  PILLARS,
-  removeMemoryNote,
-  saveIdentityDoc,
-  saveRulesDoc,
-  type MemoryNote,
+  DEFAULT_SOUL,
+  MEMORY_CHAR_LIMIT,
+  USER_CHAR_LIMIT,
+  loadMemoryStore,
+  loadSoul,
+  loadUserStore,
+  memoryTool,
+  saveSoul,
+  type MemoryStore,
 } from "@/lib/agent-brain";
 import {
   AGENT_SECTIONS,
@@ -45,7 +41,7 @@ export const Route = createFileRoute("/agent")({
       { title: "JARVIS — Agente" },
       {
         name: "description",
-        content: "Un assistente vero: carattere, memoria, mani e regole.",
+        content: "SOUL.md, USER.md, MEMORY.md — modello Hermes.",
       },
     ],
   }),
@@ -66,93 +62,132 @@ const ICONS: Record<string, typeof Brain> = {
   connectors: Cable,
 };
 
+type Tab = "soul" | "user" | "memory";
+
+function usageLabel(store: MemoryStore, limit: number) {
+  const n =
+    store.entries.length === 0
+      ? 0
+      : store.entries.join("\n§\n").length;
+  const pct = limit === 0 ? 0 : Math.round((n / limit) * 100);
+  return `${pct}% · ${n}/${limit}`;
+}
+
 function AgentHome() {
   const [profile, setProfile] = useState<AgentProfile | null>(null);
-  const [character, setCharacter] = useState(DEFAULT_CHARACTER);
-  const [rules, setRules] = useState(DEFAULT_RULES);
-  const [memory, setMemory] = useState<MemoryNote[]>([]);
-  const [memTitle, setMemTitle] = useState("");
-  const [memBody, setMemBody] = useState("");
+  const [soul, setSoul] = useState(DEFAULT_SOUL);
+  const [userStore, setUserStore] = useState<MemoryStore>({ entries: [], updatedAt: 0 });
+  const [memStore, setMemStore] = useState<MemoryStore>({ entries: [], updatedAt: 0 });
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
-  const [tab, setTab] = useState<"character" | "memory" | "hands" | "rules">("character");
+  const [tab, setTab] = useState<Tab>("soul");
+  const [newEntry, setNewEntry] = useState("");
+  const [toolMsg, setToolMsg] = useState<string | null>(null);
+
+  function reloadStores() {
+    setUserStore(loadUserStore());
+    setMemStore(loadMemoryStore());
+  }
 
   useEffect(() => {
     const p = loadAgentProfile();
     setProfile(p);
     setName(p.name);
     setTagline(p.tagline);
-    setCharacter(loadIdentityDoc().character);
-    setRules(loadRulesDoc().rules);
-    setMemory(loadMemoryNotes());
+    setSoul(loadSoul().content);
+    reloadStores();
   }, []);
 
-  function saveCharacter() {
-    saveIdentityDoc(character);
+  function saveSoulTab() {
+    saveSoul(soul);
     const next = saveAgentProfile({ name, tagline });
     setProfile(next);
+    setToolMsg("SOUL salvato");
   }
 
-  function saveRules() {
-    saveRulesDoc(rules);
+  function addEntry(target: "user" | "memory") {
+    const content = newEntry.trim();
+    if (!content) return;
+    const res = memoryTool({ action: "add", target, content });
+    if (!res.ok) {
+      setToolMsg(res.error);
+    } else {
+      setToolMsg(`OK · ${res.usage}`);
+      setNewEntry("");
+      reloadStores();
+    }
   }
 
-  function addMem() {
-    if (!memBody.trim()) return;
-    addMemoryNote(memTitle || "Nota", memBody);
-    setMemory(loadMemoryNotes());
-    setMemTitle("");
-    setMemBody("");
+  function removeEntry(target: "user" | "memory", entry: string) {
+    const needle = entry.slice(0, Math.min(48, entry.length));
+    const res = memoryTool({ action: "remove", target, old_text: needle });
+    if (!res.ok) setToolMsg(res.error);
+    else {
+      setToolMsg(`rimossa · ${res.usage}`);
+      reloadStores();
+    }
   }
 
   const p = profile;
+  const activeStore = tab === "user" ? userStore : memStore;
+  const activeLimit = tab === "user" ? USER_CHAR_LIMIT : MEMORY_CHAR_LIMIT;
 
   return (
-    <AppShell
-      title="JARVIS"
-      subtitle="Un assistente vero ha quattro cose"
-    >
-      <div className="mx-auto max-w-3xl space-y-8 p-4 sm:p-6">
-        <section className="panel-spacious text-center">
+    <AppShell title="JARVIS" subtitle="SOUL · USER · MEMORY (Hermes)">
+      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+        <section className="panel-spacious">
           <p className="font-display text-lg tracking-wide text-primary sm:text-xl">
-            UN ASSISTENTE VERO HA QUATTRO COSE
+            {p?.name ?? "JARVIS"}
           </p>
-          <p className="mt-2 text-caption text-muted-foreground">
-            {p?.name ?? "JARVIS"} — il tuo assistente
+          <p className="mt-1 text-caption text-muted-foreground">
+            File-based come Hermes. Niente metafore: tre store nel prompt.
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {PILLARS.map((pillar) => (
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                { id: "soul" as const, title: "SOUL.md", hint: "chi è l'agente" },
+                { id: "user" as const, title: "USER.md", hint: "preferenze tue" },
+                { id: "memory" as const, title: "MEMORY.md", hint: "note agente" },
+              ] as const
+            ).map((t) => (
               <button
-                key={pillar.id}
+                key={t.id}
                 type="button"
-                onClick={() => setTab(pillar.id)}
-                className={`card-interactive rounded-lg border p-3 text-left transition-all ${
-                  tab === pillar.id
-                    ? `${pillar.color} ring-1 ring-primary/40`
+                onClick={() => setTab(t.id)}
+                className={`rounded-lg border p-3 text-left transition-all ${
+                  tab === t.id
+                    ? "border-primary/50 bg-primary/10 ring-1 ring-primary/30"
                     : "border-border bg-background/40"
                 }`}
               >
-                <p className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                  {pillar.title}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{pillar.question}</p>
-                <p className="mt-2 font-mono text-[9px] text-primary/80">{pillar.fileHint}</p>
+                <p className="font-mono text-xs font-semibold text-foreground">{t.title}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">{t.hint}</p>
+                {t.id !== "soul" ? (
+                  <p className="mt-2 font-mono text-[9px] text-primary/80">
+                    {usageLabel(t.id === "user" ? userStore : memStore, t.id === "user" ? USER_CHAR_LIMIT : MEMORY_CHAR_LIMIT)}
+                  </p>
+                ) : null}
               </button>
             ))}
           </div>
         </section>
 
-        {/* Editor pilastro attivo */}
-        {tab === "character" ? (
-          <section className="panel-spacious space-y-3 border-amber-500/30">
+        {toolMsg ? (
+          <p className="rounded border border-border bg-background/60 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            {toolMsg}
+          </p>
+        ) : null}
+
+        {tab === "soul" ? (
+          <section className="panel-spacious space-y-3">
             <p className="flex items-center gap-2 text-label text-primary">
-              <User className="h-3.5 w-3.5" /> Carattere — identity.md
+              <FileText className="h-3.5 w-3.5" /> SOUL.md — identità
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nome"
+                placeholder="Nome UI"
                 className="rounded border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
               <input
@@ -163,66 +198,75 @@ function AgentHome() {
               />
             </div>
             <textarea
-              value={character}
-              onChange={(e) => setCharacter(e.target.value)}
-              rows={10}
+              value={soul}
+              onChange={(e) => setSoul(e.target.value)}
+              rows={12}
               className="w-full rounded border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed outline-none focus:border-primary"
             />
             <button
               type="button"
-              onClick={saveCharacter}
+              onClick={saveSoulTab}
               className="btn-matrix rounded-md border border-primary px-4 py-2 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10"
             >
-              salva carattere
+              salva SOUL
             </button>
           </section>
         ) : null}
 
-        {tab === "memory" ? (
-          <section className="panel-spacious space-y-3 border-violet-500/30">
+        {tab === "user" || tab === "memory" ? (
+          <section className="panel-spacious space-y-3">
             <p className="flex items-center gap-2 text-label text-primary">
-              <Brain className="h-3.5 w-3.5" /> Memoria — cosa sa di te
+              {tab === "user" ? (
+                <>
+                  <User className="h-3.5 w-3.5" /> USER.md — profilo utente
+                </>
+              ) : (
+                <>
+                  <Brain className="h-3.5 w-3.5" /> MEMORY.md — note agente
+                </>
+              )}
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                {usageLabel(activeStore, activeLimit)}
+              </span>
             </p>
-            <input
-              value={memTitle}
-              onChange={(e) => setMemTitle(e.target.value)}
-              placeholder="Titolo nota"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            />
+            <p className="text-caption text-muted-foreground">
+              {tab === "user"
+                ? "Preferenze, tono, abitudini. Entry dense, non romanzi."
+                : "Fatti ambiente, convenzioni, lezioni. L'agente le mantiene via tool memory."}
+            </p>
             <textarea
-              value={memBody}
-              onChange={(e) => setMemBody(e.target.value)}
+              value={newEntry}
+              onChange={(e) => setNewEntry(e.target.value)}
               rows={3}
-              placeholder="Es. Preferisco risposte brevi. Server principale: Survival Gino."
+              placeholder={
+                tab === "user"
+                  ? "Es. Preferisce risposte brevi in italiano. Timezone Europe/Rome."
+                  : "Es. Server Falix main id=xyz porta 25565. Non usare sudo docker."
+              }
               className="w-full rounded border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             />
             <button
               type="button"
-              onClick={addMem}
+              onClick={() => addEntry(tab)}
               className="btn-matrix flex items-center gap-1 rounded-md border border-primary px-3 py-1.5 text-[11px] uppercase tracking-widest text-primary"
             >
-              <Plus className="h-3 w-3" /> aggiungi memoria
+              <Plus className="h-3 w-3" /> add entry
             </button>
             <ul className="space-y-2">
-              {memory.length === 0 ? (
-                <p className="text-caption text-muted-foreground">Memoria vuota.</p>
+              {activeStore.entries.length === 0 ? (
+                <p className="text-caption text-muted-foreground">Vuoto.</p>
               ) : (
-                memory.map((n) => (
+                activeStore.entries.map((e) => (
                   <li
-                    key={n.id}
+                    key={e.slice(0, 64)}
                     className="flex items-start justify-between gap-2 rounded-md border border-border px-3 py-2"
                   >
-                    <div>
-                      <p className="text-sm text-foreground">{n.title}</p>
-                      <p className="text-caption text-muted-foreground">{n.body}</p>
-                    </div>
+                    <p className="whitespace-pre-wrap text-[12px] text-foreground">{e}</p>
                     <button
                       type="button"
-                      onClick={() => {
-                        removeMemoryNote(n.id);
-                        setMemory(loadMemoryNotes());
-                      }}
-                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => removeEntry(tab, e)}
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      aria-label="Rimuovi"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -233,68 +277,6 @@ function AgentHome() {
           </section>
         ) : null}
 
-        {tab === "hands" ? (
-          <section className="panel-spacious space-y-3 border-sky-500/30">
-            <p className="flex items-center gap-2 text-label text-primary">
-              <Hand className="h-3.5 w-3.5" /> <Eye className="h-3.5 w-3.5" /> Mani e occhi
-            </p>
-            <p className="text-caption text-muted-foreground">
-              Cosa può vedere e toccare — collega qui le capacità.
-            </p>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              <li className="rounded-lg border border-border p-3">
-                <p className="text-sm text-foreground">One MCP</p>
-                <p className="text-caption text-muted-foreground">700+ app — mani SaaS</p>
-                <Link to="/connectors" className="mt-2 inline-block text-[10px] uppercase text-primary">
-                  connettori →
-                </Link>
-              </li>
-              <li className="rounded-lg border border-border p-3">
-                <p className="text-sm text-foreground">Host / Falix</p>
-                <p className="text-caption text-muted-foreground">Server, log, power</p>
-                <Link to="/hosts" className="mt-2 inline-block text-[10px] uppercase text-primary">
-                  host →
-                </Link>
-              </li>
-              <li className="rounded-lg border border-border p-3">
-                <p className="text-sm text-foreground">Competenze</p>
-                <p className="text-caption text-muted-foreground">API key e account</p>
-                <Link to="/skills" className="mt-2 inline-block text-[10px] uppercase text-primary">
-                  skills →
-                </Link>
-              </li>
-              <li className="rounded-lg border border-border p-3">
-                <p className="text-sm text-foreground">Codice</p>
-                <p className="text-caption text-muted-foreground">Agent Kilo/Claude Code</p>
-                <Link to="/code" className="mt-2 inline-block text-[10px] uppercase text-primary">
-                  code →
-                </Link>
-              </li>
-            </ul>
-          </section>
-        ) : null}
-
-        {tab === "rules" ? (
-          <section className="panel-spacious space-y-3 border-rose-500/30">
-            <p className="flex items-center gap-2 text-label text-primary">
-              <Scale className="h-3.5 w-3.5" /> Regole — cosa non deve fare
-            </p>
-            <textarea
-              value={rules}
-              onChange={(e) => setRules(e.target.value)}
-              rows={14}
-              className="w-full rounded border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed outline-none focus:border-primary"
-            />
-            <button
-              type="button"
-              onClick={saveRules}
-              className="btn-matrix rounded-md border border-primary px-4 py-2 text-[11px] uppercase tracking-widest text-primary hover:bg-primary/10"
-            >
-              salva regole
-            </button>
-          </section>
-        ) : null}
-
         <Link
           to="/assistant"
           className="card-interactive panel-spacious flex items-center justify-between gap-3 border-primary/30 no-underline"
@@ -302,13 +284,13 @@ function AgentHome() {
           <div className="flex items-center gap-3">
             <MessageSquare className="h-5 w-5 text-primary" />
             <div>
-              <p className="text-sm font-medium text-foreground">Parla con JARVIS</p>
+              <p className="text-sm font-medium text-foreground">Chat</p>
               <p className="text-caption text-muted-foreground">
-                Usa carattere + memoria + regole + mani in ogni risposta
+                SOUL + MEMORY + USER iniettati a inizio sessione
               </p>
             </div>
           </div>
-          <span className="text-[10px] uppercase tracking-widest text-primary">chat →</span>
+          <span className="text-[10px] uppercase tracking-widest text-primary">apri →</span>
         </Link>
 
         <section className="space-y-3">

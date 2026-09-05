@@ -1,179 +1,356 @@
 /**
- * Un assistente vero ha quattro cose (modello da identity / memoria / mani / regole):
- * 1. Carattere  — chi è, come parla          → identity
- * 2. Memoria    — cosa sa di te e del contesto → memory notes
- * 3. Mani/Occhi — cosa può toccare e vedere    → connectors / MCP / skills / desktop bridge
- * 4. Regole     — cosa non deve fare           → rules (CLAUDE.md-style)
+ * Cervello agente — modello Hermes (file-based).
+ *
+ * SOUL.md   → identità / tono (scritto dall'utente)
+ * USER.md   → profilo utente (preferenze) — gestito da tool memory target=user
+ * MEMORY.md → note agente (ambiente, lezioni) — gestito da tool memory target=memory
+ *
+ * Storage locale (localStorage). Limiti di caratteri come Hermes.
+ * Snapshot congelato a inizio sessione nel system prompt.
  */
 
 import { loadAgentProfile, saveAgentProfile, type AgentProfile } from "./agent-profile";
 
-const KEY_IDENTITY = "mine.brain.identity.v1";
-const KEY_MEMORY = "mine.brain.memory.v1";
-const KEY_RULES = "mine.brain.rules.v1";
+const KEY_SOUL = "mine.brain.soul.v2";
+const KEY_USER = "mine.brain.user.v2";
+const KEY_MEMORY = "mine.brain.memory.v2";
 
-export type MemoryNote = {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: number;
-};
+/** Limiti stile Hermes (~token budget nel system prompt). */
+export const MEMORY_CHAR_LIMIT = 2200;
+export const USER_CHAR_LIMIT = 1375;
+export const SOUL_CHAR_LIMIT = 6000;
 
-export type AgentIdentityDoc = {
-  character: string;
+const ENTRY_SEP = "\n§\n";
+
+export type MemoryTarget = "memory" | "user";
+
+export type SoulDoc = {
+  content: string;
   updatedAt: number;
 };
 
-export type AgentRulesDoc = {
-  rules: string;
+/** Entry list serializzate come testo separato da § (come Hermes). */
+export type MemoryStore = {
+  entries: string[];
   updatedAt: number;
 };
 
-/** Backup completo cervello (export/import). */
 export type BrainBackup = {
-  version: 1;
+  version: 2;
   exportedAt: number;
   profile: AgentProfile;
-  identity: AgentIdentityDoc;
-  rules: AgentRulesDoc;
-  memory: MemoryNote[];
+  soul: SoulDoc;
+  user: MemoryStore;
+  memory: MemoryStore;
 };
 
 function canUse() {
   return typeof window !== "undefined";
 }
 
-export const DEFAULT_CHARACTER = `Sei JARVIS, assistente personale dell'utente — IA principale del Control Center M.I.N.E.
+export const DEFAULT_SOUL = `Sei JARVIS, assistente personale dell'utente nel Control Center M.I.N.E. / Omnicore.
 
-Personalità (Claude × Grok):
-- Come Claude: strutturato, cauto sulle azioni, proponi piani chiari e chiedi conferma su write/critical.
-- Come Grok: diretto, un filo ironico quando serve, zero fuffa, proattivo sulle ipotesi.
-- Parli in italiano, tono competente. Chiami l'utente in modo naturale.
+Stile:
+- Diretto: la lunghezza della risposta segue il peso della richiesta.
+- Niente filler ("Ottima domanda", "Certamente").
+- Italiano nativo, tono competente; un filo ironico solo se aiuta.
+- Preferisci passi concreti a discorsi vaghi.
 
 Comportamento:
-- Preferisci passi concreti a discorsi vaghi.
-- Quando agisci, usi le MANI (tool) e aspetti conferma su write/critical/desktop.
-- Non fingere di aver eseguito tool: proponi e aspetta approvazione.
-- Se manca contesto, chiedi o proponi lettura (log, file, list integrations).`;
-
-export const DEFAULT_RULES = `# Regole JARVIS — fisse e non negoziabili
-(Stabilite con l'utente · allineate a Claude-style safety + ops reali)
-
-## Vietato
-- Non inventare log, stacktrace o risultati di tool non eseguiti.
-- Non eseguire (né fingere) azioni write/critical/desktop senza conferma umana.
-- Non esporre o chiedere di ripetere secret/API key in chiaro nelle risposte.
-- Non dare /op, wipe world, delete massivi, pagamenti reali senza rischio esplicito e conferma.
-- Non aggirare le policy One MCP / access limitati.
-- Non assumere controllo del PC locale senza bridge approvato e conferma esplicita.
-
-## Obbligatorio
+- L'IA propone, l'umano conferma sulle azioni write/critical.
+- Non inventare log, output tool o risultati di azioni non eseguite.
+- Se manca contesto, chiedi o proponi uno strumento di lettura.
 - Read prima di write quando possibile.
-- Per SaaS: catena One list → search → knowledge → execute.
-- Cita evidenze dal contesto; se manca dato, chiedilo o proponi tool di lettura.
-- Risposte strutturate: problema → evidenza → piano → azioni proposte.
-- Desktop Control (app/file/finestre sul PC): solo se bridge locale attivo e azione approvata.
 
-## Scope mani
-- Attive oggi: host/server (Falix + cloud), file host, storage MEGA/Drive, One MCP (app), codice, research.
-- Previsto: bridge desktop (controllo app/file/PC) con le stesse regole di conferma.
-- Fuori scope: richieste illegali o dannose → rifiuta in modo chiaro.`;
+Evita:
+- Esporre o chiedere secret/API key in chiaro.
+- Fingere esecuzioni desktop/host non disponibili.
+- Azioni distruttive senza rischio esplicito e conferma.`;
 
-export function loadIdentityDoc(): AgentIdentityDoc {
-  if (!canUse()) return { character: DEFAULT_CHARACTER, updatedAt: 0 };
+function loadStore(key: string): MemoryStore {
+  if (!canUse()) return { entries: [], updatedAt: 0 };
   try {
-    const raw = window.localStorage.getItem(KEY_IDENTITY);
-    if (!raw) return { character: DEFAULT_CHARACTER, updatedAt: 0 };
-    const p = JSON.parse(raw) as Partial<AgentIdentityDoc>;
-    return {
-      character: (p.character ?? DEFAULT_CHARACTER).slice(0, 4000),
-      updatedAt: p.updatedAt ?? 0,
-    };
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return { entries: [], updatedAt: 0 };
+    const p = JSON.parse(raw) as Partial<MemoryStore>;
+    const entries = Array.isArray(p.entries)
+      ? p.entries.filter((e) => typeof e === "string" && e.trim().length > 0).map((e) => e.trim())
+      : [];
+    return { entries, updatedAt: p.updatedAt ?? 0 };
   } catch {
-    return { character: DEFAULT_CHARACTER, updatedAt: 0 };
+    return { entries: [], updatedAt: 0 };
   }
 }
 
-export function saveIdentityDoc(character: string): AgentIdentityDoc {
-  const next: AgentIdentityDoc = {
-    character: character.slice(0, 4000),
+function saveStore(key: string, entries: string[]): MemoryStore {
+  const next: MemoryStore = {
+    entries: entries.map((e) => e.trim()).filter(Boolean),
     updatedAt: Date.now(),
   };
-  if (canUse()) window.localStorage.setItem(KEY_IDENTITY, JSON.stringify(next));
+  if (canUse()) window.localStorage.setItem(key, JSON.stringify(next));
   return next;
 }
 
-export function loadRulesDoc(): AgentRulesDoc {
-  if (!canUse()) return { rules: DEFAULT_RULES, updatedAt: 0 };
+function charCount(entries: string[]): number {
+  if (entries.length === 0) return 0;
+  return entries.join(ENTRY_SEP).length;
+}
+
+function limitFor(target: MemoryTarget): number {
+  return target === "user" ? USER_CHAR_LIMIT : MEMORY_CHAR_LIMIT;
+}
+
+function keyFor(target: MemoryTarget): string {
+  return target === "user" ? KEY_USER : KEY_MEMORY;
+}
+
+// ─── SOUL ───────────────────────────────────────────────────────────────────
+
+export function loadSoul(): SoulDoc {
+  if (!canUse()) return { content: DEFAULT_SOUL, updatedAt: 0 };
   try {
-    const raw = window.localStorage.getItem(KEY_RULES);
-    if (!raw) return { rules: DEFAULT_RULES, updatedAt: 0 };
-    const p = JSON.parse(raw) as Partial<AgentRulesDoc>;
+    const raw = window.localStorage.getItem(KEY_SOUL);
+    if (!raw) {
+      // migrazione soft da identity.v1 se presente
+      const legacy = window.localStorage.getItem("mine.brain.identity.v1");
+      if (legacy) {
+        try {
+          const p = JSON.parse(legacy) as { character?: string };
+          if (p.character?.trim()) {
+            const doc = { content: p.character.slice(0, SOUL_CHAR_LIMIT), updatedAt: Date.now() };
+            window.localStorage.setItem(KEY_SOUL, JSON.stringify(doc));
+            return doc;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return { content: DEFAULT_SOUL, updatedAt: 0 };
+    }
+    const p = JSON.parse(raw) as Partial<SoulDoc>;
     return {
-      rules: (p.rules ?? DEFAULT_RULES).slice(0, 6000),
+      content: (p.content ?? DEFAULT_SOUL).slice(0, SOUL_CHAR_LIMIT),
       updatedAt: p.updatedAt ?? 0,
     };
   } catch {
-    return { rules: DEFAULT_RULES, updatedAt: 0 };
+    return { content: DEFAULT_SOUL, updatedAt: 0 };
   }
 }
 
-export function saveRulesDoc(rules: string): AgentRulesDoc {
-  const next: AgentRulesDoc = {
-    rules: rules.slice(0, 6000),
+export function saveSoul(content: string): SoulDoc {
+  const next: SoulDoc = {
+    content: content.slice(0, SOUL_CHAR_LIMIT),
     updatedAt: Date.now(),
   };
-  if (canUse()) window.localStorage.setItem(KEY_RULES, JSON.stringify(next));
+  if (canUse()) window.localStorage.setItem(KEY_SOUL, JSON.stringify(next));
   return next;
 }
 
-export function loadMemoryNotes(): MemoryNote[] {
-  if (!canUse()) return [];
+// ─── USER / MEMORY stores ───────────────────────────────────────────────────
+
+export function loadUserStore(): MemoryStore {
+  return loadStore(KEY_USER);
+}
+
+export function loadMemoryStore(): MemoryStore {
+  // migrazione soft da note v1
+  const current = loadStore(KEY_MEMORY);
+  if (current.entries.length > 0 || !canUse()) return current;
   try {
-    const raw = window.localStorage.getItem(KEY_MEMORY);
-    const parsed = raw ? (JSON.parse(raw) as MemoryNote[]) : [];
-    return Array.isArray(parsed) ? parsed.slice(0, 80) : [];
+    const legacy = window.localStorage.getItem("mine.brain.memory.v1");
+    if (!legacy) return current;
+    const notes = JSON.parse(legacy) as { title?: string; body?: string }[];
+    if (!Array.isArray(notes) || notes.length === 0) return current;
+    const entries = notes
+      .map((n) => {
+        const t = (n.title ?? "").trim();
+        const b = (n.body ?? "").trim();
+        if (!b) return "";
+        return t ? `${t}: ${b}` : b;
+      })
+      .filter(Boolean);
+    return saveStore(KEY_MEMORY, entries);
   } catch {
-    return [];
+    return current;
   }
 }
 
-export function saveMemoryNotes(notes: MemoryNote[]) {
-  if (!canUse()) return;
-  window.localStorage.setItem(KEY_MEMORY, JSON.stringify(notes.slice(0, 80)));
+export type MemoryToolResult =
+  | { ok: true; target: MemoryTarget; entries: string[]; usage: string }
+  | {
+      ok: false;
+      error: string;
+      current_entries: string[];
+      usage: string;
+    };
+
+function usageStr(entries: string[], limit: number): string {
+  const n = charCount(entries);
+  const pct = limit === 0 ? 0 : Math.round((n / limit) * 100);
+  return `${pct}% — ${n}/${limit} chars`;
 }
 
-export function addMemoryNote(title: string, body: string): MemoryNote {
-  const note: MemoryNote = {
-    id: `mem:${Date.now().toString(36)}`,
-    title: title.trim().slice(0, 80) || "Nota",
-    body: body.trim().slice(0, 2000),
-    createdAt: Date.now(),
-  };
-  saveMemoryNotes([note, ...loadMemoryNotes()]);
-  return note;
+/** Tool memory stile Hermes: add | replace | remove. */
+export function memoryTool(opts: {
+  action: "add" | "replace" | "remove";
+  target: MemoryTarget;
+  content?: string;
+  /** Substring unica per replace/remove. */
+  old_text?: string;
+}): MemoryToolResult {
+  const limit = limitFor(opts.target);
+  const key = keyFor(opts.target);
+  const store = opts.target === "user" ? loadUserStore() : loadMemoryStore();
+  let entries = [...store.entries];
+
+  if (opts.action === "add") {
+    const content = (opts.content ?? "").trim();
+    if (!content) {
+      return {
+        ok: false,
+        error: "content obbligatorio per add",
+        current_entries: entries,
+        usage: usageStr(entries, limit),
+      };
+    }
+    if (entries.some((e) => e === content)) {
+      return { ok: true, target: opts.target, entries, usage: usageStr(entries, limit) };
+    }
+    const next = [...entries, content];
+    if (charCount(next) > limit) {
+      return {
+        ok: false,
+        error: `Memory at ${charCount(entries)}/${limit} chars. Adding this entry (${content.length} chars) would exceed the limit. Consolidate: use replace/remove, then retry add.`,
+        current_entries: entries,
+        usage: usageStr(entries, limit),
+      };
+    }
+    entries = next;
+    saveStore(key, entries);
+    return { ok: true, target: opts.target, entries, usage: usageStr(entries, limit) };
+  }
+
+  const needle = (opts.old_text ?? "").trim();
+  if (!needle) {
+    return {
+      ok: false,
+      error: "old_text obbligatorio per replace/remove",
+      current_entries: entries,
+      usage: usageStr(entries, limit),
+    };
+  }
+  const matches = entries.filter((e) => e.includes(needle));
+  if (matches.length === 0) {
+    return {
+      ok: false,
+      error: `Nessuna entry contiene "${needle.slice(0, 40)}"`,
+      current_entries: entries,
+      usage: usageStr(entries, limit),
+    };
+  }
+  if (matches.length > 1) {
+    return {
+      ok: false,
+      error: `old_text ambigua: match ${matches.length} entry. Sii più specifico.`,
+      current_entries: entries,
+      usage: usageStr(entries, limit),
+    };
+  }
+  const idx = entries.findIndex((e) => e.includes(needle));
+
+  if (opts.action === "remove") {
+    entries = entries.filter((_, i) => i !== idx);
+    saveStore(key, entries);
+    return { ok: true, target: opts.target, entries, usage: usageStr(entries, limit) };
+  }
+
+  // replace
+  const content = (opts.content ?? "").trim();
+  if (!content) {
+    return {
+      ok: false,
+      error: "content obbligatorio per replace",
+      current_entries: entries,
+      usage: usageStr(entries, limit),
+    };
+  }
+  const trial = entries.map((e, i) => (i === idx ? content : e));
+  if (charCount(trial) > limit) {
+    return {
+      ok: false,
+      error: `Replace would exceed ${limit} chars (${charCount(trial)}). Accorcia content o rimuovi altre entry.`,
+      current_entries: entries,
+      usage: usageStr(entries, limit),
+    };
+  }
+  entries = trial;
+  saveStore(key, entries);
+  return { ok: true, target: opts.target, entries, usage: usageStr(entries, limit) };
 }
 
-export function removeMemoryNote(id: string) {
-  saveMemoryNotes(loadMemoryNotes().filter((n) => n.id !== id));
+/** Render blocco MEMORY / USER per system prompt (snapshot). */
+export function formatMemoryBlock(
+  label: string,
+  entries: string[],
+  limit: number,
+): string {
+  const usage = usageStr(entries, limit);
+  const body = entries.length === 0 ? "(vuoto)" : entries.join(ENTRY_SEP);
+  return [
+    "══════════════════════════════════════════════",
+    `${label} [${usage}]`,
+    "══════════════════════════════════════════════",
+    body,
+  ].join("\n");
 }
+
+/** Testo da iniettare nel prompt — ordine Hermes: SOUL → MEMORY → USER. */
+export function buildBrainContextForPrompt(opts?: {
+  profile?: AgentProfile;
+}): string {
+  const profile = opts?.profile ?? loadAgentProfile();
+  const soul = loadSoul();
+  const memory = loadMemoryStore();
+  const user = loadUserStore();
+
+  return [
+    "### SOUL (identità agente)",
+    `Nome UI: ${profile.name} · ${profile.tagline}`,
+    soul.content.trim() || DEFAULT_SOUL,
+    "",
+    formatMemoryBlock("MEMORY (note agente)", memory.entries, MEMORY_CHAR_LIMIT),
+    "",
+    formatMemoryBlock("USER (profilo utente)", user.entries, USER_CHAR_LIMIT),
+    "",
+    "### Tools / mani disponibili",
+    "Falix host (power/console/file), storage MEGA/Drive, One MCP, host_research, sezione Codice.",
+    "Write/critical solo dopo conferma umana. Non fingere tool non eseguiti.",
+  ].join("\n");
+}
+
+// ─── Backup ─────────────────────────────────────────────────────────────────
 
 export function exportBrainBackup(): BrainBackup {
   return {
-    version: 1,
+    version: 2,
     exportedAt: Date.now(),
     profile: loadAgentProfile(),
-    identity: loadIdentityDoc(),
-    rules: loadRulesDoc(),
-    memory: loadMemoryNotes(),
+    soul: loadSoul(),
+    user: loadUserStore(),
+    memory: loadMemoryStore(),
   };
 }
 
 export function importBrainBackup(data: unknown): { ok: boolean; message: string } {
   try {
-    const b = data as Partial<BrainBackup>;
-    if (!b || b.version !== 1) {
-      return { ok: false, message: "File non valido: serve version 1" };
+    const b = data as Partial<BrainBackup> & {
+      version?: number;
+      identity?: { character?: string };
+      rules?: { rules?: string };
+      memory?: unknown;
+    };
+    if (!b || (b.version !== 2 && b.version !== 1)) {
+      return { ok: false, message: "File non valido: serve version 1 o 2" };
     }
     if (b.profile) {
       saveAgentProfile({
@@ -183,22 +360,31 @@ export function importBrainBackup(data: unknown): { ok: boolean; message: string
         language: b.profile.language,
       });
     }
-    if (b.identity?.character) saveIdentityDoc(String(b.identity.character));
-    if (b.rules?.rules) saveRulesDoc(String(b.rules.rules));
-    if (Array.isArray(b.memory)) {
-      saveMemoryNotes(
-        b.memory
-          .filter((n) => n && typeof n.body === "string")
-          .map((n) => ({
-            id: String(n.id ?? `mem:${Date.now().toString(36)}`),
-            title: String(n.title ?? "Nota").slice(0, 80),
-            body: String(n.body).slice(0, 2000),
-            createdAt: typeof n.createdAt === "number" ? n.createdAt : Date.now(),
-          }))
-          .slice(0, 80),
-      );
+    if (b.version === 2) {
+      if (b.soul?.content) saveSoul(String(b.soul.content));
+      if (b.user && Array.isArray(b.user.entries)) {
+        saveStore(KEY_USER, b.user.entries.map(String));
+      }
+      if (b.memory && Array.isArray((b.memory as MemoryStore).entries)) {
+        saveStore(KEY_MEMORY, (b.memory as MemoryStore).entries.map(String));
+      }
+      return { ok: true, message: "Import SOUL / USER / MEMORY (v2)" };
     }
-    return { ok: true, message: "Cervello importato (profilo, carattere, regole, memoria)" };
+    // v1 legacy
+    if (b.identity?.character) saveSoul(String(b.identity.character));
+    if (Array.isArray(b.memory)) {
+      const notes = b.memory as { title?: string; body?: string }[];
+      const entries = notes
+        .map((n) => {
+          const t = (n.title ?? "").trim();
+          const body = (n.body ?? "").trim();
+          if (!body) return "";
+          return t ? `${t}: ${body}` : body;
+        })
+        .filter(Boolean);
+      saveStore(KEY_MEMORY, entries);
+    }
+    return { ok: true, message: "Import legacy v1 → SOUL + MEMORY" };
   } catch (e) {
     return {
       ok: false,
@@ -215,78 +401,55 @@ export function downloadBrainBackup() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `jarvis-brain-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `omnicore-brain-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-/** Testo da iniettare nel prompt (cervello completo). */
-export function buildBrainContextForPrompt(opts?: {
-  profile?: AgentProfile;
-  maxMemoryChars?: number;
-}): string {
-  const profile = opts?.profile ?? loadAgentProfile();
-  const identity = loadIdentityDoc();
-  const rules = loadRulesDoc();
-  const memory = loadMemoryNotes();
-  const maxMem = opts?.maxMemoryChars ?? 3500;
+// ─── Compat leggera (evita crash import residui) ─────────────────────────────
 
-  const memBlock = memory
-    .slice(0, 20)
-    .map((n) => `- ${n.title}: ${n.body}`)
-    .join("\n")
-    .slice(0, maxMem);
-
-  return [
-    "### 1. CARATTERE (identity)",
-    `Nome: ${profile.name}`,
-    `Tagline: ${profile.tagline}`,
-    `Focus: ${profile.focus}`,
-    `Lingua: ${profile.language}`,
-    identity.character,
-    "",
-    "### 2. MEMORIA (cosa sa di te / contesto)",
-    memBlock || "(memoria vuota — l'utente può aggiungere note in /agent)",
-    "",
-    "### 3. MANI E OCCHI",
-    "Vedere: log server, metriche, risultati tool read, contesto allegato dall'utente.",
-    "Toccare (attive): Falix (power/console/file), storage MEGA/Drive, connettori Discord/webhook,",
-    "One MCP https://mcp.withone.ai/mcp (list/search/knowledge/execute), host_research, sezione Codice.",
-    "Desktop Control (previsto): bridge locale per app, file e finestre sul PC — solo se abilitato e con conferma umana.",
-    "Non assumere filesystem locale del browser senza bridge. Non fingere esecuzioni desktop non disponibili.",
-    "",
-    "### 4. REGOLE",
-    rules.rules,
-  ].join("\n");
+/** @deprecated usa loadSoul */
+export function loadIdentityDoc() {
+  const s = loadSoul();
+  return { character: s.content, updatedAt: s.updatedAt };
 }
 
-export const PILLARS = [
-  {
-    id: "character" as const,
-    title: "Un carattere",
-    question: "chi è? come parla?",
-    fileHint: "identity.md",
-    color: "border-amber-500/40 bg-amber-500/5",
-  },
-  {
-    id: "memory" as const,
-    title: "Una memoria",
-    question: "cosa sa di te e del contesto",
-    fileHint: "memoria/ · context/",
-    color: "border-violet-500/40 bg-violet-500/5",
-  },
-  {
-    id: "hands" as const,
-    title: "Mani e occhi",
-    question: "cosa può toccare e vedere",
-    fileHint: "connettori · MCP · desktop",
-    color: "border-sky-500/40 bg-sky-500/5",
-  },
-  {
-    id: "rules" as const,
-    title: "Delle regole",
-    question: "cosa non deve fare",
-    fileHint: "RULES.md",
-    color: "border-rose-500/40 bg-rose-500/5",
-  },
-] as const;
+/** @deprecated usa saveSoul */
+export function saveIdentityDoc(character: string) {
+  return saveSoul(character);
+}
+
+/** @deprecated regole fuse in SOUL; stub vuoto */
+export function loadRulesDoc() {
+  return { rules: "", updatedAt: 0 };
+}
+
+/** @deprecated */
+export function saveRulesDoc(_rules: string) {
+  return { rules: "", updatedAt: Date.now() };
+}
+
+/** @deprecated usa loadMemoryStore */
+export function loadMemoryNotes(): { id: string; title: string; body: string; createdAt: number }[] {
+  return loadMemoryStore().entries.map((e, i) => ({
+    id: `mem:${i}`,
+    title: e.slice(0, 40),
+    body: e,
+    createdAt: 0,
+  }));
+}
+
+/** @deprecated */
+export function addMemoryNote(title: string, body: string) {
+  const content = title.trim() ? `${title.trim()}: ${body.trim()}` : body.trim();
+  memoryTool({ action: "add", target: "memory", content });
+  return { id: `mem:${Date.now()}`, title, body, createdAt: Date.now() };
+}
+
+/** @deprecated */
+export function removeMemoryNote(_id: string) {
+  /* no-op: usare memoryTool remove */
+}
+
+export const DEFAULT_CHARACTER = DEFAULT_SOUL;
+export const DEFAULT_RULES = "";
