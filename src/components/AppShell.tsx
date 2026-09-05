@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Bot,
   Brain,
   Cable,
   Code2,
@@ -43,7 +44,8 @@ type NavTo =
   | "/skills"
   | "/hosts"
   | "/connectors"
-  | "/memory";
+  | "/memory"
+  | "/gateway";
 
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
@@ -55,7 +57,8 @@ const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
 
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/assistant", label: "Chat", icon: MessageSquare },
-  { to: "/agent", label: "Pilastri", icon: Brain },
+  { to: "/agent", label: "Brain", icon: Brain },
+  { to: "/gateway", label: "Gateway", icon: Bot },
   { to: "/memory", label: "Memoria", icon: Database },
   { to: "/network", label: "Rete", icon: Network },
   { to: "/skills", label: "Competenze", icon: KeyRound },
@@ -132,7 +135,7 @@ function SideNav({
           {agentName}
         </p>
         <p className="text-[11px] capitalize leading-relaxed text-muted-foreground">
-          Tema attivo: {section}
+          Tema: {section}
         </p>
       </div>
     </nav>
@@ -146,7 +149,7 @@ function BrandBlock({ agentName }: { agentName: string }) {
         {agentName}
       </span>
       <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
-        Hub · 4 sezioni
+        Omnicore · control
       </span>
     </Link>
   );
