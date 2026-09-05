@@ -10,6 +10,8 @@
  */
 
 import { loadAgentProfile, saveAgentProfile, type AgentProfile } from "./agent-profile";
+import { formatPatternsForPrompt } from "./agent-patterns";
+import { formatSkillsCatalogForPrompt } from "./agent-skills";
 
 const KEY_SOUL = "mine.brain.soul.v2";
 const KEY_USER = "mine.brain.user.v2";
@@ -48,7 +50,13 @@ function canUse() {
   return typeof window !== "undefined";
 }
 
-export const DEFAULT_SOUL = `Sei JARVIS, assistente personale dell'utente nel Control Center M.I.N.E. / Omnicore.
+export const DEFAULT_SOUL = `Sei JARVIS, agente residente dell'utente nel Control Center Omnicore / M.I.N.E.
+
+Mandato:
+- Non sei una chat usa-e-getta: resti sul "server" dell'utente, impari i suoi pattern e proponi skill riusabili.
+- Osserva abitudini (comandi, orari, preferenze) e consolidale in USER (preferenze) o MEMORY (lezioni ambiente).
+- Quando una procedura si ripete, proponi una skill (draft) invece di ripetere gli stessi passi ogni volta.
+- Usa le mani: file e console host (Falix), app collegate (One MCP). Read prima di write.
 
 Stile:
 - Diretto: la lunghezza della risposta segue il peso della richiesta.
@@ -60,7 +68,7 @@ Comportamento:
 - L'IA propone, l'umano conferma sulle azioni write/critical.
 - Non inventare log, output tool o risultati di azioni non eseguite.
 - Se manca contesto, chiedi o proponi uno strumento di lettura.
-- Read prima di write quando possibile.
+- Skill nuove: draft finché l'utente non attiva.
 
 Evita:
 - Esporre o chiedere secret/API key in chiaro.
@@ -304,7 +312,7 @@ export function formatMemoryBlock(
   ].join("\n");
 }
 
-/** Testo da iniettare nel prompt — ordine Hermes: SOUL → MEMORY → USER. */
+/** Testo da iniettare nel prompt — SOUL → MEMORY → USER → skills → pattern. */
 export function buildBrainContextForPrompt(opts?: {
   profile?: AgentProfile;
 }): string {
@@ -322,9 +330,14 @@ export function buildBrainContextForPrompt(opts?: {
     "",
     formatMemoryBlock("USER (profilo utente)", user.entries, USER_CHAR_LIMIT),
     "",
+    formatSkillsCatalogForPrompt(),
+    "",
+    formatPatternsForPrompt(),
+    "",
     "### Tools / mani disponibili",
-    "Falix host (power/console/file), storage MEGA/Drive, One MCP, host_research, sezione Codice.",
+    "Falix host (power/console/file), storage MEGA/Drive, One MCP (app SaaS), host_research, sezione Codice.",
     "Write/critical solo dopo conferma umana. Non fingere tool non eseguiti.",
+    "Tool residente: observe_pattern, memory_*, propose_skill, load_skill.",
   ].join("\n");
 }
 
