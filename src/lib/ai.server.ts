@@ -11,6 +11,7 @@ import {
   mcpToolSummaryForAi,
 } from "./mcp";
 import { oneHandsStatus } from "./one-hands.server";
+import { parseResidentCalls, type ResidentCall } from "./resident-tools";
 
 export type ProposedAction = {
   id: string;
@@ -22,6 +23,8 @@ export type AssistantReply = {
   risposta: string;
   comandi: { comando: string; motivo: string }[];
   azioni: ProposedAction[];
+  /** Tool memoria/skill/pattern — eseguiti client-side. */
+  resident: ResidentCall[];
 };
 
 export { GROQ_MODELS, DEFAULT_GROQ_MODEL, type GroqModelId };
@@ -113,16 +116,14 @@ export async function askGroq(
           content: [
             brain
               ? [
-                  "### I 4 PILASTRI DELL'ASSISTENTE (obbligatori)",
-                  "Rispetta carattere, memoria, mani e regole seguenti:",
+                  "### CONTESTO AGENTE RESIDENTE (SOUL / MEMORY / USER / skills / pattern)",
                   brain,
                   "",
                 ].join("\n")
               : "",
             "### Ruolo",
-            "Sei il CERVELLO. Le MANI sono i tool (Falix + One MCP). Non inventare risultati di azioni non proposte.",
+            "Sei il CERVELLO. Le MANI host/app sono in azioni[]. I tool residenti (memoria/skill) in resident[].",
             "Protocollo: CAPISCO → DATI → IPOTESI → PIANO MANI → RISCHIO.",
-            "SaaS → One MCP. Server MC → Falix/log. Host sconosciuti → host_research.",
             "",
             "### Log / contesto server",
             logContext.slice(-8000) || "(nessun log)",
@@ -130,7 +131,7 @@ export async function askGroq(
             "### Richiesta umana",
             question,
             "",
-            "Rispondi solo JSON. Sii preciso, non generico.",
+            "Rispondi solo JSON.",
           ]
             .filter(Boolean)
             .join("\n"),
@@ -150,8 +151,16 @@ export async function askGroq(
     choices?: { message?: { content?: string } }[];
   };
   const content = payload.choices?.[0]?.message?.content ?? "";
+  return parseAssistantReply(content);
+}
+
+/** Parser condiviso della risposta JSON dell'assistente. */
+export function parseAssistantReply(content: string): AssistantReply {
   try {
-    const parsed = JSON.parse(content) as Partial<AssistantReply>;
+    const parsed = JSON.parse(content) as Partial<AssistantReply> & {
+      resident?: unknown;
+      tools?: unknown;
+    };
     return {
       risposta: parsed.risposta ?? content,
       comandi: Array.isArray(parsed.comandi)
@@ -170,32 +179,9 @@ export async function askGroq(
               motivo: a.motivo ?? "",
             }))
         : [],
+      resident: parseResidentCalls(parsed.resident ?? parsed.tools),
     };
   } catch {
-    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [], azioni: [] };
-  }
-}
-
-/** Parser condiviso della risposta JSON dell'assistente. */
-export function parseAssistantReply(content: string): AssistantReply {
-  try {
-    const parsed = JSON.parse(content) as Partial<AssistantReply>;
-    return {
-      risposta: parsed.risposta ?? content,
-      comandi: Array.isArray(parsed.comandi)
-        ? parsed.comandi
-            .filter((c) => typeof c?.comando === "string" && c.comando.trim().length > 0)
-            .slice(0, 5)
-            .map((c) => ({ comando: c.comando.trim(), motivo: c.motivo ?? "" }))
-        : [],
-      azioni: Array.isArray(parsed.azioni)
-        ? parsed.azioni
-            .filter((a) => typeof a?.id === "string" && isKnownActionId(a.id))
-            .slice(0, 5)
-            .map((a) => ({ id: a.id, params: sanitizeParams(a.params), motivo: a.motivo ?? "" }))
-        : [],
-    };
-  } catch {
-    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [], azioni: [] };
+    return { risposta: content || "Nessuna risposta dall'IA.", comandi: [], azioni: [], resident: [] };
   }
 }
