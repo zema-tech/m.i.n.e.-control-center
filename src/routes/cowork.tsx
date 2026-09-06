@@ -145,7 +145,7 @@ function CoworkPage() {
       if (c.autoResident) {
         const rr = executeResidentCalls(
           Array.isArray((res as { resident?: unknown }).resident)
-            ? ((res as { resident: Parameters<typeof executeResidentCalls>[0] }).resident)
+            ? (res as { resident: Parameters<typeof executeResidentCalls>[0] }).resident
             : [],
         );
         for (const r of rr) {
@@ -281,7 +281,6 @@ function CoworkPage() {
           }) ?? current;
         setGoal(current);
         if (doneHint || !ok) break;
-        // piccola pausa tra passi
         await new Promise((r) => setTimeout(r, 600));
         current = loadGoal()!;
       }
@@ -311,12 +310,8 @@ function CoworkPage() {
   }
 
   return (
-    <AppShell
-      title="Cowork"
-      subtitle="Obiettivi autonomi · consenso azioni"
-    >
+    <AppShell title="Cowork" subtitle="Obiettivi autonomi · consenso azioni">
       <div className="mx-auto grid max-w-5xl gap-6 p-4 sm:grid-cols-2 sm:p-6">
-        {/* Consenso */}
         <section className="panel-spacious space-y-4">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-primary" />
@@ -324,7 +319,7 @@ function CoworkPage() {
           </div>
           <p className="text-caption">
             Senza micro "approva / nega" su ogni click. Scegli cosa JARVIS può fare da solo in
-            Cowork (e in Chat quando userai la stessa policy).
+            Cowork.
           </p>
 
           <label className="flex items-start gap-3 rounded-lg border border-border/60 px-3 py-2.5">
@@ -388,14 +383,15 @@ function CoworkPage() {
               }
             />
             <span className="text-caption">
-              Ho capito che critical può essere irreversibile. Abilito la possibilità di auto-critical.
+              Ho capito che critical può essere irreversibile. Abilito la possibilità di
+              auto-critical.
             </span>
           </label>
 
           <label className="flex items-start gap-3 rounded-lg border border-border/60 px-3 py-2.5">
             <input
               type="checkbox"
-egocio              className="mt-1"
+              className="mt-1"
               checked={consent.autoResident}
               onChange={(e) => updateConsent({ autoResident: e.target.checked })}
             />
@@ -410,15 +406,13 @@ egocio              className="mt-1"
           </p>
         </section>
 
-        {/* Obiettivo */}
         <section className="panel-spacious space-y-4">
           <div className="flex items-center gap-2">
             <Bot className="h-4 w-4 text-primary" />
             <h2 className="text-section text-primary">Obiettivo</h2>
           </div>
           <p className="text-caption">
-            Un goal ad alto livello. JARVIS decide i passi (fino a N) senza che tu dica "fai X poi
-            Y".
+            Un goal ad alto livello. JARVIS decide i passi (fino a N) senza micro-comandi.
           </p>
 
           <input
@@ -458,9 +452,7 @@ egocio              className="mt-1"
           {goal ? (
             <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
               <p className="font-display text-lg text-foreground">{goal.title}</p>
-              {goal.brief ? (
-                <p className="mt-1 text-caption">{goal.brief}</p>
-              ) : null}
+              {goal.brief ? <p className="mt-1 text-caption">{goal.brief}</p> : null}
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
                 {goal.status} · {goal.stepsDone}/{goal.maxSteps}
               </p>
@@ -501,7 +493,6 @@ egocio              className="mt-1"
           )}
         </section>
 
-        {/* Log */}
         <section className="panel-spacious space-y-3 sm:col-span-2">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-section text-primary">Diario cowork</h2>
