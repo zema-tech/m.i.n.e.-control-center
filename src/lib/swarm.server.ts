@@ -44,6 +44,8 @@ const COMPLEX_HINTS = [
   "timeout",
   "performance",
   "configura",
+  "skill",
+  "ricorda",
 ];
 
 const CRITICAL_HINTS = ["elimina", "delete", "billing", "pagament", "reinstall", "wipe", "reset"];
@@ -64,7 +66,6 @@ export function classifyComplexity(question: string, logContext: string): Exclud
 function pick(tier: "fast" | "smart", limit: number): SwarmModel[] {
   const ready = new Set(availableProviders());
   const pool = SWARM_MODELS.filter((m) => m.tier === tier && ready.has(m.provider));
-  // un modello per provider prima di ripetere lo stesso provider
   const out: SwarmModel[] = [];
   const seen = new Set<string>();
   for (const m of pool) {
@@ -106,8 +107,9 @@ async function run(
 
 const JSON_CONTRACT = [
   "Rispondi SOLO con JSON valido in questo formato:",
-  '{"risposta":"...","comandi":[{"comando":"...","motivo":"..."}],"azioni":[{"id":"...","params":{},"motivo":"..."}]}',
-  "Le azioni devono usare SOLO id presenti nel catalogo mani. Niente azioni inventate.",
+  '{"risposta":"...","comandi":[{"comando":"...","motivo":"..."}],"azioni":[{"id":"...","params":{},"motivo":"..."}],"resident":[{"tool":"observe_pattern","params":{"key":"x","label":"y"},"motivo":"..."}]}',
+  "azioni = solo id catalogo mani host/app. resident = memory/skill/pattern (observe_pattern, memory_add, propose_skill, load_skill, ...).",
+  "resident può essere []. Preferenze utente → memory_add target=user. Procedure ripetute → propose_skill.",
 ].join("\n");
 
 export async function askSwarm(input: {
@@ -135,8 +137,8 @@ export async function askSwarm(input: {
   const memory = (input.memoryContext ?? "").trim().slice(0, 6000);
 
   const contextBlock = [
-    brain ? `### PILASTRI ASSISTENTE\n${brain}` : "",
-    memory ? `### MEMORIA PERSISTENTE (ricordi salvati)\n${memory}` : "",
+    brain ? `### AGENTE RESIDENTE (SOUL / MEMORY / USER / skills / pattern)\n${brain}` : "",
+    memory ? `### MEMORIA PERSISTENTE SERVER\n${memory}` : "",
     `### LOG / CONTESTO SERVER\n${input.logContext.slice(-7000) || "(nessun log)"}`,
     `### RICHIESTA UMANA\n${input.question}`,
   ]
@@ -166,7 +168,6 @@ export async function askSwarm(input: {
     return { ...parseAssistantReply(step.contenuto), mode, steps };
   }
 
-  // Fase 1 — brainstorming parallelo (modelli veloci)
   const brainstormers = (fast.length ? fast : smart).slice(0, 3);
   const ideas = await Promise.all(
     brainstormers.map((m) =>
@@ -177,8 +178,8 @@ export async function askSwarm(input: {
           {
             role: "system",
             content:
-              "Sei un nodo di brainstorming di uno sciame IA che gestisce un server Minecraft su Falix. " +
-              "Dai 3-5 ipotesi concrete e le verifiche/azioni consigliate. Max 160 parole. Nessun JSON.",
+              "Sei un nodo di brainstorming di uno sciame IA (server + agente residente). " +
+              "Dai 3-5 ipotesi concrete e verifiche/azioni. Max 160 parole. Nessun JSON.",
           },
           { role: "user", content: contextBlock },
         ],
@@ -191,7 +192,6 @@ export async function askSwarm(input: {
 
   const goodIdeas = ideas.filter((i) => i.ok && i.contenuto.trim().length > 0);
 
-  // Fase 2 (solo deep) — critica incrociata
   let critique = "";
   if (mode === "deep" && smart[0] && goodIdeas.length > 0) {
     const step = await run(
@@ -201,8 +201,8 @@ export async function askSwarm(input: {
         {
           role: "system",
           content:
-            "Sei il revisore critico dello sciame. Valuta le ipotesi: quali sono solide, quali sbagliate e perché, " +
-            "cosa manca. Max 180 parole, nessun JSON.",
+            "Sei il revisore critico dello sciame. Valuta le ipotesi: solide vs sbagliate, cosa manca. " +
+            "Max 180 parole, nessun JSON.",
         },
         {
           role: "user",
@@ -218,7 +218,6 @@ export async function askSwarm(input: {
     if (step.ok) critique = step.contenuto;
   }
 
-  // Fase 3 — sintesi finale con modello forte (fallback sugli altri)
   const synthPool = [...smart, ...fast];
   let final: SwarmStep | null = null;
   for (const m of synthPool) {
@@ -238,7 +237,7 @@ export async function askSwarm(input: {
                   .join("\n\n")}`
               : "",
             critique ? `### CRITICA DEL REVISORE\n${critique}` : "",
-            "Sei il CERVELLO finale: unisci le idee, scarta le sbagliate, decidi e proponi le mani da usare.",
+            "Sei il CERVELLO finale: unisci le idee, proponi mani host in azioni[] e apprendimento in resident[].",
             JSON_CONTRACT,
           ]
             .filter(Boolean)
