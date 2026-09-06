@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Activity,
   Bot,
   Brain,
   Cable,
@@ -47,7 +48,8 @@ type NavTo =
   | "/connectors"
   | "/memory"
   | "/gateway"
-  | "/cowork";
+  | "/cowork"
+  | "/pulse";
 
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
@@ -60,6 +62,7 @@ const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/assistant", label: "Chat", icon: MessageSquare },
   { to: "/cowork", label: "Cowork", icon: Users },
+  { to: "/pulse", label: "Pulse", icon: Activity },
   { to: "/agent", label: "Brain", icon: Brain },
   { to: "/gateway", label: "Gateway", icon: Bot },
   { to: "/memory", label: "Memoria", icon: Database },
