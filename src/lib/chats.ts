@@ -13,13 +13,20 @@ export type ActionProposal = {
   output?: string;
 };
 
+export type ResidentResultMsg = {
+  tool: string;
+  ok: boolean;
+  output: string;
+};
+
 export type Msg = {
   role: "user" | "assistant";
   content: string;
   proposals?: Proposal[];
   actions?: ActionProposal[];
+  /** Esito tool memoria/skill/pattern eseguiti in sessione. */
+  residentResults?: ResidentResultMsg[];
 };
-
 
 export type ChatThread = {
   id: string;
