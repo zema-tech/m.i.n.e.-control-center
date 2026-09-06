@@ -16,6 +16,7 @@ import {
   Palette,
   Server,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -45,7 +46,8 @@ type NavTo =
   | "/hosts"
   | "/connectors"
   | "/memory"
-  | "/gateway";
+  | "/gateway"
+  | "/cowork";
 
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
@@ -57,6 +59,7 @@ const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
 
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/assistant", label: "Chat", icon: MessageSquare },
+  { to: "/cowork", label: "Cowork", icon: Users },
   { to: "/agent", label: "Brain", icon: Brain },
   { to: "/gateway", label: "Gateway", icon: Bot },
   { to: "/memory", label: "Memoria", icon: Database },
