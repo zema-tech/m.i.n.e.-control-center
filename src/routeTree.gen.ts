@@ -14,6 +14,7 @@ import { Route as AgentRouteImport } from './routes/agent'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as DesignRouteImport } from './routes/design'
+import { Route as GatewayRouteImport } from './routes/gateway'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as HostsRouteImport } from './routes/hosts'
 import { Route as JarvisRouteImport } from './routes/jarvis'
@@ -48,6 +49,11 @@ const ConnectorsRoute = ConnectorsRouteImport.update({
 const DesignRoute = DesignRouteImport.update({
   id: '/design',
   path: '/design',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GatewayRoute = GatewayRouteImport.update({
+  id: '/gateway',
+  path: '/gateway',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/design': typeof DesignRoute
+  '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/design': typeof DesignRoute
+  '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/design': typeof DesignRoute
+  '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
   '/hosts': typeof HostsRoute
   '/jarvis': typeof JarvisRoute
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/design'
+    | '/gateway'
     | '/home'
     | '/hosts'
     | '/jarvis'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/design'
+    | '/gateway'
     | '/home'
     | '/hosts'
     | '/jarvis'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/design'
+    | '/gateway'
     | '/home'
     | '/hosts'
     | '/jarvis'
@@ -213,6 +225,7 @@ export interface RootRouteChildren {
   CodeRoute: typeof CodeRoute
   ConnectorsRoute: typeof ConnectorsRoute
   DesignRoute: typeof DesignRoute
+  GatewayRoute: typeof GatewayRoute
   HomeRoute: typeof HomeRoute
   HostsRoute: typeof HostsRoute
   JarvisRoute: typeof JarvisRoute
@@ -260,6 +273,13 @@ declare module '@tanstack/react-router' {
       path: '/design'
       fullPath: '/design'
       preLoaderRoute: typeof DesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gateway': {
+      id: '/gateway'
+      path: '/gateway'
+      fullPath: '/gateway'
+      preLoaderRoute: typeof GatewayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -341,6 +361,7 @@ const rootRouteChildren: RootRouteChildren = {
   CodeRoute: CodeRoute,
   ConnectorsRoute: ConnectorsRoute,
   DesignRoute: DesignRoute,
+  GatewayRoute: GatewayRoute,
   HomeRoute: HomeRoute,
   HostsRoute: HostsRoute,
   JarvisRoute: JarvisRoute,
