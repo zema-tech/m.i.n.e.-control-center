@@ -69,16 +69,7 @@ function seedDefaults(): AgentSkill[] {
       id: "host-health-check",
       name: "host-health-check",
       description: "Verifica stato host Falix (power, risorse) prima di interventi.",
-      body: `# host-health-check
-
-## Quando
-Prima di restart, comandi console o upload file.
-
-## Passi
-1. Leggi stato power / risorse (tool read).
-2. Riassumi all'utente in 3 bullet.
-3. Solo dopo conferma: azioni write (restart, stop).
-`,
+      body: `# host-health-check\n\n## Quando\nPrima di restart, comandi console o upload file.\n\n## Passi\n1. Leggi stato power / risorse (tool read).\n2. Riassumi all'utente in 3 bullet.\n3. Solo dopo conferma: azioni write (restart, stop).\n`,
       status: "active",
       source: "user",
       useCount: 0,
@@ -90,22 +81,61 @@ Prima di restart, comandi console o upload file.
       id: "remember-preference",
       name: "remember-preference",
       description: "Salva una preferenza utente in USER.md via memory tool.",
-      body: `# remember-preference
-
-## Quando
-L'utente esprime un'abitudine stabile ("preferisco X", "non fare mai Y").
-
-## Passi
-1. Formulare entry corta e atomica.
-2. memoryTool add target=user.
-3. Confermare all'utente cosa è stato salvato.
-`,
+      body: `# remember-preference\n\n## Quando\nL'utente esprime un'abitudine stabile (\"preferisco X\", \"non fare mai Y\").\n\n## Passi\n1. Formulare entry corta e atomica.\n2. memoryTool add target=user.\n3. Confermare all'utente cosa è stato salvato.\n`,
       status: "active",
       source: "user",
       useCount: 0,
       createdAt: now,
       updatedAt: now,
       tags: ["memory"],
+    },
+    {
+      id: "systematic-debugging",
+      name: "systematic-debugging",
+      description: "Debug strutturato: riproduci, isola, ipotesi, verifica (Hermes).",
+      body: `# systematic-debugging\n\n## Quando\nBug o comportamento anomalo (host, plugin, codice).\n\n## Passi\n1. **Riproduci** con i minimi passi osservabili.\n2. **Isola** layer (rete / process / config / codice).\n3. **Ipotesi** 1–3 cause ordinate per probabilità.\n4. **Verifica** con tool di lettura (log, status) prima di cambiare.\n5. **Fix minimo** + come confermare che è risolto.\n\nNon sparare comandi a caso. Non inventare log.\n`,
+      status: "active",
+      source: "user",
+      useCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      tags: ["debug", "hermes"],
+    },
+    {
+      id: "request-code-review",
+      name: "request-code-review",
+      description: "Review codice: rischi, chiarezza, test mancanti — tono diretto.",
+      body: `# request-code-review\n\n## Quando\nDiff o snippet da valutare.\n\n## Output\n- **Blockers** (must-fix)\n- **Risks** (edge, sicurezza, perf)\n- **Nits** (stile, solo se utili)\n- **Missing tests**\n\nSii specifico (file/riga se noti). Niente complimenti generici.\n`,
+      status: "active",
+      source: "user",
+      useCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      tags: ["code", "hermes"],
+    },
+    {
+      id: "skill-author",
+      name: "skill-author",
+      description: "Autore skill: nome, description una riga, body SKILL.md riusabile.",
+      body: `# skill-author\n\n## Quando\nUna procedura si ripete ≥2 volte o l'utente chiede una skill.\n\n## Standard\n- **name**: slug kebab-case\n- **description**: una riga, quando usarla\n- **body**: When / Steps / Avoid\n- Resta **draft** finché l'utente non attiva\n\nPreferisci skill piccole e invocabili a monolitiche.\n`,
+      status: "active",
+      source: "user",
+      useCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      tags: ["skills", "hermes"],
+    },
+    {
+      id: "memory-curator",
+      name: "memory-curator",
+      description: "Consolida MEMORY/USER sotto budget caratteri senza perdere fatti.",
+      body: `# memory-curator\n\n## Quando\nUsage alto o entry duplicate/ridondanti.\n\n## Passi\n1. Elenca candidate merge/remove.\n2. Proponi ` + "`replace`/`remove`" + ` con old_text univoco.\n3. Dopo ok, conferma nuovo usage %.\n\nNon cancellare preferenze USER senza esplicitarle.\n`,
+      status: "active",
+      source: "user",
+      useCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      tags: ["memory", "hermes"],
     },
   ];
   return persist(defaults);
