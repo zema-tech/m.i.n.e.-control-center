@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -29,65 +29,48 @@ function HomeHub() {
     setName(loadAgentProfile().name || "JARVIS");
   }, []);
 
+  const cards = SECTIONS.filter((s) => s.href !== "/edit");
+
   return (
-    <AppShell title="Hub" subtitle="Un agente · quattro mondi">
-      <div className="relative mx-auto max-w-6xl space-y-12 px-4 py-10 sm:px-6 sm:py-14">
-        <header className="text-center animate-fade-in-up">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-[11px] font-medium tracking-[0.14em] text-muted-foreground backdrop-blur-xl uppercase">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Omnicore
-          </div>
-          <h2 className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+    <AppShell title="Hub" subtitle="Scegli il contesto">
+      <div className="relative mx-auto max-w-5xl space-y-10 px-4 py-10 sm:px-6 sm:py-12">
+        <header className="animate-fade-in-up">
+          <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
             <span className="logo-gradient">{name}</span>
           </h2>
-          <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-muted-foreground">
-            Control center premium. Scegli il contesto: agente, gaming, design o codice.
+          <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted-foreground">
+            Control center multi-agente
           </p>
         </header>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          {SECTIONS.map((s, i) => (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {cards.map((s, i) => (
             <Link
               key={s.id}
               to={s.href}
               className={`section-card section-card-${s.id} group animate-fade-in-up no-underline`}
-              style={{ animationDelay: `${i * 70}ms` }}
+              style={{ animationDelay: `${i * 60}ms` }}
             >
               <div className="section-card-glow" />
-              <div className="relative z-[1] flex h-full flex-col p-6 sm:p-8">
-                <div className="mb-5 flex items-start justify-between gap-3">
+              <div className="relative z-[1] flex h-full flex-col p-6 sm:p-7">
+                <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
                       {s.tagline}
                     </p>
-                    <h3 className="mt-1.5 font-display text-2xl font-bold tracking-tight text-white sm:text-[1.75rem]">
+                    <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
                       {s.title}
                     </h3>
                   </div>
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-white/[0.08] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-transform duration-400 group-hover:scale-105 group-hover:rotate-3">
-                    <ArrowUpRight className="h-5 w-5" />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-white transition-transform duration-300 group-hover:scale-105">
+                    <ArrowUpRight className="h-4 w-4" />
                   </span>
                 </div>
-                <p className="flex-1 text-[13.5px] leading-relaxed text-white/65">{s.description}</p>
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.08] pt-4">
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">
-                    {s.colors}
-                  </span>
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/90">
-                    Entra
-                  </span>
-                </div>
+                <p className="flex-1 text-[13px] leading-relaxed text-white/60">{s.description}</p>
               </div>
             </Link>
           ))}
         </div>
-
-        <p
-          className="text-center text-[12px] text-muted-foreground/80 animate-fade-in"
-          style={{ animationDelay: "0.35s" }}
-        >
-          Ogni sezione ha palette e atmosfera dedicate. Naviga dalla sidebar o da qui.
-        </p>
       </div>
     </AppShell>
   );
