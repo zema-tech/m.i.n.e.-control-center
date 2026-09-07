@@ -23,13 +23,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { AccountSelector } from "@/components/AccountSelector";
 import { SectionBackdrop } from "@/components/SectionTheme";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { loadAgentProfile } from "@/lib/agent-profile";
 import { getAuthState, logout } from "@/lib/auth.functions";
 import type { Permission } from "@/lib/auth.permissions";
@@ -57,8 +51,8 @@ const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home; perm: Permissio
   { to: "/home", label: "Hub", icon: LayoutGrid, perm: "home" },
   { to: "/jarvis", label: "JARVIS", icon: Sparkles, perm: "jarvis" },
   { to: "/mine", label: "M.I.N.E", icon: Network, perm: "mine" },
-  { to: "/design", label: "Design", icon: Palette, perm: "design" },
-  { to: "/code", label: "Code", icon: Code2, perm: "code" },
+  { to: "/design", label: "A.R.T", icon: Palette, perm: "design" },
+  { to: "/code", label: "P.R.O.M.P.T", icon: Code2, perm: "code" },
 ];
 
 const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home; perm: Permission }[] = [
@@ -170,12 +164,18 @@ function SideNav({
 
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
-    <Link to="/home" className="group block">
-      <span className="logo-gradient font-display text-[1.3rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
-        {agentName}
+    <Link to="/home" className="group flex items-center gap-3 no-underline">
+      <span className="brand-mark" aria-hidden>
+        <span className="brand-mark-ring" />
+        <Sparkles className="relative h-4 w-4 text-primary" />
       </span>
-      <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
-        Omnicore
+      <span className="min-w-0">
+        <span className="logo-gradient block truncate font-display text-[1.05rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
+          {agentName}
+        </span>
+        <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Omnicore OS
+        </span>
       </span>
     </Link>
   );
@@ -226,8 +226,8 @@ export function AppShell({
     <div className="relative flex min-h-screen text-foreground">
       <SectionBackdrop />
 
-      <aside className="shell-aside relative z-10 hidden w-[232px] shrink-0 flex-col md:flex">
-        <div className="border-b border-white/[0.045] px-4 py-4">
+      <aside className="shell-aside relative z-10 hidden w-[248px] shrink-0 flex-col md:flex">
+        <div className="border-b border-white/[0.045] px-4 py-5">
           <BrandBlock agentName={agentName} />
           <div className="mt-3">
             <AccountSelector />
