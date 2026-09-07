@@ -30,7 +30,7 @@ import {
   DEFAULT_GUEST_PERMISSIONS,
   PERMISSION_META,
   type Permission,
-} from "@/lib/auth.server";
+} from "@/lib/auth.permissions";
 
 export const Route = createFileRoute("/access")({
   head: () => ({
@@ -151,7 +151,7 @@ function AccessPage() {
   function togglePerm(p: Permission) {
     setPermissions((prev) => {
       if (prev.includes(p)) {
-        if (p === "home") return prev; // home sempre on
+        if (p === "home") return prev;
         return prev.filter((x) => x !== p);
       }
       return [...prev, p];
@@ -317,7 +317,7 @@ function AccessPage() {
               </div>
             ))}
             <p className="text-[11px] text-muted-foreground/80">
-              Consigliato: lascia "Gestione accessi" disattivata per gli ospiti. Power e Console solo
+              Consigliato: lascia &quot;Gestione accessi&quot; disattivata per gli ospiti. Power e Console solo
               se ti fidi di azioni sul server.
             </p>
           </div>
