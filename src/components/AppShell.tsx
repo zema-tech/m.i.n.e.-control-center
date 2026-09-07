@@ -49,7 +49,8 @@ type NavTo =
   | "/memory"
   | "/gateway"
   | "/cowork"
-  | "/pulse";
+  | "/pulse"
+  | "/access";
 
 const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid },
@@ -70,6 +71,7 @@ const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
   { to: "/skills", label: "Competenze", icon: KeyRound },
   { to: "/hosts", label: "Host", icon: Server },
   { to: "/connectors", label: "Connettori", icon: Cable },
+  { to: "/access", label: "Accesso", icon: KeyRound },
 ];
 
 function NavLink({
@@ -93,7 +95,7 @@ function NavLink({
     <Link
       to={to}
       onClick={onNavigate}
-      className={`btn-matrix group relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium tracking-wide ${
+      className={`btn-matrix group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium tracking-wide ${
         active
           ? "nav-item-active"
           : "border border-transparent text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
@@ -121,28 +123,26 @@ function SideNav({
   const section = sectionFromPath(pathname);
   return (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
-      <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+      <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
         Mondi
       </p>
       {NAV_WORLDS.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
-      <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+      <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
         Strumenti
       </p>
       {NAV_TOOLS.map((item) => (
         <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
       ))}
 
-      <div className="mt-auto rounded-xl border border-white/[0.06] bg-white/[0.03] p-3.5">
-        <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+      <div className="mt-auto rounded-xl border border-white/[0.05] bg-white/[0.02] p-3">
+        <p className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
           <Brain className="h-3.5 w-3.5" />
           {agentName}
         </p>
-        <p className="text-[11px] capitalize leading-relaxed text-muted-foreground">
-          Tema: {section}
-        </p>
+        <p className="text-[11px] capitalize text-muted-foreground">Tema · {section}</p>
       </div>
     </nav>
   );
@@ -151,11 +151,11 @@ function SideNav({
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
     <Link to="/home" className="block group">
-      <span className="logo-gradient font-display text-[1.35rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
+      <span className="logo-gradient font-display text-[1.3rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
         {agentName}
       </span>
       <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
-        Omnicore · control
+        Omnicore
       </span>
     </Link>
   );
@@ -189,21 +189,21 @@ export function AppShell({
     <div className="relative flex min-h-screen text-foreground">
       <SectionBackdrop />
 
-      <aside className="shell-aside relative z-10 hidden w-[240px] shrink-0 flex-col md:flex">
-        <div className="border-b border-white/[0.05] px-4 py-5">
+      <aside className="shell-aside relative z-10 hidden w-[232px] shrink-0 flex-col md:flex">
+        <div className="border-b border-white/[0.045] px-4 py-4">
           <BrandBlock agentName={agentName} />
-          <div className="mt-4">
+          <div className="mt-3">
             <AccountSelector />
           </div>
         </div>
 
         <SideNav pathname={pathname} agentName={agentName} />
 
-        <div className="border-t border-white/[0.05] p-3">
+        <div className="border-t border-white/[0.045] p-3">
           <button
             type="button"
             onClick={() => void onLogout()}
-            className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
+            className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
             Esci
@@ -212,7 +212,7 @@ export function AppShell({
       </aside>
 
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <header className="shell-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+        <header className="shell-header sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -226,12 +226,12 @@ export function AppShell({
               </SheetTrigger>
               <SheetContent
                 side="left"
-                className="flex w-[min(100%,17.5rem)] flex-col border-border bg-background p-0"
+                className="flex w-[min(100%,17rem)] flex-col border-border bg-background p-0"
               >
-                <SheetHeader className="border-b border-white/[0.05] px-4 py-5 text-left">
+                <SheetHeader className="border-b border-white/[0.045] px-4 py-4 text-left">
                   <SheetTitle className="sr-only">Navigazione</SheetTitle>
                   <BrandBlock agentName={agentName} />
-                  <div className="mt-4">
+                  <div className="mt-3">
                     <AccountSelector />
                   </div>
                 </SheetHeader>
@@ -240,11 +240,11 @@ export function AppShell({
                   agentName={agentName}
                   onNavigate={() => setMobileOpen(false)}
                 />
-                <div className="mt-auto border-t border-white/[0.05] p-3">
+                <div className="mt-auto border-t border-white/[0.045] p-3">
                   <button
                     type="button"
                     onClick={() => void onLogout()}
-                    className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-muted-foreground hover:bg-white/[0.04]"
+                    className="btn-matrix flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-muted-foreground hover:bg-white/[0.04]"
                   >
                     <LogOut className="h-4 w-4" />
                     Esci
