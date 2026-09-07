@@ -60,10 +60,6 @@ function cookieOpts(maxAge = 60 * 60 * 24) {
   };
 }
 
-async function requireSession(): Promise<SessionClaims | null> {
-  return readSession(getCookie(sessionCookieName));
-}
-
 export const login = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ password: z.string().min(1).max(200) }).parse(input),
@@ -181,7 +177,7 @@ export const logout = createServerFn({ method: "POST" }).handler(async () => {
 });
 
 export const getAuthState = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await requireSession();
+  const session = await readSession(getCookie(sessionCookieName));
   if (!session) {
     return {
       authenticated: false as const,
@@ -211,7 +207,7 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const session = await requireSession();
+    const session = await readSession(getCookie(sessionCookieName));
     if (!session) {
       return { ok: false as const, message: "Sessione non valida" };
     }
@@ -258,7 +254,7 @@ export const createGuestPassword = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const session = await requireSession();
+    const session = await readSession(getCookie(sessionCookieName));
     if (!session || session.role !== "admin") {
       return { ok: false as const, message: "Solo admin può creare accessi" };
     }
@@ -282,7 +278,7 @@ export const createGuestPassword = createServerFn({ method: "POST" })
   });
 
 export const getGuestPasswords = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await requireSession();
+  const session = await readSession(getCookie(sessionCookieName));
   if (!session || session.role !== "admin") {
     return { ok: false as const, items: [] as ReturnType<typeof listTempPasswords> };
   }
@@ -292,7 +288,7 @@ export const getGuestPasswords = createServerFn({ method: "GET" }).handler(async
 export const revokeGuestPassword = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().min(1).max(64) }).parse(input))
   .handler(async ({ data }) => {
-    const session = await requireSession();
+    const session = await readSession(getCookie(sessionCookieName));
     if (!session || session.role !== "admin") {
       return { ok: false as const };
     }
@@ -350,15 +346,21 @@ export const getDashboardForAccount = createServerFn({ method: "POST" })
     }
   });
 
-/** Helper per route loader: redirect se path non permesso */
-export async function assertPathAccess(pathname: string) {
-  const session = await requireSession();
-  if (!session) return { ok: false as const, reason: "auth" as const };
-  if (session.mustSetPassword && pathname !== "/setup-password") {
-    return { ok: false as const, reason: "setup" as const };
-  }
-  if (!pathAllowed(pathname, session)) {
-    return { ok: false as const, reason: "perm" as const };
-  }
-  return { ok: true as const, session };
-}
+/** Controllo path lato server (solo dentro handler / loader server) */
+export const checkPathAccess = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ pathname: z.string().max(200) }).parse(input))
+  .handler(async ({ data }) => {
+    const session = await readSession(getCookie(sessionCookieName));
+    if (!session) return { ok: false as const, reason: "auth" as const };
+    if (session.mustSetPassword && data.pathname !== "/setup-password") {
+      return { ok: false as const, reason: "setup" as const };
+    }
+    if (!pathAllowed(data.pathname, session)) {
+      return { ok: false as const, reason: "perm" as const };
+    }
+    return {
+      ok: true as const,
+      role: session.role,
+      permissions: session.permissions,
+    };
+  });
