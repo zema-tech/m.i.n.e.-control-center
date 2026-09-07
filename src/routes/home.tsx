@@ -17,6 +17,7 @@ export const Route = createFileRoute("/home")({
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
+    if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
     return null;
   },
   component: HomeHub,
