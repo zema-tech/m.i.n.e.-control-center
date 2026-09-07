@@ -26,6 +26,19 @@ const credSchema = z
   })
   .optional();
 
+const tempIconSchema = z.enum([
+  "none",
+  "key",
+  "user",
+  "users",
+  "star",
+  "shield",
+  "coffee",
+  "gamepad",
+  "sparkles",
+  "heart",
+]);
+
 export const login = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ password: z.string().min(1).max(200) }).parse(input),
@@ -36,7 +49,10 @@ export const login = createServerFn({ method: "POST" })
     if (limit.blocked) {
       return {
         ok: false as const,
-        message: `Troppi tentativi. Accesso bloccato per ${limit.retryInMin} minuti.`,
+        message: `Accesso in pausa. Riprova tra ${limit.retryInMin} min.`,
+        blocked: true as const,
+        retryInSec: limit.retryInSec,
+        remaining: 0,
       };
     }
 
@@ -46,18 +62,34 @@ export const login = createServerFn({ method: "POST" })
     } catch {
       return {
         ok: false as const,
-        message: "Password admin non ancora configurata sul server.",
+        message: "Password non ancora configurata sul server.",
+        blocked: false as const,
+        retryInSec: 0,
+        remaining: null as number | null,
       };
     }
 
     if (!valid) {
       const fail = registerFailure(ip);
       logAction("warn", `Tentativo di accesso fallito da ${ip}`);
+      if (fail.blocked) {
+        return {
+          ok: false as const,
+          message: "Troppi tentativi. Accesso in pausa per 15 minuti.",
+          blocked: true as const,
+          retryInSec: fail.retryInSec,
+          remaining: 0,
+        };
+      }
       return {
         ok: false as const,
-        message: fail.blocked
-          ? "5 tentativi falliti. Accesso bloccato per 15 minuti."
-          : `Password errata. Tentativi rimanenti: ${fail.remaining}`,
+        message:
+          fail.remaining === 1
+            ? "Password non corretta. Ultimo tentativo disponibile."
+            : `Password non corretta. Tentativi rimasti: ${fail.remaining}`,
+        blocked: false as const,
+        retryInSec: 0,
+        remaining: fail.remaining,
       };
     }
 
@@ -71,7 +103,13 @@ export const login = createServerFn({ method: "POST" })
       maxAge: 60 * 60 * 24,
     });
     logAction("info", `Accesso riuscito da ${ip}`);
-    return { ok: true as const, message: "Accesso consentito" };
+    return {
+      ok: true as const,
+      message: "Accesso consentito",
+      blocked: false as const,
+      retryInSec: 0,
+      remaining: null as number | null,
+    };
   });
 
 export const logout = createServerFn({ method: "POST" }).handler(async () => {
@@ -96,6 +134,7 @@ export const createGuestPassword = createServerFn({ method: "POST" })
         label: z.string().max(80).default("Ospite"),
         durationHours: z.union([z.literal(1), z.literal(6), z.literal(24), z.literal(168)]),
         maxUses: z.number().int().min(1).max(100).nullable().optional(),
+        icon: tempIconSchema.default("none"),
       })
       .parse(input),
   )
@@ -107,12 +146,14 @@ export const createGuestPassword = createServerFn({ method: "POST" })
       label: data.label,
       durationMs: data.durationHours * 60 * 60 * 1000,
       maxUses: data.maxUses ?? null,
+      icon: data.icon,
     });
     return {
       ok: true as const,
       id: created.id,
       password: created.password,
       label: created.label,
+      icon: created.icon,
       expiresAt: created.expiresAt,
       maxUses: created.maxUses,
     };

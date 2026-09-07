@@ -35,25 +35,38 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
-export function checkRateLimit(ip: string): { blocked: boolean; retryInMin: number } {
+export function checkRateLimit(ip: string): {
+  blocked: boolean;
+  retryInMin: number;
+  retryInSec: number;
+} {
   const entry = attempts.get(ip);
   if (entry && entry.lockedUntil > Date.now()) {
-    return { blocked: true, retryInMin: Math.ceil((entry.lockedUntil - Date.now()) / 60000) };
+    const ms = entry.lockedUntil - Date.now();
+    return {
+      blocked: true,
+      retryInMin: Math.ceil(ms / 60000),
+      retryInSec: Math.max(1, Math.ceil(ms / 1000)),
+    };
   }
-  return { blocked: false, retryInMin: 0 };
+  return { blocked: false, retryInMin: 0, retryInSec: 0 };
 }
 
-export function registerFailure(ip: string): { blocked: boolean; remaining: number } {
+export function registerFailure(ip: string): {
+  blocked: boolean;
+  remaining: number;
+  retryInSec: number;
+} {
   const entry = attempts.get(ip) ?? { count: 0, lockedUntil: 0 };
   entry.count += 1;
   if (entry.count >= MAX_ATTEMPTS) {
     entry.lockedUntil = Date.now() + LOCK_MS;
     entry.count = 0;
     attempts.set(ip, entry);
-    return { blocked: true, remaining: 0 };
+    return { blocked: true, remaining: 0, retryInSec: Math.ceil(LOCK_MS / 1000) };
   }
   attempts.set(ip, entry);
-  return { blocked: false, remaining: MAX_ATTEMPTS - entry.count };
+  return { blocked: false, remaining: MAX_ATTEMPTS - entry.count, retryInSec: 0 };
 }
 
 export function clearFailures(ip: string) {
@@ -62,9 +75,22 @@ export function clearFailures(ip: string) {
 
 /* ── Temporary passwords (in-memory, cleared on restart) ── */
 
+export type TempPasswordIcon =
+  | "none"
+  | "key"
+  | "user"
+  | "users"
+  | "star"
+  | "shield"
+  | "coffee"
+  | "gamepad"
+  | "sparkles"
+  | "heart";
+
 export type TempPassword = {
   id: string;
   label: string;
+  icon: TempPasswordIcon;
   hash: string;
   createdAt: number;
   expiresAt: number;
@@ -82,11 +108,39 @@ function pruneExpired() {
   }
 }
 
+const VALID_ICONS: TempPasswordIcon[] = [
+  "none",
+  "key",
+  "user",
+  "users",
+  "star",
+  "shield",
+  "coffee",
+  "gamepad",
+  "sparkles",
+  "heart",
+];
+
+function normalizeIcon(icon: string | undefined | null): TempPasswordIcon {
+  if (icon && VALID_ICONS.includes(icon as TempPasswordIcon)) {
+    return icon as TempPasswordIcon;
+  }
+  return "none";
+}
+
 export async function createTempPassword(opts: {
   label: string;
   durationMs: number;
   maxUses?: number | null;
-}): Promise<{ id: string; password: string; label: string; expiresAt: number; maxUses: number | null }> {
+  icon?: string | null;
+}): Promise<{
+  id: string;
+  password: string;
+  label: string;
+  icon: TempPasswordIcon;
+  expiresAt: number;
+  maxUses: number | null;
+}> {
   pruneExpired();
   const id = randomBytes(8).toString("hex");
   const password = randomBytes(9).toString("base64url");
@@ -94,22 +148,32 @@ export async function createTempPassword(opts: {
   const createdAt = Date.now();
   const expiresAt = createdAt + opts.durationMs;
   const maxUses = opts.maxUses ?? null;
+  const icon = normalizeIcon(opts.icon);
   tempPasswords.set(id, {
     id,
     label: opts.label.trim() || "Ospite",
+    icon,
     hash,
     createdAt,
     expiresAt,
     uses: 0,
     maxUses,
   });
-  logAction("info", `Password temporanea creata: ${opts.label.trim() || "Ospite"}`);
-  return { id, password, label: opts.label.trim() || "Ospite", expiresAt, maxUses };
+  logAction("info", `Password temporanea creata: ${opts.label.trim() || "Ospite"} (${icon})`);
+  return {
+    id,
+    password,
+    label: opts.label.trim() || "Ospite",
+    icon,
+    expiresAt,
+    maxUses,
+  };
 }
 
 export function listTempPasswords(): Array<{
   id: string;
   label: string;
+  icon: TempPasswordIcon;
   createdAt: number;
   expiresAt: number;
   uses: number;
@@ -122,6 +186,7 @@ export function listTempPasswords(): Array<{
     .map((tp) => ({
       id: tp.id,
       label: tp.label,
+      icon: tp.icon ?? "none",
       createdAt: tp.createdAt,
       expiresAt: tp.expiresAt,
       uses: tp.uses,

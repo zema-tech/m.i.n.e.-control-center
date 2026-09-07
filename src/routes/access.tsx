@@ -1,7 +1,22 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Check, Clock, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  Check,
+  Clock,
+  Coffee,
+  Copy,
+  Gamepad2,
+  Heart,
+  KeyRound,
+  Plus,
+  Shield,
+  Sparkles,
+  Star,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
+import { useCallback, useEffect, useState, type ComponentType } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import {
@@ -26,9 +41,22 @@ export const Route = createFileRoute("/access")({
   component: AccessPage,
 });
 
+type TempIcon =
+  | "none"
+  | "key"
+  | "user"
+  | "users"
+  | "star"
+  | "shield"
+  | "coffee"
+  | "gamepad"
+  | "sparkles"
+  | "heart";
+
 type GuestItem = {
   id: string;
   label: string;
+  icon: TempIcon;
   createdAt: number;
   expiresAt: number;
   uses: number;
@@ -42,6 +70,30 @@ const DURATIONS = [
   { hours: 24 as const, label: "24 ore" },
   { hours: 168 as const, label: "7 giorni" },
 ];
+
+const ICON_OPTIONS: {
+  id: TempIcon;
+  label: string;
+  Icon: ComponentType<{ className?: string }> | null;
+}[] = [
+  { id: "none", label: "Nessuna", Icon: null },
+  { id: "key", label: "Chiave", Icon: KeyRound },
+  { id: "user", label: "Utente", Icon: User },
+  { id: "users", label: "Team", Icon: Users },
+  { id: "star", label: "Stella", Icon: Star },
+  { id: "shield", label: "Scudo", Icon: Shield },
+  { id: "coffee", label: "Caffè", Icon: Coffee },
+  { id: "gamepad", label: "Game", Icon: Gamepad2 },
+  { id: "sparkles", label: "Spark", Icon: Sparkles },
+  { id: "heart", label: "Cuore", Icon: Heart },
+];
+
+function IconBadge({ icon, className = "h-4 w-4" }: { icon: TempIcon; className?: string }) {
+  const opt = ICON_OPTIONS.find((o) => o.id === icon);
+  if (!opt?.Icon) return null;
+  const I = opt.Icon;
+  return <I className={className} />;
+}
 
 function formatWhen(ts: number) {
   try {
@@ -64,17 +116,21 @@ function AccessPage() {
   const [label, setLabel] = useState("Ospite");
   const [durationHours, setDurationHours] = useState<1 | 6 | 24 | 168>(24);
   const [maxUses, setMaxUses] = useState<string>("");
+  const [icon, setIcon] = useState<TempIcon>("none");
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<GuestItem[]>([]);
-  const [fresh, setFresh] = useState<{ password: string; label: string; expiresAt: number } | null>(
-    null,
-  );
+  const [fresh, setFresh] = useState<{
+    password: string;
+    label: string;
+    icon: TempIcon;
+    expiresAt: number;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await doList({});
-    if (res.ok) setItems(res.items);
+    if (res.ok) setItems(res.items as GuestItem[]);
   }, [doList]);
 
   useEffect(() => {
@@ -88,15 +144,26 @@ function AccessPage() {
     setFresh(null);
     const uses = maxUses.trim() === "" ? null : Math.max(1, Math.min(100, Number(maxUses) || 1));
     const res = await doCreate({
-      data: { label: label.trim() || "Ospite", durationHours, maxUses: uses },
+      data: {
+        label: label.trim() || "Ospite",
+        durationHours,
+        maxUses: uses,
+        icon,
+      },
     });
     setBusy(false);
     if (!res.ok) {
-      setError(res.message ?? "Errore");
+      setError((res as { message?: string }).message ?? "Errore");
       return;
     }
-    setFresh({ password: res.password, label: res.label, expiresAt: res.expiresAt });
+    setFresh({
+      password: res.password,
+      label: res.label,
+      icon: (res as { icon?: TempIcon }).icon ?? icon,
+      expiresAt: res.expiresAt,
+    });
     setLabel("Ospite");
+    setIcon("none");
     await refresh();
   }
 
@@ -118,7 +185,7 @@ function AccessPage() {
   }
 
   return (
-    <AppShell title="Accesso" subtitle="Password temporanee per ospiti">
+    <AppShell title="Accesso" subtitle="Password temporanee per ospiti e collaboratori">
       <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
         <form onSubmit={onCreate} className="panel-spacious space-y-5">
           <div className="flex items-start gap-3">
@@ -128,7 +195,8 @@ function AccessPage() {
             <div>
               <h2 className="font-display text-lg font-semibold tracking-tight">Nuova password</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Genera un accesso temporaneo. La password in chiaro si vede solo una volta.
+                Genera un accesso temporaneo. La password in chiaro si vede solo una volta. Vale
+                anche come accesso all&apos;hub (stessa schermata di login della tua password).
               </p>
             </div>
           </div>
@@ -161,6 +229,31 @@ function AccessPage() {
                 className="input-field"
                 placeholder="Illimitati"
               />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-label">Icona da visualizzare</p>
+            <div className="flex flex-wrap gap-2">
+              {ICON_OPTIONS.map((opt) => {
+                const selected = icon === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    title={opt.label}
+                    onClick={() => setIcon(opt.id)}
+                    className={`btn-matrix inline-flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium ${
+                      selected
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-white/8 text-muted-foreground hover:border-white/15 hover:text-foreground"
+                    }`}
+                  >
+                    {opt.Icon ? <opt.Icon className="h-4 w-4" /> : <span className="text-[11px]">—</span>}
+                    <span className="hidden sm:inline">{opt.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -203,9 +296,14 @@ function AccessPage() {
         {fresh ? (
           <div className="panel-spacious space-y-4 border-primary/25 animate-fade-in-up">
             <p className="text-label text-primary">Password generata — copiala ora</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              {fresh.icon !== "none" ? (
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+                  <IconBadge icon={fresh.icon} className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
               <span className="font-medium text-foreground">{fresh.label}</span>
-              {" · "}scade {formatWhen(fresh.expiresAt)}
+              <span>· scade {formatWhen(fresh.expiresAt)}</span>
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <code className="flex-1 rounded-lg border border-white/10 bg-black/40 px-4 py-3 font-mono text-base tracking-wide text-primary">
@@ -246,18 +344,29 @@ function AccessPage() {
                   key={item.id}
                   className="panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3.5"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium tracking-tight text-foreground">{item.label}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        scade {formatWhen(item.expiresAt)}
+                  <div className="flex min-w-0 items-start gap-3">
+                    {item.icon && item.icon !== "none" ? (
+                      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
+                        <IconBadge icon={item.icon} className="h-4 w-4" />
                       </span>
-                      <span>
-                        usi {item.uses}
-                        {item.maxUses != null ? ` / ${item.maxUses}` : ""}
+                    ) : (
+                      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/8 text-muted-foreground/50">
+                        <KeyRound className="h-3.5 w-3.5" />
                       </span>
-                    </p>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium tracking-tight text-foreground">{item.label}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          scade {formatWhen(item.expiresAt)}
+                        </span>
+                        <span>
+                          usi {item.uses}
+                          {item.maxUses != null ? ` / ${item.maxUses}` : ""}
+                        </span>
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -274,7 +383,8 @@ function AccessPage() {
         </section>
 
         <p className="text-center text-[12px] text-muted-foreground/70">
-          Le password temporanee restano in memoria del server: si azzerano al riavvio.
+          Le password temporanee restano in memoria del server: si azzerano al riavvio. Funzionano
+          per tutti gli utenti sulla stessa schermata di login della password principale.
         </p>
       </div>
     </AppShell>
