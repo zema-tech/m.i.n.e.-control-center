@@ -25,17 +25,25 @@ import {
   getGuestPasswords,
   revokeGuestPassword,
 } from "@/lib/auth.functions";
+import {
+  ALL_PERMISSIONS,
+  DEFAULT_GUEST_PERMISSIONS,
+  PERMISSION_META,
+  type Permission,
+} from "@/lib/auth.server";
 
 export const Route = createFileRoute("/access")({
   head: () => ({
     meta: [
       { title: "Accesso — Omnicore" },
-      { name: "description", content: "Password temporanee per ospiti." },
+      { name: "description", content: "Password temporanee e permessi per ospiti." },
     ],
   }),
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
+    if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
+    if (state.role !== "admin") throw redirect({ to: "/home" });
     return null;
   },
   component: AccessPage,
@@ -62,6 +70,7 @@ type GuestItem = {
   uses: number;
   maxUses: number | null;
   expired: boolean;
+  permissions: Permission[];
 };
 
 const DURATIONS = [
@@ -117,6 +126,7 @@ function AccessPage() {
   const [durationHours, setDurationHours] = useState<1 | 6 | 24 | 168>(24);
   const [maxUses, setMaxUses] = useState<string>("");
   const [icon, setIcon] = useState<TempIcon>("none");
+  const [permissions, setPermissions] = useState<Permission[]>([...DEFAULT_GUEST_PERMISSIONS]);
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<GuestItem[]>([]);
   const [fresh, setFresh] = useState<{
@@ -124,6 +134,7 @@ function AccessPage() {
     label: string;
     icon: TempIcon;
     expiresAt: number;
+    permissions: Permission[];
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +148,16 @@ function AccessPage() {
     void refresh();
   }, [refresh]);
 
+  function togglePerm(p: Permission) {
+    setPermissions((prev) => {
+      if (prev.includes(p)) {
+        if (p === "home") return prev; // home sempre on
+        return prev.filter((x) => x !== p);
+      }
+      return [...prev, p];
+    });
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -149,6 +170,7 @@ function AccessPage() {
         durationHours,
         maxUses: uses,
         icon,
+        permissions,
       },
     });
     setBusy(false);
@@ -161,9 +183,11 @@ function AccessPage() {
       label: res.label,
       icon: (res as { icon?: TempIcon }).icon ?? icon,
       expiresAt: res.expiresAt,
+      permissions: (res as { permissions?: Permission[] }).permissions ?? permissions,
     });
     setLabel("Ospite");
     setIcon("none");
+    setPermissions([...DEFAULT_GUEST_PERMISSIONS]);
     await refresh();
   }
 
@@ -184,8 +208,14 @@ function AccessPage() {
     }
   }
 
+  const groups = [
+    { id: "mondi" as const, title: "Cosa può vedere — Mondi" },
+    { id: "strumenti" as const, title: "Strumenti" },
+    { id: "azioni" as const, title: "Azioni" },
+  ];
+
   return (
-    <AppShell title="Accesso" subtitle="Password temporanee per ospiti e collaboratori">
+    <AppShell title="Accesso" subtitle="Inviti temporanei, permessi e cosa possono fare">
       <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:px-6 sm:py-10">
         <form onSubmit={onCreate} className="panel-spacious space-y-5">
           <div className="flex items-start gap-3">
@@ -193,10 +223,10 @@ function AccessPage() {
               <KeyRound className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-display text-lg font-semibold tracking-tight">Nuova password</h2>
+              <h2 className="font-display text-lg font-semibold tracking-tight">Nuovo invito</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Genera un accesso temporaneo. La password in chiaro si vede solo una volta. Vale
-                anche come accesso all&apos;hub (stessa schermata di login della tua password).
+                Genera una password temporanea. Al primo accesso l&apos;ospite dovrà creare la sua
+                password personale; i permessi che scegli qui restano legati a lui.
               </p>
             </div>
           </div>
@@ -217,7 +247,7 @@ function AccessPage() {
             </div>
             <div className="space-y-1.5">
               <label htmlFor="tp-uses" className="text-label">
-                Max utilizzi (opzionale)
+                Max utilizzi invito (opzionale)
               </label>
               <input
                 id="tp-uses"
@@ -257,8 +287,43 @@ function AccessPage() {
             </div>
           </div>
 
+          <div className="space-y-3">
+            <p className="text-label">Permessi — cosa può vedere e fare</p>
+            {groups.map((g) => (
+              <div key={g.id} className="space-y-2">
+                <p className="text-[11px] font-medium text-muted-foreground">{g.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_PERMISSIONS.filter((p) => PERMISSION_META[p].group === g.id).map((p) => {
+                    const on = permissions.includes(p);
+                    const locked = p === "home";
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        disabled={locked}
+                        onClick={() => togglePerm(p)}
+                        className={`btn-matrix inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                          on
+                            ? "border-primary/40 bg-primary/15 text-primary"
+                            : "border-white/8 text-muted-foreground hover:border-white/15"
+                        } ${locked ? "opacity-80" : ""}`}
+                      >
+                        {on ? <Check className="h-3 w-3" /> : null}
+                        {PERMISSION_META[p].label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground/80">
+              Consigliato: lascia "Gestione accessi" disattivata per gli ospiti. Power e Console solo
+              se ti fidi di azioni sul server.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
-            <p className="text-label">Durata</p>
+            <p className="text-label">Durata invito</p>
             <div className="flex flex-wrap gap-2">
               {DURATIONS.map((d) => (
                 <button
@@ -285,17 +350,17 @@ function AccessPage() {
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || permissions.length === 0}
             className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
-            {busy ? "Generazione…" : "Crea password"}
+            {busy ? "Generazione…" : "Crea invito"}
           </button>
         </form>
 
         {fresh ? (
-          <div className="panel-spacious space-y-4 border-primary/25 animate-fade-in-up">
-            <p className="text-label text-primary">Password generata — copiala ora</p>
+          <div className="panel-spacious space-y-4 animate-fade-in-up border-primary/25">
+            <p className="text-label text-primary">Invito generato — copialo ora</p>
             <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {fresh.icon !== "none" ? (
                 <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
@@ -304,6 +369,10 @@ function AccessPage() {
               ) : null}
               <span className="font-medium text-foreground">{fresh.label}</span>
               <span>· scade {formatWhen(fresh.expiresAt)}</span>
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              Permessi:{" "}
+              {fresh.permissions.map((p) => PERMISSION_META[p]?.label ?? p).join(" · ")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <code className="flex-1 rounded-lg border border-white/10 bg-black/40 px-4 py-3 font-mono text-base tracking-wide text-primary">
@@ -318,12 +387,15 @@ function AccessPage() {
                 {copied ? "Copiata" : "Copia"}
               </button>
             </div>
+            <p className="text-[12px] text-muted-foreground/80">
+              Al login con questa password l&apos;ospite viene portato a creare la sua password.
+            </p>
           </div>
         ) : null}
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-display text-base font-semibold tracking-tight">Attive</h2>
+            <h2 className="font-display text-base font-semibold tracking-tight">Inviti attivi</h2>
             <button
               type="button"
               onClick={() => void refresh()}
@@ -335,7 +407,7 @@ function AccessPage() {
 
           {items.length === 0 ? (
             <div className="panel rounded-xl px-5 py-10 text-center text-sm text-muted-foreground">
-              Nessuna password temporanea attiva.
+              Nessun invito temporaneo attivo.
             </div>
           ) : (
             <ul className="space-y-2">
@@ -366,6 +438,11 @@ function AccessPage() {
                           {item.maxUses != null ? ` / ${item.maxUses}` : ""}
                         </span>
                       </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground/80">
+                        {(item.permissions || [])
+                          .map((p) => PERMISSION_META[p]?.label ?? p)
+                          .join(" · ") || "—"}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -383,8 +460,7 @@ function AccessPage() {
         </section>
 
         <p className="text-center text-[12px] text-muted-foreground/70">
-          Le password temporanee restano in memoria del server: si azzerano al riavvio. Funzionano
-          per tutti gli utenti sulla stessa schermata di login della password principale.
+          Inviti e membri registrati restano in memoria del server (si azzerano al riavvio).
         </p>
       </div>
     </AppShell>

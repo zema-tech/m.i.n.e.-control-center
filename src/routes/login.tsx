@@ -5,7 +5,6 @@ import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, Sparkles } from "lucide-rea
 
 import { getAuthState, login } from "@/lib/auth.functions";
 
-/** Hero robot — Motionsites-grade login atmosphere */
 const LOGIN_BG = "https://files.catbox.moe/1prie3.jpg";
 
 export const Route = createFileRoute("/login")({
@@ -19,8 +18,11 @@ export const Route = createFileRoute("/login")({
     ],
   }),
   beforeLoad: async () => {
-    const { authenticated } = await getAuthState();
-    if (authenticated) throw redirect({ to: "/home" });
+    const state = await getAuthState();
+    if (state.authenticated) {
+      if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
+      throw redirect({ to: "/home" });
+    }
   },
   component: LoginPage,
 });
@@ -71,7 +73,11 @@ function LoginPage() {
     setBusy(false);
     if (res.ok) {
       await router.invalidate();
-      await router.navigate({ to: "/home" });
+      if (res.mustSetPassword) {
+        await router.navigate({ to: "/setup-password" });
+      } else {
+        await router.navigate({ to: "/home" });
+      }
       return;
     }
     triggerShake();
@@ -90,7 +96,7 @@ function LoginPage() {
         <img
           src={LOGIN_BG}
           alt=""
-          className="h-full w-full object-cover object-[center_20%] scale-105"
+          className="h-full w-full scale-105 object-cover object-[center_20%]"
           decoding="async"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#020617]/85 via-[#0a1628]/72 to-[#020617]/90" />
@@ -117,11 +123,11 @@ function LoginPage() {
 
       <div className="relative z-10 w-full max-w-[420px] animate-fade-in-up">
         <div className="mb-9 text-center">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium tracking-[0.12em] text-sky-100/80 backdrop-blur-xl uppercase">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-100/80 backdrop-blur-xl">
             <Sparkles className="h-3.5 w-3.5 text-sky-300" />
             Omnicore Hub
           </div>
-          <h1 className="font-display text-5xl font-bold tracking-tight text-white sm:text-6xl drop-shadow-[0_0_40px_rgba(56,189,248,0.25)]">
+          <h1 className="font-display text-5xl font-bold tracking-tight text-white drop-shadow-[0_0_40px_rgba(56,189,248,0.25)] sm:text-6xl">
             <span className="bg-gradient-to-br from-white via-sky-100 to-sky-300/90 bg-clip-text text-transparent">
               Omnicore
             </span>
@@ -216,8 +222,8 @@ function LoginPage() {
           <div className="flex items-start gap-2 rounded-xl border border-white/6 bg-white/[0.03] px-3 py-2.5">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300/70" />
             <p className="text-[11px] leading-relaxed text-white/40">
-              Sessione protetta con cookie sicuri. Dopo alcuni tentativi errati l&apos;accesso si
-              mette in pausa per qualche minuto — così il tuo hub resta al sicuro.
+              Password admin, personale o temporanea. Con un invito temporaneo ti chiederemo di
+              creare la tua password al primo ingresso.
             </p>
           </div>
         </form>
