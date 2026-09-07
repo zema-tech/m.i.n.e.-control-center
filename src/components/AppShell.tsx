@@ -31,7 +31,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { loadAgentProfile } from "@/lib/agent-profile";
-import { logout } from "@/lib/auth.functions";
+import { getAuthState, logout } from "@/lib/auth.functions";
+import type { Permission } from "@/lib/auth.permissions";
 import { sectionFromPath } from "@/lib/section-themes";
 
 type NavTo =
@@ -52,26 +53,26 @@ type NavTo =
   | "/pulse"
   | "/access";
 
-const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home }[] = [
-  { to: "/home", label: "Hub", icon: LayoutGrid },
-  { to: "/jarvis", label: "JARVIS", icon: Sparkles },
-  { to: "/mine", label: "M.I.N.E", icon: Network },
-  { to: "/design", label: "Design", icon: Palette },
-  { to: "/code", label: "Code", icon: Code2 },
+const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home; perm: Permission }[] = [
+  { to: "/home", label: "Hub", icon: LayoutGrid, perm: "home" },
+  { to: "/jarvis", label: "JARVIS", icon: Sparkles, perm: "jarvis" },
+  { to: "/mine", label: "M.I.N.E", icon: Network, perm: "mine" },
+  { to: "/design", label: "Design", icon: Palette, perm: "design" },
+  { to: "/code", label: "Code", icon: Code2, perm: "code" },
 ];
 
-const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home }[] = [
-  { to: "/assistant", label: "Chat", icon: MessageSquare },
-  { to: "/cowork", label: "Cowork", icon: Users },
-  { to: "/pulse", label: "Pulse", icon: Activity },
-  { to: "/agent", label: "Brain", icon: Brain },
-  { to: "/gateway", label: "Gateway", icon: Bot },
-  { to: "/memory", label: "Memoria", icon: Database },
-  { to: "/network", label: "Rete", icon: Network },
-  { to: "/skills", label: "Competenze", icon: KeyRound },
-  { to: "/hosts", label: "Host", icon: Server },
-  { to: "/connectors", label: "Connettori", icon: Cable },
-  { to: "/access", label: "Accesso", icon: KeyRound },
+const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home; perm: Permission }[] = [
+  { to: "/assistant", label: "Chat", icon: MessageSquare, perm: "assistant" },
+  { to: "/cowork", label: "Cowork", icon: Users, perm: "cowork" },
+  { to: "/pulse", label: "Pulse", icon: Activity, perm: "pulse" },
+  { to: "/agent", label: "Brain", icon: Brain, perm: "agent" },
+  { to: "/gateway", label: "Gateway", icon: Bot, perm: "gateway" },
+  { to: "/memory", label: "Memoria", icon: Database, perm: "memory" },
+  { to: "/network", label: "Rete", icon: Network, perm: "network" },
+  { to: "/skills", label: "Competenze", icon: KeyRound, perm: "skills" },
+  { to: "/hosts", label: "Host", icon: Server, perm: "hosts" },
+  { to: "/connectors", label: "Connettori", icon: Cable, perm: "connectors" },
+  { to: "/access", label: "Accesso", icon: KeyRound, perm: "access" },
 ];
 
 function NavLink({
@@ -115,34 +116,53 @@ function SideNav({
   pathname,
   onNavigate,
   agentName,
+  permissions,
+  isAdmin,
 }: {
   pathname: string;
   onNavigate?: () => void;
   agentName: string;
+  permissions: Permission[];
+  isAdmin: boolean;
 }) {
   const section = sectionFromPath(pathname);
+  const can = (p: Permission) => isAdmin || permissions.includes(p);
+  const worlds = NAV_WORLDS.filter((i) => can(i.perm));
+  const tools = NAV_TOOLS.filter((i) => can(i.perm));
+
   return (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
-      <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-        Mondi
-      </p>
-      {NAV_WORLDS.map((item) => (
-        <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
-      ))}
+      {worlds.length > 0 ? (
+        <>
+          <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
+            Mondi
+          </p>
+          {worlds.map((item) => (
+            <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
+          ))}
+        </>
+      ) : null}
 
-      <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-        Strumenti
-      </p>
-      {NAV_TOOLS.map((item) => (
-        <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
-      ))}
+      {tools.length > 0 ? (
+        <>
+          <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
+            Strumenti
+          </p>
+          {tools.map((item) => (
+            <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
+          ))}
+        </>
+      ) : null}
 
       <div className="mt-auto rounded-xl border border-white/[0.05] bg-white/[0.02] p-3">
         <p className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
           <Brain className="h-3.5 w-3.5" />
           {agentName}
         </p>
-        <p className="text-[11px] capitalize text-muted-foreground">Tema · {section}</p>
+        <p className="text-[11px] capitalize text-muted-foreground">
+          Tema · {section}
+          {!isAdmin ? " · ospite" : ""}
+        </p>
       </div>
     </nav>
   );
@@ -150,7 +170,7 @@ function SideNav({
 
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
-    <Link to="/home" className="block group">
+    <Link to="/home" className="group block">
       <span className="logo-gradient font-display text-[1.3rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
         {agentName}
       </span>
@@ -172,13 +192,30 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const doLogout = useServerFn(logout);
+  const doAuth = useServerFn(getAuthState);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [agentName, setAgentName] = useState("JARVIS");
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [isAdmin, setIsAdmin] = useState(true);
 
   useEffect(() => {
     setAgentName(loadAgentProfile().name || "JARVIS");
     document.documentElement.setAttribute("data-section", sectionFromPath(pathname));
   }, [pathname]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const state = await doAuth({});
+        if (state.authenticated) {
+          setIsAdmin(state.role === "admin");
+          setPermissions(state.permissions ?? []);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [doAuth]);
 
   async function onLogout() {
     await doLogout({});
@@ -197,7 +234,12 @@ export function AppShell({
           </div>
         </div>
 
-        <SideNav pathname={pathname} agentName={agentName} />
+        <SideNav
+          pathname={pathname}
+          agentName={agentName}
+          permissions={permissions}
+          isAdmin={isAdmin}
+        />
 
         <div className="border-t border-white/[0.045] p-3">
           <button
@@ -238,6 +280,8 @@ export function AppShell({
                 <SideNav
                   pathname={pathname}
                   agentName={agentName}
+                  permissions={permissions}
+                  isAdmin={isAdmin}
                   onNavigate={() => setMobileOpen(false)}
                 />
                 <div className="mt-auto border-t border-white/[0.045] p-3">

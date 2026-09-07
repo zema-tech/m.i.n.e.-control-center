@@ -2,6 +2,24 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { randomBytes } from "node:crypto";
 
+import {
+  ALL_PERMISSIONS,
+  DEFAULT_GUEST_PERMISSIONS,
+  normalizePermissions,
+  ROUTE_PERMISSION,
+  type Permission,
+  type SessionRole,
+} from "./auth.permissions";
+
+export {
+  ALL_PERMISSIONS,
+  DEFAULT_GUEST_PERMISSIONS,
+  normalizePermissions,
+  PERMISSION_META,
+  type Permission,
+  type SessionRole,
+} from "./auth.permissions";
+
 const COOKIE_NAME = "mine_session";
 const TOKEN_TTL = "24h";
 const MAX_ATTEMPTS = 5;
@@ -28,59 +46,6 @@ export function getActionLog(): ActionLog[] {
 }
 
 export const sessionCookieName = COOKIE_NAME;
-
-/** Sezioni / azioni che un ospite può vedere o usare */
-export const ALL_PERMISSIONS = [
-  "home",
-  "jarvis",
-  "mine",
-  "design",
-  "code",
-  "assistant",
-  "cowork",
-  "pulse",
-  "agent",
-  "gateway",
-  "memory",
-  "network",
-  "skills",
-  "hosts",
-  "connectors",
-  "access",
-  "power",
-  "console",
-] as const;
-
-export type Permission = (typeof ALL_PERMISSIONS)[number];
-
-export const PERMISSION_META: Record<
-  Permission,
-  { label: string; group: "mondi" | "strumenti" | "azioni" }
-> = {
-  home: { label: "Hub", group: "mondi" },
-  jarvis: { label: "JARVIS", group: "mondi" },
-  mine: { label: "M.I.N.E", group: "mondi" },
-  design: { label: "Design", group: "mondi" },
-  code: { label: "Code", group: "mondi" },
-  assistant: { label: "Chat", group: "strumenti" },
-  cowork: { label: "Cowork", group: "strumenti" },
-  pulse: { label: "Pulse", group: "strumenti" },
-  agent: { label: "Brain", group: "strumenti" },
-  gateway: { label: "Gateway", group: "strumenti" },
-  memory: { label: "Memoria", group: "strumenti" },
-  network: { label: "Rete", group: "strumenti" },
-  skills: { label: "Competenze", group: "strumenti" },
-  hosts: { label: "Host", group: "strumenti" },
-  connectors: { label: "Connettori", group: "strumenti" },
-  access: { label: "Gestione accessi", group: "strumenti" },
-  power: { label: "Power server", group: "azioni" },
-  console: { label: "Console", group: "azioni" },
-};
-
-/** Default per ospiti: solo lettura hub + mine, senza power/access */
-export const DEFAULT_GUEST_PERMISSIONS: Permission[] = ["home", "mine", "pulse"];
-
-export type SessionRole = "admin" | "guest" | "member";
 
 export type SessionClaims = {
   role: SessionRole;
@@ -135,8 +100,6 @@ export function clearFailures(ip: string) {
   attempts.delete(ip);
 }
 
-/* ── Temporary passwords ── */
-
 export type TempPasswordIcon =
   | "none"
   | "key"
@@ -189,19 +152,6 @@ function normalizeIcon(icon: string | undefined | null): TempPasswordIcon {
     return icon as TempPasswordIcon;
   }
   return "none";
-}
-
-export function normalizePermissions(list: string[] | undefined | null): Permission[] {
-  if (!list || list.length === 0) return [...DEFAULT_GUEST_PERMISSIONS];
-  const set = new Set<Permission>();
-  for (const p of list) {
-    if ((ALL_PERMISSIONS as readonly string[]).includes(p)) {
-      set.add(p as Permission);
-    }
-  }
-  // access e power solo se esplicitamente dati; home sempre utile
-  if (!set.has("home")) set.add("home");
-  return Array.from(set);
 }
 
 export async function createTempPassword(opts: {
@@ -288,8 +238,6 @@ export function revokeTempPassword(id: string): boolean {
   return ok;
 }
 
-/* ── Registered members (dopo setup password da temp) ── */
-
 type RegisteredUser = {
   id: string;
   label: string;
@@ -303,18 +251,8 @@ const registeredUsers = new Map<string, RegisteredUser>();
 
 export type AuthMatch =
   | { kind: "admin" }
-  | {
-      kind: "temp";
-      id: string;
-      label: string;
-      permissions: Permission[];
-    }
-  | {
-      kind: "member";
-      id: string;
-      label: string;
-      permissions: Permission[];
-    }
+  | { kind: "temp"; id: string; label: string; permissions: Permission[] }
+  | { kind: "member"; id: string; label: string; permissions: Permission[] }
   | null;
 
 export async function matchPassword(password: string): Promise<AuthMatch> {
@@ -333,7 +271,6 @@ export async function matchPassword(password: string): Promise<AuthMatch> {
     }
   }
 
-  // Membri registrati (password propria dopo setup)
   for (const u of registeredUsers.values()) {
     if (await bcrypt.compare(password, u.hash)) {
       return {
@@ -365,7 +302,6 @@ export async function matchPassword(password: string): Promise<AuthMatch> {
   return null;
 }
 
-/** @deprecated use matchPassword */
 export async function verifyPassword(password: string): Promise<boolean> {
   return (await matchPassword(password)) !== null;
 }
@@ -441,32 +377,13 @@ export function pathAllowed(pathname: string, session: SessionClaims | null): bo
   if (session.mustSetPassword) {
     return pathname === "/setup-password" || pathname === "/login";
   }
-  const map: Record<string, Permission> = {
-    "/home": "home",
-    "/jarvis": "jarvis",
-    "/mine": "mine",
-    "/design": "design",
-    "/code": "code",
-    "/assistant": "assistant",
-    "/cowork": "cowork",
-    "/pulse": "pulse",
-    "/agent": "agent",
-    "/gateway": "gateway",
-    "/memory": "memory",
-    "/network": "network",
-    "/skills": "skills",
-    "/hosts": "hosts",
-    "/connectors": "connectors",
-    "/access": "access",
-  };
-  // assistant.$threadId
   if (pathname.startsWith("/assistant")) {
     return session.permissions.includes("assistant");
   }
   if (pathname.startsWith("/code")) {
     return session.permissions.includes("code");
   }
-  const perm = map[pathname];
-  if (!perm) return true; // route non mappate: lascia passare se autenticato
+  const perm = ROUTE_PERMISSION[pathname];
+  if (!perm) return true;
   return session.permissions.includes(perm);
 }
