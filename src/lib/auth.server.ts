@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
+import { randomBytes } from "node:crypto";
 
 const COOKIE_NAME = "mine_session";
 const TOKEN_TTL = "24h";
@@ -59,12 +60,113 @@ export function clearFailures(ip: string) {
   attempts.delete(ip);
 }
 
+/* ── Temporary passwords (in-memory, cleared on restart) ── */
+
+export type TempPassword = {
+  id: string;
+  label: string;
+  hash: string;
+  createdAt: number;
+  expiresAt: number;
+  uses: number;
+  maxUses: number | null;
+};
+
+const tempPasswords = new Map<string, TempPassword>();
+
+function pruneExpired() {
+  const now = Date.now();
+  for (const [id, tp] of tempPasswords) {
+    if (tp.expiresAt <= now) tempPasswords.delete(id);
+    else if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(id);
+  }
+}
+
+export async function createTempPassword(opts: {
+  label: string;
+  durationMs: number;
+  maxUses?: number | null;
+}): Promise<{ id: string; password: string; label: string; expiresAt: number; maxUses: number | null }> {
+  pruneExpired();
+  const id = randomBytes(8).toString("hex");
+  const password = randomBytes(9).toString("base64url");
+  const hash = await bcrypt.hash(password, 10);
+  const createdAt = Date.now();
+  const expiresAt = createdAt + opts.durationMs;
+  const maxUses = opts.maxUses ?? null;
+  tempPasswords.set(id, {
+    id,
+    label: opts.label.trim() || "Ospite",
+    hash,
+    createdAt,
+    expiresAt,
+    uses: 0,
+    maxUses,
+  });
+  logAction("info", `Password temporanea creata: ${opts.label.trim() || "Ospite"}`);
+  return { id, password, label: opts.label.trim() || "Ospite", expiresAt, maxUses };
+}
+
+export function listTempPasswords(): Array<{
+  id: string;
+  label: string;
+  createdAt: number;
+  expiresAt: number;
+  uses: number;
+  maxUses: number | null;
+  expired: boolean;
+}> {
+  pruneExpired();
+  const now = Date.now();
+  return Array.from(tempPasswords.values())
+    .map((tp) => ({
+      id: tp.id,
+      label: tp.label,
+      createdAt: tp.createdAt,
+      expiresAt: tp.expiresAt,
+      uses: tp.uses,
+      maxUses: tp.maxUses,
+      expired: tp.expiresAt <= now,
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function revokeTempPassword(id: string): boolean {
+  const ok = tempPasswords.delete(id);
+  if (ok) logAction("info", `Password temporanea revocata: ${id}`);
+  return ok;
+}
+
+async function verifyTempPassword(password: string): Promise<boolean> {
+  pruneExpired();
+  for (const tp of tempPasswords.values()) {
+    if (tp.expiresAt <= Date.now()) continue;
+    if (tp.maxUses !== null && tp.uses >= tp.maxUses) continue;
+    const match = await bcrypt.compare(password, tp.hash);
+    if (match) {
+      tp.uses += 1;
+      logAction("info", `Login con password temporanea "${tp.label}"`);
+      if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(tp.id);
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function verifyPassword(password: string): Promise<boolean> {
   const hash = process.env["MINE_PASSWORD_HASH"];
-  if (!hash) throw new Error("MINE_PASSWORD_HASH non configurato");
-  if (hash.startsWith("$2")) return bcrypt.compare(password, hash);
-  // Fallback: la variabile contiene la password in chiaro -> la si confronta dopo hashing.
-  return bcrypt.compare(password, await bcrypt.hash(hash, 10));
+  if (hash) {
+    try {
+      if (hash.startsWith("$2")) {
+        if (await bcrypt.compare(password, hash)) return true;
+      } else {
+        if (await bcrypt.compare(password, await bcrypt.hash(hash, 10))) return true;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return verifyTempPassword(password);
 }
 
 export async function createToken(): Promise<string> {

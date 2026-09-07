@@ -5,11 +5,14 @@ import { z } from "zod";
 import {
   checkRateLimit,
   clearFailures,
+  createTempPassword,
   createToken,
   getActionLog,
   isValidToken,
+  listTempPasswords,
   logAction,
   registerFailure,
+  revokeTempPassword,
   sessionCookieName,
   verifyPassword,
 } from "./auth.server";
@@ -67,7 +70,7 @@ export const login = createServerFn({ method: "POST" })
       path: "/",
       maxAge: 60 * 60 * 24,
     });
-    logAction("info", `Accesso admin riuscito da ${ip}`);
+    logAction("info", `Accesso riuscito da ${ip}`);
     return { ok: true as const, message: "Accesso consentito" };
   });
 
@@ -78,7 +81,7 @@ export const logout = createServerFn({ method: "POST" }).handler(async () => {
     sameSite: "none",
     partitioned: true,
   });
-  logAction("info", "Sessione admin terminata");
+  logAction("info", "Sessione terminata");
   return { ok: true as const };
 });
 
@@ -86,7 +89,51 @@ export const getAuthState = createServerFn({ method: "GET" }).handler(async () =
   return { authenticated: await isValidToken(getCookie(sessionCookieName)) };
 });
 
-/** Dashboard senza credenziali account (fallback env / demo). Usato dal loader. */
+export const createGuestPassword = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        label: z.string().max(80).default("Ospite"),
+        durationHours: z.union([z.literal(1), z.literal(6), z.literal(24), z.literal(168)]),
+        maxUses: z.number().int().min(1).max(100).nullable().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    if (!(await isValidToken(getCookie(sessionCookieName)))) {
+      return { ok: false as const, message: "Non autenticato" };
+    }
+    const created = await createTempPassword({
+      label: data.label,
+      durationMs: data.durationHours * 60 * 60 * 1000,
+      maxUses: data.maxUses ?? null,
+    });
+    return {
+      ok: true as const,
+      id: created.id,
+      password: created.password,
+      label: created.label,
+      expiresAt: created.expiresAt,
+      maxUses: created.maxUses,
+    };
+  });
+
+export const getGuestPasswords = createServerFn({ method: "GET" }).handler(async () => {
+  if (!(await isValidToken(getCookie(sessionCookieName)))) {
+    return { ok: false as const, items: [] as ReturnType<typeof listTempPasswords> };
+  }
+  return { ok: true as const, items: listTempPasswords() };
+});
+
+export const revokeGuestPassword = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ id: z.string().min(1).max(64) }).parse(input))
+  .handler(async ({ data }) => {
+    if (!(await isValidToken(getCookie(sessionCookieName)))) {
+      return { ok: false as const };
+    }
+    return { ok: revokeTempPassword(data.id) };
+  });
+
 export const getDashboard = createServerFn({ method: "GET" }).handler(async () => {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     return { authenticated: false as const, stats: null };
@@ -105,7 +152,6 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async () =
   }
 });
 
-/** Dashboard legata all'account Falix selezionato (Gino / Edo / …). */
 export const getDashboardForAccount = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
