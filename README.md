@@ -1,4 +1,4 @@
-# M.I.N.E. Control Center
+# OMNICORE AGENT 
 
 > Nucleo web di **Omnicore** — sistema multi-agente.
 
