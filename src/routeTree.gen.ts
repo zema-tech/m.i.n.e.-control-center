@@ -10,9 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccessRouteImport } from './routes/access'
 import { Route as AgentRouteImport } from './routes/agent'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as DesignRouteImport } from './routes/design'
 import { Route as GatewayRouteImport } from './routes/gateway'
 import { Route as HomeRouteImport } from './routes/home'
@@ -22,6 +24,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as MineRouteImport } from './routes/mine'
 import { Route as NetworkRouteImport } from './routes/network'
+import { Route as PulseRouteImport } from './routes/pulse'
+import { Route as SetupPasswordRouteImport } from './routes/setup-password'
 import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as AssistantIndexRouteImport } from './routes/assistant.index'
 import { Route as AssistantThreadIdRouteImport } from './routes/assistant.$threadId'
@@ -29,6 +33,11 @@ import { Route as AssistantThreadIdRouteImport } from './routes/assistant.$threa
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessRoute = AccessRouteImport.update({
+  id: '/access',
+  path: '/access',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentRoute = AgentRouteImport.update({
@@ -44,6 +53,11 @@ const CodeRoute = CodeRouteImport.update({
 const ConnectorsRoute = ConnectorsRouteImport.update({
   id: '/connectors',
   path: '/connectors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoworkRoute = CoworkRouteImport.update({
+  id: '/cowork',
+  path: '/cowork',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignRoute = DesignRouteImport.update({
@@ -91,6 +105,16 @@ const NetworkRoute = NetworkRouteImport.update({
   path: '/network',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PulseRoute = PulseRouteImport.update({
+  id: '/pulse',
+  path: '/pulse',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupPasswordRoute = SetupPasswordRouteImport.update({
+  id: '/setup-password',
+  path: '/setup-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SkillsRoute = SkillsRouteImport.update({
   id: '/skills',
   path: '/skills',
@@ -109,9 +133,11 @@ const AssistantThreadIdRoute = AssistantThreadIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access': typeof AccessRoute
   '/agent': typeof AgentRoute
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
+  '/cowork': typeof CoworkRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -121,15 +147,19 @@ export interface FileRoutesByFullPath {
   '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
+  '/pulse': typeof PulseRoute
+  '/setup-password': typeof SetupPasswordRoute
   '/skills': typeof SkillsRoute
   '/assistant/$threadId': typeof AssistantThreadIdRoute
   '/assistant/': typeof AssistantIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access': typeof AccessRoute
   '/agent': typeof AgentRoute
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
+  '/cowork': typeof CoworkRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -139,6 +169,8 @@ export interface FileRoutesByTo {
   '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
+  '/pulse': typeof PulseRoute
+  '/setup-password': typeof SetupPasswordRoute
   '/skills': typeof SkillsRoute
   '/assistant/$threadId': typeof AssistantThreadIdRoute
   '/assistant': typeof AssistantIndexRoute
@@ -146,9 +178,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/access': typeof AccessRoute
   '/agent': typeof AgentRoute
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
+  '/cowork': typeof CoworkRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -158,6 +192,8 @@ export interface FileRoutesById {
   '/memory': typeof MemoryRoute
   '/mine': typeof MineRoute
   '/network': typeof NetworkRoute
+  '/pulse': typeof PulseRoute
+  '/setup-password': typeof SetupPasswordRoute
   '/skills': typeof SkillsRoute
   '/assistant/$threadId': typeof AssistantThreadIdRoute
   '/assistant/': typeof AssistantIndexRoute
@@ -166,9 +202,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/access'
     | '/agent'
     | '/code'
     | '/connectors'
+    | '/cowork'
     | '/design'
     | '/gateway'
     | '/home'
@@ -178,15 +216,19 @@ export interface FileRouteTypes {
     | '/memory'
     | '/mine'
     | '/network'
+    | '/pulse'
+    | '/setup-password'
     | '/skills'
     | '/assistant/$threadId'
     | '/assistant/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/access'
     | '/agent'
     | '/code'
     | '/connectors'
+    | '/cowork'
     | '/design'
     | '/gateway'
     | '/home'
@@ -196,15 +238,19 @@ export interface FileRouteTypes {
     | '/memory'
     | '/mine'
     | '/network'
+    | '/pulse'
+    | '/setup-password'
     | '/skills'
     | '/assistant/$threadId'
     | '/assistant'
   id:
     | '__root__'
     | '/'
+    | '/access'
     | '/agent'
     | '/code'
     | '/connectors'
+    | '/cowork'
     | '/design'
     | '/gateway'
     | '/home'
@@ -214,6 +260,8 @@ export interface FileRouteTypes {
     | '/memory'
     | '/mine'
     | '/network'
+    | '/pulse'
+    | '/setup-password'
     | '/skills'
     | '/assistant/$threadId'
     | '/assistant/'
@@ -221,9 +269,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccessRoute: typeof AccessRoute
   AgentRoute: typeof AgentRoute
   CodeRoute: typeof CodeRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  CoworkRoute: typeof CoworkRoute
   DesignRoute: typeof DesignRoute
   GatewayRoute: typeof GatewayRoute
   HomeRoute: typeof HomeRoute
@@ -233,6 +283,8 @@ export interface RootRouteChildren {
   MemoryRoute: typeof MemoryRoute
   MineRoute: typeof MineRoute
   NetworkRoute: typeof NetworkRoute
+  PulseRoute: typeof PulseRoute
+  SetupPasswordRoute: typeof SetupPasswordRoute
   SkillsRoute: typeof SkillsRoute
   AssistantThreadIdRoute: typeof AssistantThreadIdRoute
   AssistantIndexRoute: typeof AssistantIndexRoute
@@ -245,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access': {
+      id: '/access'
+      path: '/access'
+      fullPath: '/access'
+      preLoaderRoute: typeof AccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agent': {
@@ -266,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/connectors'
       fullPath: '/connectors'
       preLoaderRoute: typeof ConnectorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cowork': {
+      id: '/cowork'
+      path: '/cowork'
+      fullPath: '/cowork'
+      preLoaderRoute: typeof CoworkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design': {
@@ -331,6 +397,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NetworkRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pulse': {
+      id: '/pulse'
+      path: '/pulse'
+      fullPath: '/pulse'
+      preLoaderRoute: typeof PulseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup-password': {
+      id: '/setup-password'
+      path: '/setup-password'
+      fullPath: '/setup-password'
+      preLoaderRoute: typeof SetupPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/skills': {
       id: '/skills'
       path: '/skills'
@@ -357,9 +437,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccessRoute: AccessRoute,
   AgentRoute: AgentRoute,
   CodeRoute: CodeRoute,
   ConnectorsRoute: ConnectorsRoute,
+  CoworkRoute: CoworkRoute,
   DesignRoute: DesignRoute,
   GatewayRoute: GatewayRoute,
   HomeRoute: HomeRoute,
@@ -369,6 +451,8 @@ const rootRouteChildren: RootRouteChildren = {
   MemoryRoute: MemoryRoute,
   MineRoute: MineRoute,
   NetworkRoute: NetworkRoute,
+  PulseRoute: PulseRoute,
+  SetupPasswordRoute: SetupPasswordRoute,
   SkillsRoute: SkillsRoute,
   AssistantThreadIdRoute: AssistantThreadIdRoute,
   AssistantIndexRoute: AssistantIndexRoute,
