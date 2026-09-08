@@ -6,7 +6,7 @@
 
 /*
  * Omnicore — design system
- * Professional dark product UI · primary azzurro · Sora + Manrope
+ * Professional dark product UI · primary azzurro · Space Grotesk + Plus Jakarta Sans
  */
 
 @theme inline {
@@ -36,9 +36,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --shadow-glow: 0 0 40px color-mix(in oklab, var(--primary) 22%, transparent);
   --shadow-glow-soft: 0 0 20px color-mix(in oklab, var(--primary) 14%, transparent);
   --shadow-card:
@@ -648,6 +648,41 @@ html[data-section="prompt"] {
     height: 1.55rem;
     border: 1px solid color-mix(in oklab, var(--primary) 20%, transparent);
     border-radius: 9999px;
+  }
+
+  .jarvis-workspace-menu {
+    overflow: hidden;
+    border: 1px solid oklch(1 0 0 / 0.065);
+    border-radius: 1rem;
+    background: linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--card) 94%, white 2%),
+      color-mix(in oklab, var(--card) 86%, black)
+    );
+    box-shadow: var(--shadow-card);
+    backdrop-filter: blur(18px) saturate(1.15);
+  }
+
+  .jarvis-menu-link {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    border: 1px solid transparent;
+    border-radius: 0.7rem;
+    padding: 0.65rem 0.7rem;
+    color: var(--color-muted-foreground);
+    font-size: 0.76rem;
+    font-weight: 600;
+    transition:
+      color 180ms ease,
+      border-color 180ms ease,
+      background-color 180ms ease;
+  }
+
+  .jarvis-menu-link:hover {
+    border-color: color-mix(in oklab, var(--primary) 16%, transparent);
+    background: color-mix(in oklab, var(--primary) 7%, transparent);
+    color: var(--color-foreground);
   }
 
   .hub-hero {

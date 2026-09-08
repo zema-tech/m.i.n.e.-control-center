@@ -44,8 +44,8 @@ function DesignStudio() {
               </span>
             </h2>
             <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-              Quattro mondi cromatici, tipografia Sora + Manrope, motion misurato. Un sistema visivo
-              coerente, non una semplice skin.
+              Quattro mondi cromatici, tipografia Space Grotesk + Plus Jakarta Sans, motion
+              misurato. Un sistema visivo coerente, non una semplice skin.
             </p>
           </div>
         </section>
@@ -75,8 +75,8 @@ function DesignStudio() {
             <p className="mb-2 flex items-center gap-2 text-label">
               <Type className="h-3.5 w-3.5" /> Tipografia
             </p>
-            <p className="font-display text-2xl font-bold">Sora — titoli</p>
-            <p className="mt-1 text-sm">Manrope — interfaccia leggibile</p>
+            <p className="font-display text-2xl font-bold">Space Grotesk — titoli</p>
+            <p className="mt-1 text-sm">Plus Jakarta Sans — interfaccia leggibile</p>
             <p className="mt-1 font-mono text-xs text-muted-foreground">JetBrains Mono — dati</p>
           </div>
           <div className="panel-spacious animate-fade-in-up" style={{ animationDelay: "160ms" }}>
