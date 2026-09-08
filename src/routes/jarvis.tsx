@@ -1,28 +1,60 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Archive,
+  ArrowUp,
+  AtSign,
   Brain,
   Cable,
+  Check,
+  ChevronDown,
+  CircleStop,
+  Clipboard,
+  Clock3,
+  Copy,
+  Download,
+  FileText,
+  Folder,
   FolderPlus,
   Home,
   Menu,
+  MessageSquareText,
   Mic,
   MicOff,
+  MoreHorizontal,
   Paperclip,
+  PenLine,
   Pin,
   PinOff,
   Plus,
+  RefreshCw,
   Search,
-  Send,
+  Settings2,
   Sparkles,
   Trash2,
+  WandSparkles,
   X,
+  Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getAuthState } from "@/lib/auth.functions";
 import { buildBrainContextForPrompt } from "@/lib/agent-brain";
-import { askAssistant } from "@/lib/panel.functions";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
   addTextFile,
@@ -32,25 +64,25 @@ import {
   deleteChat,
   deleteFile,
   deleteProject,
-  loadJarvisStore,
   migrateLegacyChats,
   saveJarvisStore,
   searchFileContext,
   updateChat,
   updateProject,
   type JarvisChat,
-  type JarvisFile,
+  type JarvisMsg,
   type JarvisProject,
   type JarvisStore,
 } from "@/lib/jarvis-workspace";
+import { askAssistant } from "@/lib/panel.functions";
 
 export const Route = createFileRoute("/jarvis")({
   head: () => ({
     meta: [
-      { title: "JARVIS — Workspace" },
+      { title: "JARVIS — AI Workspace" },
       {
         name: "description",
-        content: "Workspace JARVIS: progetti, chat, file e memoria. Nero e azzurro.",
+        content: "Il workspace conversazionale di JARVIS: chat, progetti, file e memoria.",
       },
     ],
   }),
@@ -64,28 +96,177 @@ export const Route = createFileRoute("/jarvis")({
 });
 
 const MODEL_KEY = "omnicore.jarvis.model";
-
+const MODE_KEY = "omnicore.jarvis.mode";
 type Panel = "chat" | "neural" | "connectors";
+type WorkMode = "auto" | "fast" | "deep";
+
+const WORK_MODES: Record<
+  WorkMode,
+  {
+    label: string;
+    shortLabel: string;
+    description: string;
+    icon: typeof Sparkles;
+    swarm: "auto" | "rapido" | "deep";
+  }
+> = {
+  auto: {
+    label: "Automatico",
+    shortLabel: "Auto",
+    description: "JARVIS sceglie il percorso migliore",
+    icon: Sparkles,
+    swarm: "auto",
+  },
+  fast: {
+    label: "Risposta rapida",
+    shortLabel: "Rapido",
+    description: "Ideale per domande e attività brevi",
+    icon: Zap,
+    swarm: "rapido",
+  },
+  deep: {
+    label: "Analisi profonda",
+    shortLabel: "Deep",
+    description: "Più passaggi per problemi complessi",
+    icon: Brain,
+    swarm: "deep",
+  },
+};
+
+const STARTERS = [
+  {
+    icon: Brain,
+    label: "Analizza",
+    prompt: "Analizza questo problema in profondità, evidenzia rischi e opportunità: ",
+  },
+  { icon: PenLine, label: "Crea", prompt: "Aiutami a creare una prima versione completa di " },
+  {
+    icon: Search,
+    label: "Esplora",
+    prompt: "Esplora questo argomento e costruisci una sintesi chiara: ",
+  },
+  {
+    icon: Clipboard,
+    label: "Pianifica",
+    prompt: "Prepara un piano concreto, ordinato per priorità, per ",
+  },
+] as const;
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+function timeLabel(timestamp: number) {
+  return new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" }).format(timestamp);
+}
+
+function safeFilename(value: string) {
+  return (
+    value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "conversazione-jarvis"
+  );
+}
+
+function MessageContent({ content }: { content: string }) {
+  return (
+    <div className="space-y-3">
+      {content.split(/```/g).map((block, index) => {
+        if (index % 2 === 1) {
+          const firstBreak = block.indexOf("\n");
+          const language = firstBreak > -1 ? block.slice(0, firstBreak).trim() : "";
+          const code = firstBreak > -1 ? block.slice(firstBreak + 1) : block;
+          return (
+            <div
+              key={`${index}-${block.slice(0, 12)}`}
+              className="overflow-hidden rounded-xl border border-white/8 bg-[#080a0f]"
+            >
+              <div className="flex items-center justify-between border-b border-white/7 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                <span>{language || "codice"}</span>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(code)}
+                  className="inline-flex items-center gap-1 hover:text-slate-200"
+                >
+                  <Copy className="h-3 w-3" /> Copia
+                </button>
+              </div>
+              <pre className="overflow-x-auto p-3 font-mono text-[12px] leading-6 text-slate-200">
+                <code>{code.trim()}</code>
+              </pre>
+            </div>
+          );
+        }
+        return block.trim() ? (
+          <p key={`${index}-${block.slice(0, 12)}`} className="whitespace-pre-wrap">
+            {block.trim()}
+          </p>
+        ) : null;
+      })}
+    </div>
+  );
+}
+
+function IconButton({
+  label,
+  children,
+  className = "",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100 disabled:pointer-events-none disabled:opacity-35 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
 
 function JarvisWorkspace() {
   const { accountKey } = Route.useLoaderData();
   const ask = useServerFn(askAssistant);
-
-  const [store, setStore] = useState<JarvisStore>({ version: 1, projects: [], chats: [], files: [] });
+  const [store, setStore] = useState<JarvisStore>({
+    version: 1,
+    projects: [],
+    chats: [],
+    files: [],
+  });
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("chat");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [projectDraft, setProjectDraft] = useState({ name: "", description: "", instructions: "" });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState<GroqModelId>(DEFAULT_GROQ_MODEL);
+  const [workMode, setWorkMode] = useState<WorkMode>("auto");
   const [search, setSearch] = useState("");
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const persist = useCallback(
     (next: JarvisStore) => {
@@ -96,184 +277,268 @@ function JarvisWorkspace() {
   );
 
   useEffect(() => {
+    document.documentElement.setAttribute("data-section", "jarvis");
     const migrated = migrateLegacyChats(accountKey);
     setStore(migrated);
     if (migrated.chats[0]) setActiveChatId(migrated.chats[0].id);
     try {
-      const m = window.localStorage.getItem(MODEL_KEY);
-      if (m && GROQ_MODELS.some((x) => x.id === m)) setModel(m as GroqModelId);
+      const storedModel = window.localStorage.getItem(MODEL_KEY);
+      if (storedModel && GROQ_MODELS.some((item) => item.id === storedModel))
+        setModel(storedModel as GroqModelId);
+      const storedMode = window.localStorage.getItem(MODE_KEY);
+      if (storedMode && storedMode in WORK_MODES) setWorkMode(storedMode as WorkMode);
     } catch {
-      /* ignore */
+      /* localStorage may be unavailable */
     }
-    const SR =
-      typeof window !== "undefined"
-        ? (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown })
-            .SpeechRecognition ||
-          (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition
-        : undefined;
-    setVoiceSupported(Boolean(SR));
+    const browserWindow = window as unknown as {
+      SpeechRecognition?: new () => unknown;
+      webkitSpeechRecognition?: new () => unknown;
+    };
+    setVoiceSupported(
+      Boolean(browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition),
+    );
+    return () => abortControllerRef.current?.abort();
   }, [accountKey]);
 
   const activeChat = useMemo(
-    () => store.chats.find((c) => c.id === activeChatId) ?? null,
+    () => store.chats.find((chat) => chat.id === activeChatId) ?? null,
     [store.chats, activeChatId],
   );
-
-  const projectFiles = useMemo(() => {
-    return store.files.filter(
-      (f) =>
-        (activeProjectId && f.projectId === activeProjectId) ||
-        (activeChatId && f.chatId === activeChatId),
-    );
-  }, [store.files, activeProjectId, activeChatId]);
-
+  const activeProject = useMemo(
+    () => store.projects.find((project) => project.id === activeProjectId) ?? null,
+    [store.projects, activeProjectId],
+  );
+  const visibleFiles = useMemo(
+    () =>
+      store.files.filter(
+        (file) =>
+          (activeProjectId && file.projectId === activeProjectId) ||
+          (activeChatId && file.chatId === activeChatId),
+      ),
+    [store.files, activeProjectId, activeChatId],
+  );
   const filteredChats = useMemo(() => {
-    let list = store.chats;
-    if (activeProjectId) list = list.filter((c) => c.projectId === activeProjectId);
+    let chats = store.chats;
+    if (activeProjectId) chats = chats.filter((chat) => chat.projectId === activeProjectId);
     if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) ||
-          c.messages.some((m) => m.content.toLowerCase().includes(q)),
+      const query = search.toLocaleLowerCase("it");
+      chats = chats.filter(
+        (chat) =>
+          chat.title.toLocaleLowerCase("it").includes(query) ||
+          chat.messages.some((message) => message.content.toLocaleLowerCase("it").includes(query)),
       );
     }
-    return [...list].sort(
+    return [...chats].sort(
       (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt,
     );
   }, [store.chats, activeProjectId, search]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeChat?.messages.length, busy]);
-
-  function onNewChat() {
+  const onNewChat = useCallback(() => {
     const { store: next, chat } = createChat(store, { projectId: activeProjectId });
     persist(next);
     setActiveChatId(chat.id);
     setPanel("chat");
     setSidebarOpen(false);
-  }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [store, activeProjectId, persist]);
 
-  function onNewProject() {
-    const name = window.prompt("Nome progetto");
-    if (!name?.trim()) return;
-    const { store: next, project } = createProject(store, { name });
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeChat?.messages.length, busy]);
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        onNewChat();
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [onNewChat]);
+
+  function onCreateProject() {
+    if (!projectDraft.name.trim()) return;
+    const { store: next, project } = createProject(store, projectDraft);
     persist(next);
     setActiveProjectId(project.id);
+    setProjectDraft({ name: "", description: "", instructions: "" });
+    setProjectDialogOpen(false);
+    setContextOpen(true);
   }
 
   function onRenameChat(chat: JarvisChat) {
-    const name = window.prompt("Rinomina chat", chat.title);
-    if (!name?.trim()) return;
-    persist(updateChat(store, chat.id, { title: name.trim() }));
-  }
-
-  function onTogglePin(chat: JarvisChat) {
-    persist(updateChat(store, chat.id, { pinned: !chat.pinned }));
+    const name = window.prompt("Rinomina conversazione", chat.title);
+    if (name?.trim()) persist(updateChat(store, chat.id, { title: name.trim() }));
   }
 
   function onDeleteChat(chat: JarvisChat) {
-    if (!window.confirm(`Eliminare "${chat.title}"?`)) return;
+    if (!window.confirm(`Eliminare “${chat.title}”?`)) return;
     const next = deleteChat(store, chat.id);
     persist(next);
     if (activeChatId === chat.id) setActiveChatId(next.chats[0]?.id ?? null);
   }
 
-  function onDeleteProject(p: JarvisProject) {
-    if (!window.confirm(`Eliminare progetto "${p.name}"? Le chat restano senza cartella.`)) return;
-    const next = deleteProject(store, p.id);
+  function onDeleteProject(project: JarvisProject) {
+    if (!window.confirm(`Eliminare il progetto “${project.name}”? Le chat resteranno disponibili.`))
+      return;
+    const next = deleteProject(store, project.id);
     persist(next);
-    if (activeProjectId === p.id) setActiveProjectId(null);
+    if (activeProjectId === project.id) setActiveProjectId(null);
   }
 
-  async function onSend() {
-    const text = input.trim();
-    if (!text || busy) return;
-    let s = store;
-    let chatId = activeChatId;
-    if (!chatId) {
-      const created = createChat(s, { projectId: activeProjectId });
-      s = created.store;
-      chatId = created.chat.id;
-      setActiveChatId(chatId);
+  function onClearChat() {
+    if (activeChat && window.confirm("Svuotare tutti i messaggi di questa conversazione?")) {
+      persist(updateChat(store, activeChat.id, { messages: [] }));
     }
-    s = appendMessage(s, chatId, { role: "user", content: text });
-    persist(s);
-    setInput("");
+  }
+
+  function exportChat() {
+    if (!activeChat) return;
+    const project = store.projects.find((item) => item.id === activeChat.projectId);
+    const markdown = [
+      `# ${activeChat.title}`,
+      "",
+      project ? `Progetto: ${project.name}` : "",
+      project ? "" : "",
+      ...activeChat.messages.flatMap((message) => [
+        `## ${message.role === "user" ? "Tu" : "JARVIS"}`,
+        "",
+        message.content,
+        "",
+      ]),
+    ]
+      .filter((line, index, all) => line !== "" || all[index - 1] !== "")
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename(activeChat.title)}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyMessage(message: JarvisMsg) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedId(message.id);
+      window.setTimeout(() => setCopiedId(null), 1600);
+    } catch {
+      setError("Non riesco a copiare il messaggio in questo browser.");
+    }
+  }
+
+  async function requestReply(nextStore: JarvisStore, chatId: string, question: string) {
+    const requestId = ++requestIdRef.current;
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     setBusy(true);
     setError(null);
-
-    const chat = s.chats.find((c) => c.id === chatId)!;
-    const project = s.projects.find((p) => p.id === (chat.projectId || activeProjectId));
-    const fileCtx = searchFileContext(s, text, {
+    const chat = nextStore.chats.find((item) => item.id === chatId);
+    if (!chat) {
+      setBusy(false);
+      return;
+    }
+    const project = nextStore.projects.find(
+      (item) => item.id === (chat.projectId || activeProjectId),
+    );
+    const fileContext = searchFileContext(nextStore, question, {
       projectId: chat.projectId || activeProjectId,
       chatId,
     });
-    const brain = [
+    const brainContext = [
       buildBrainContextForPrompt(),
+      project?.description ? `### Contesto progetto\n${project.description}` : "",
       project?.instructions ? `### Istruzioni progetto\n${project.instructions}` : "",
-      fileCtx ? `### Contesto file\n${fileCtx}` : "",
+      fileContext ? `### Contesto file\n${fileContext}` : "",
     ]
       .filter(Boolean)
       .join("\n\n")
-      .slice(0, 11000);
-
+      .slice(0, 11_000);
     try {
-      const res = await ask({
+      const response = await ask({
         data: {
-          question: text,
-          history: chat.messages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+          question,
+          history: chat.messages
+            .slice(0, -1)
+            .slice(-14)
+            .map((message) => ({ role: message.role, content: message.content.slice(0, 4_000) })),
           model,
-          brainContext: brain,
-          skipLogs: true,
+          brainContext,
+          swarmMode: WORK_MODES[workMode].swarm,
         },
+        signal: abortController.signal,
       });
+      if (requestId !== requestIdRef.current) return;
       const reply =
-        (res as { risposta?: string }).risposta ||
-        (res as { message?: string }).message ||
-        "Nessuna risposta.";
-      const next = appendMessage(s, chatId, { role: "assistant", content: reply });
-      persist(next);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      const next = appendMessage(s, chatId, {
-        role: "assistant",
-        content: `Errore: ${msg}`,
-      });
-      persist(next);
+        (response as { risposta?: string }).risposta ||
+        (response as { message?: string }).message ||
+        "Non ho ricevuto una risposta. Riprova tra poco.";
+      persist(appendMessage(nextStore, chatId, { role: "assistant", content: reply }));
+    } catch (caught) {
+      if (!abortController.signal.aborted && requestId === requestIdRef.current)
+        setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(false);
+      if (requestId === requestIdRef.current) {
+        abortControllerRef.current = null;
+        setBusy(false);
+      }
     }
   }
 
+  async function onSend(prompt?: string) {
+    const question = (prompt ?? input).trim();
+    if (!question || busy) return;
+    let nextStore = store;
+    let chatId = activeChatId;
+    if (!chatId) {
+      const created = createChat(nextStore, { projectId: activeProjectId });
+      nextStore = created.store;
+      chatId = created.chat.id;
+      setActiveChatId(chatId);
+    }
+    nextStore = appendMessage(nextStore, chatId, { role: "user", content: question });
+    persist(nextStore);
+    setInput("");
+    await requestReply(nextStore, chatId, question);
+  }
+
+  async function onRegenerate() {
+    if (!activeChat || busy) return;
+    const lastUserIndex = activeChat.messages.findLastIndex((message) => message.role === "user");
+    if (lastUserIndex < 0) return;
+    const question = activeChat.messages[lastUserIndex].content;
+    const nextStore = updateChat(store, activeChat.id, {
+      messages: activeChat.messages.slice(0, lastUserIndex + 1),
+    });
+    persist(nextStore);
+    await requestReply(nextStore, activeChat.id, question);
+  }
+
+  function onStop() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    requestIdRef.current += 1;
+    setBusy(false);
+    setError("Generazione interrotta.");
+  }
+
   async function onAttach(file: File) {
-    const max = 10 * 1024 * 1024;
-    if (file.size > max) {
-      setError("File oltre 10 MB.");
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Il file supera il limite di 10 MB.");
       return;
     }
-    const name = file.name;
-    const lower = name.toLowerCase();
-    const okExt = /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs|go|java|css|html|log)$/i.test(lower);
-    const isPdf = lower.endsWith(".pdf");
-    if (!okExt && !isPdf) {
-      setError("Formato non supportato. Usa testo, codice o PDF con testo.");
+    if (!/\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs|go|java|css|html|log)$/i.test(file.name)) {
+      setError("Formato non supportato. Usa un file di testo, codice, JSON o CSV.");
       return;
     }
-    let text = "";
-    if (isPdf) {
-      setError("PDF: estrazione testo non disponibile offline. Usa TXT/MD/JSON per ora.");
-      return;
-    }
-    text = await file.text();
+    const text = await file.text();
     if (!text.trim()) {
-      setError("File vuoto.");
+      setError("Il file è vuoto.");
       return;
     }
     const { store: next } = addTextFile(store, {
-      name,
+      name: file.name,
       text,
       mime: file.type || "text/plain",
       projectId: activeProjectId,
@@ -289,412 +554,953 @@ function JarvisWorkspace() {
       setListening(false);
       return;
     }
-    const W = window as unknown as {
-      SpeechRecognition?: new () => {
-        lang: string;
-        continuous: boolean;
-        interimResults: boolean;
-        onresult: ((e: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
-        onerror: (() => void) | null;
-        onend: (() => void) | null;
-        start: () => void;
-        stop: () => void;
-      };
-      webkitSpeechRecognition?: new () => {
-        lang: string;
-        continuous: boolean;
-        interimResults: boolean;
-        onresult: ((e: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
-        onerror: (() => void) | null;
-        onend: (() => void) | null;
-        start: () => void;
-        stop: () => void;
-      };
+    const browserWindow = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
-    const Ctor = W.SpeechRecognition || W.webkitSpeechRecognition;
-    if (!Ctor) {
-      setError("Dettatura non supportata in questo browser.");
+    const Recognition = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setError("La dettatura non è supportata in questo browser.");
       return;
     }
-    const rec = new Ctor();
-    rec.lang = "it-IT";
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      const t = e.results[0]?.[0]?.transcript;
-      if (t) setInput((prev) => (prev ? `${prev} ${t}` : t));
+    const recognition = new Recognition();
+    recognition.lang = "it-IT";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript;
+      if (transcript) setInput((current) => (current ? `${current} ${transcript}` : transcript));
     };
-    rec.onerror = () => setListening(false);
-    rec.onend = () => setListening(false);
-    recognitionRef.current = rec;
-    rec.start();
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
     setListening(true);
   }
 
   const sidebar = (
-    <aside className="flex h-full w-full flex-col border-r border-sky-500/15 bg-[#060a12]">
-      <div className="flex items-center justify-between gap-2 border-b border-sky-500/10 px-3 py-3">
-        <Link to="/home" className="inline-flex items-center gap-1.5 text-[12px] text-sky-200/70 no-underline hover:text-sky-100">
-          <Home className="h-3.5 w-3.5" /> Hub
+    <aside className="flex h-full w-full flex-col border-r border-white/[0.055] bg-[#111216] text-slate-200">
+      <div className="flex h-16 items-center gap-2 px-3">
+        <Link
+          to="/home"
+          className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-2 no-underline transition hover:bg-white/[0.045]"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-orange-200 via-amber-300 to-orange-500 text-[#24160e] shadow-[0_8px_24px_rgba(251,146,60,0.16)]">
+            <WandSparkles className="h-4 w-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-display text-[14px] font-semibold text-slate-50">
+              JARVIS
+            </span>
+            <span className="block text-[9px] font-semibold uppercase tracking-[0.19em] text-slate-500">
+              Omnicore AI
+            </span>
+          </span>
         </Link>
-        <span className="flex items-center gap-1.5 font-display text-sm font-semibold text-sky-100">
-          <Sparkles className="h-4 w-4 text-sky-400" /> JARVIS
-        </span>
-        <button type="button" className="md:hidden text-sky-200/60" onClick={() => setSidebarOpen(false)} aria-label="Chiudi">
+        <IconButton label="Chiudi menu" onClick={() => setSidebarOpen(false)} className="md:hidden">
           <X className="h-4 w-4" />
-        </button>
+        </IconButton>
       </div>
 
-      <div className="space-y-1 p-2">
+      <div className="px-3 pb-3">
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center gap-2 rounded-lg bg-sky-500/15 px-3 py-2 text-[13px] font-medium text-sky-100 transition hover:bg-sky-500/25"
+          className="flex w-full items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.045] px-3 py-2.5 text-[12px] font-semibold text-slate-100 transition hover:border-orange-300/20 hover:bg-white/[0.07]"
         >
-          <Plus className="h-4 w-4" /> Nuova chat
-        </button>
-        <button
-          type="button"
-          onClick={onNewProject}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-sky-200/70 hover:bg-white/[0.04] hover:text-sky-100"
-        >
-          <FolderPlus className="h-3.5 w-3.5" /> Nuovo progetto
+          <span className="flex items-center gap-2">
+            <Plus className="h-4 w-4" /> Nuova chat
+          </span>
+          <span className="rounded-md border border-white/[0.08] px-1.5 py-0.5 text-[9px] text-slate-500">
+            ⌘ K
+          </span>
         </button>
       </div>
 
-      <div className="flex gap-1 border-y border-sky-500/10 px-2 py-2">
-        {(
-          [
-            { id: "chat" as const, label: "Chat", icon: Sparkles },
-            { id: "neural" as const, label: "Neurale", icon: Brain },
-            { id: "connectors" as const, label: "Connettori", icon: Cable },
-          ] as const
-        ).map((t) => (
+      <nav className="space-y-0.5 px-3 pb-3">
+        {[
+          { id: "chat" as const, label: "Conversazioni", icon: MessageSquareText },
+          { id: "neural" as const, label: "Cervello e memoria", icon: Brain },
+          { id: "connectors" as const, label: "Strumenti connessi", icon: Cable },
+        ].map((item) => (
           <button
-            key={t.id}
+            key={item.id}
             type="button"
-            onClick={() => setPanel(t.id)}
-            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-[10px] font-medium uppercase tracking-wide ${
-              panel === t.id ? "bg-sky-500/20 text-sky-100" : "text-sky-200/50 hover:text-sky-100"
-            }`}
+            onClick={() => {
+              setPanel(item.id);
+              setSidebarOpen(false);
+            }}
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] transition ${panel === item.id ? "bg-white/[0.065] font-medium text-slate-100" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"}`}
           >
-            <t.icon className="h-3 w-3" />
-            {t.label}
+            <item.icon className={`h-3.5 w-3.5 ${panel === item.id ? "text-orange-300" : ""}`} />
+            {item.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="px-2 py-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sky-200/40" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca chat…"
-            className="w-full rounded-lg border border-sky-500/15 bg-black/30 py-2 pl-8 pr-2 text-[12px] text-sky-50 outline-none placeholder:text-sky-200/30 focus:border-sky-400/40"
-          />
+      <div className="mx-3 h-px bg-white/[0.055]" />
+      <div className="flex-1 overflow-y-auto px-3 pb-4 pt-4">
+        <div className="mb-2 flex items-center justify-between px-2">
+          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">
+            Progetti
+          </p>
+          <IconButton
+            label="Crea progetto"
+            onClick={() => setProjectDialogOpen(true)}
+            className="h-6 w-6 rounded-md"
+          >
+            <Plus className="h-3 w-3" />
+          </IconButton>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
-        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
-          Progetti
-        </p>
         <button
           type="button"
           onClick={() => setActiveProjectId(null)}
-          className={`mb-0.5 w-full rounded-md px-2 py-1.5 text-left text-[12px] ${
-            !activeProjectId ? "bg-sky-500/15 text-sky-100" : "text-sky-200/60 hover:bg-white/[0.03]"
-          }`}
+          className={`mb-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] transition ${!activeProjectId ? "bg-orange-300/10 text-orange-100" : "text-slate-400 hover:bg-white/[0.04]"}`}
         >
-          Tutti
+          <Archive className="h-3.5 w-3.5" /> Tutte le chat
         </button>
-        {store.projects.map((p) => (
-          <div key={p.id} className="group mb-0.5 flex items-center gap-1">
+        {store.projects.map((project) => (
+          <div
+            key={project.id}
+            className="group flex items-center rounded-lg hover:bg-white/[0.04]"
+          >
             <button
               type="button"
-              onClick={() => setActiveProjectId(p.id)}
-              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-[12px] ${
-                activeProjectId === p.id
-                  ? "bg-sky-500/15 text-sky-100"
-                  : "text-sky-200/60 hover:bg-white/[0.03]"
-              }`}
+              onClick={() => {
+                setActiveProjectId(project.id);
+                setContextOpen(true);
+              }}
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] ${activeProjectId === project.id ? "text-orange-100" : "text-slate-400"}`}
             >
-              {p.name}
+              <Folder
+                className={`h-3.5 w-3.5 shrink-0 ${activeProjectId === project.id ? "text-orange-300" : ""}`}
+              />
+              <span className="truncate">{project.name}</span>
             </button>
-            <button
-              type="button"
-              className="opacity-0 group-hover:opacity-100 text-sky-200/40 hover:text-red-300"
-              onClick={() => onDeleteProject(p)}
-              aria-label="Elimina progetto"
+            <IconButton
+              label={`Elimina ${project.name}`}
+              onClick={() => onDeleteProject(project)}
+              className="mr-1 h-6 w-6 opacity-0 group-hover:opacity-100"
             >
               <Trash2 className="h-3 w-3" />
-            </button>
+            </IconButton>
           </div>
         ))}
 
-        <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
-          Conversazioni
-        </p>
+        <div className="mb-2 mt-5 flex items-center justify-between px-2">
+          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-600">Recenti</p>
+          <span className="text-[9px] text-slate-600">{filteredChats.length}</span>
+        </div>
+        <div className="relative mb-2">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-600" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Cerca nelle chat"
+            className="w-full rounded-lg border border-transparent bg-white/[0.025] py-2 pl-7 pr-2 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:border-white/[0.08] focus:bg-white/[0.04]"
+          />
+        </div>
         {filteredChats.length === 0 ? (
-          <p className="px-2 text-[11px] text-sky-200/40">Nessuna chat</p>
+          <p className="px-2 py-4 text-center text-[10px] text-slate-600">Nessuna conversazione</p>
         ) : (
-          filteredChats.map((c) => (
+          filteredChats.map((chat) => (
             <div
-              key={c.id}
-              className={`group mb-0.5 flex items-center gap-0.5 rounded-md ${
-                activeChatId === c.id ? "bg-sky-500/20" : "hover:bg-white/[0.03]"
-              }`}
+              key={chat.id}
+              className={`group mb-0.5 flex items-center rounded-lg transition ${activeChatId === chat.id && panel === "chat" ? "bg-white/[0.065]" : "hover:bg-white/[0.035]"}`}
             >
               <button
                 type="button"
                 onClick={() => {
-                  setActiveChatId(c.id);
+                  setActiveChatId(chat.id);
+                  setActiveProjectId(chat.projectId);
                   setPanel("chat");
                   setSidebarOpen(false);
                 }}
-                onDoubleClick={() => onRenameChat(c)}
-                className="min-w-0 flex-1 truncate px-2 py-2 text-left text-[12px] text-sky-50"
-                title="Doppio click per rinominare"
+                className="min-w-0 flex-1 px-2.5 py-2 text-left"
               >
-                {c.pinned ? "📌 " : ""}
-                {c.title}
+                <span className="flex items-center gap-1.5">
+                  {chat.pinned ? <Pin className="h-2.5 w-2.5 shrink-0 text-orange-300" /> : null}
+                  <span
+                    className={`truncate text-[11px] ${activeChatId === chat.id ? "text-slate-100" : "text-slate-400"}`}
+                  >
+                    {chat.title}
+                  </span>
+                </span>
               </button>
-              <button
-                type="button"
-                className="p-1 text-sky-200/40 opacity-0 hover:text-sky-100 group-hover:opacity-100"
-                onClick={() => onTogglePin(c)}
-                aria-label={c.pinned ? "Sblocca" : "Fissa"}
-              >
-                {c.pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
-              </button>
-              <button
-                type="button"
-                className="p-1 text-sky-200/40 opacity-0 hover:text-red-300 group-hover:opacity-100"
-                onClick={() => onDeleteChat(c)}
-                aria-label="Elimina"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label={`Opzioni per ${chat.title}`}
+                    className="mr-1 h-6 w-6 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                  >
+                    <MoreHorizontal className="h-3 w-3" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="w-44 border-white/10 bg-[#191a1f] text-slate-200"
+                >
+                  <DropdownMenuItem onSelect={() => onRenameChat(chat)}>
+                    <PenLine /> Rinomina
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => persist(updateChat(store, chat.id, { pinned: !chat.pinned }))}
+                  >
+                    {chat.pinned ? <PinOff /> : <Pin />}{" "}
+                    {chat.pinned ? "Rimuovi dai fissati" : "Fissa in alto"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/8" />
+                  <DropdownMenuItem
+                    onSelect={() => onDeleteChat(chat)}
+                    className="text-red-300 focus:text-red-200"
+                  >
+                    <Trash2 /> Elimina
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))
         )}
-
-        {projectFiles.length > 0 ? (
-          <>
-            <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
-              File
-            </p>
-            {projectFiles.map((f) => (
-              <div key={f.id} className="group flex items-center gap-1 px-2 py-1 text-[11px] text-sky-200/60">
-                <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                <button
-                  type="button"
-                  className="opacity-0 group-hover:opacity-100 hover:text-red-300"
-                  onClick={() => persist(deleteFile(store, f.id))}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </>
-        ) : null}
+      </div>
+      <div className="border-t border-white/[0.055] p-3">
+        <Link
+          to="/home"
+          className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] text-slate-500 no-underline transition hover:bg-white/[0.04] hover:text-slate-200"
+        >
+          <Home className="h-3.5 w-3.5" /> Torna al Control Center
+        </Link>
       </div>
     </aside>
   );
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-[#030712] text-sky-50">
-      {/* Desktop sidebar */}
-      <div className="hidden w-[280px] shrink-0 md:block">{sidebar}</div>
-
-      {/* Mobile drawer */}
+    <div className="relative flex h-[100dvh] overflow-hidden bg-[#17181c] text-slate-100 selection:bg-orange-300/25">
+      <div className="hidden w-[260px] shrink-0 md:block">{sidebar}</div>
       {sidebarOpen ? (
         <div className="fixed inset-0 z-50 flex md:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-          <div className="relative z-10 h-full w-[min(100%,280px)]">{sidebar}</div>
+          <button
+            type="button"
+            aria-label="Chiudi menu"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="relative h-full w-[min(86vw,280px)] shadow-2xl">{sidebar}</div>
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-sky-500/10 px-3 py-2.5 sm:px-4">
-          <button
-            type="button"
-            className="rounded-lg border border-sky-500/20 p-2 text-sky-200 md:hidden"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Menu"
-          >
+      <main className="relative flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_50%_-10%,rgba(251,191,36,0.055),transparent_35%)]">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b border-white/[0.055] bg-[#17181c]/90 px-3 backdrop-blur-xl sm:px-5">
+          <IconButton label="Apri menu" onClick={() => setSidebarOpen(true)} className="md:hidden">
             <Menu className="h-4 w-4" />
-          </button>
+          </IconButton>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-base font-semibold tracking-tight text-sky-50">
-              {panel === "neural"
-                ? "Sistema neurale"
-                : panel === "connectors"
-                  ? "Connettori"
-                  : activeChat?.title || "JARVIS"}
-            </h1>
-            <p className="truncate text-[11px] text-sky-200/45">
-              Workspace personale · nero &amp; azzurro
+            <div className="flex items-center gap-2">
+              <h1 className="truncate font-display text-[14px] font-semibold tracking-[-0.02em] text-slate-100">
+                {panel === "neural"
+                  ? "Cervello e memoria"
+                  : panel === "connectors"
+                    ? "Strumenti connessi"
+                    : activeChat?.title || "Nuova conversazione"}
+              </h1>
+              {activeProject ? (
+                <span className="hidden rounded-full border border-orange-300/15 bg-orange-300/[0.06] px-2 py-0.5 text-[9px] font-semibold text-orange-200/70 sm:inline">
+                  {activeProject.name}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-0.5 truncate text-[9px] uppercase tracking-[0.14em] text-slate-600">
+              {panel === "chat"
+                ? `${WORK_MODES[workMode].label} · ${GROQ_MODELS.find((item) => item.id === model)?.label}`
+                : "JARVIS Control Center"}
             </p>
           </div>
-          <select
-            value={model}
-            onChange={(e) => {
-              const v = e.target.value as GroqModelId;
-              setModel(v);
-              try {
-                window.localStorage.setItem(MODEL_KEY, v);
-              } catch {
-                /* ignore */
-              }
-            }}
-            className="max-w-[140px] truncate rounded-lg border border-sky-500/20 bg-black/40 px-2 py-1.5 text-[11px] text-sky-100 outline-none"
-          >
-            {GROQ_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          {panel === "chat" ? (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="hidden items-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-2 text-[10px] text-slate-400 transition hover:bg-white/[0.05] hover:text-slate-200 sm:flex"
+                  >
+                    {GROQ_MODELS.find((item) => item.id === model)?.label}
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-52 border-white/10 bg-[#191a1f] text-slate-200"
+                >
+                  {GROQ_MODELS.map((item) => (
+                    <DropdownMenuItem
+                      key={item.id}
+                      onSelect={() => {
+                        setModel(item.id);
+                        window.localStorage.setItem(MODEL_KEY, item.id);
+                      }}
+                      className="justify-between"
+                    >
+                      {item.label} {model === item.id ? <Check /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <IconButton
+                label={contextOpen ? "Chiudi contesto" : "Apri contesto"}
+                onClick={() => setContextOpen((value) => !value)}
+              >
+                <Settings2 className="h-4 w-4" />
+              </IconButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton label="Azioni conversazione">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-52 border-white/10 bg-[#191a1f] text-slate-200"
+                >
+                  <DropdownMenuItem
+                    disabled={!activeChat}
+                    onSelect={() => activeChat && onRenameChat(activeChat)}
+                  >
+                    <PenLine /> Rinomina
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={!activeChat?.messages.length} onSelect={exportChat}>
+                    <Download /> Esporta in Markdown
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/8" />
+                  <DropdownMenuItem
+                    disabled={!activeChat?.messages.length}
+                    onSelect={onClearChat}
+                    className="text-red-300 focus:text-red-200"
+                  >
+                    <Trash2 /> Svuota chat
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : null}
         </header>
 
         {panel === "neural" ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-            <Brain className="h-10 w-10 text-sky-400" />
-            <p className="max-w-md text-sm text-sky-200/70">
-              Sistema neurale e SOUL/USER/MEMORY restano nel Brain agent. Apri la sezione dedicata per
-              modificarli.
-            </p>
-            <Link
-              to="/agent"
-              className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm text-sky-100 no-underline hover:bg-sky-500/20"
-            >
-              Apri Brain
-            </Link>
-            <Link to="/network" className="text-[12px] text-sky-300/70 no-underline hover:text-sky-200">
-              Rete neurale host →
-            </Link>
-          </div>
+          <FeaturePanel
+            eyebrow="Identità e conoscenza"
+            title="Il cervello di JARVIS"
+            description="Personalizza il modo in cui JARVIS ragiona, ricorda e risponde. Le informazioni del Brain vengono incluse automaticamente nelle conversazioni."
+            icon={Brain}
+            actions={[
+              { label: "Apri il Brain", to: "/agent" },
+              { label: "Esplora la memoria", to: "/memory" },
+            ]}
+            cards={[
+              {
+                icon: AtSign,
+                title: "Profilo",
+                body: "Nome, tono, personalità e preferenze operative.",
+              },
+              {
+                icon: Brain,
+                title: "Memoria",
+                body: "Contesto persistente richiamato durante le conversazioni.",
+              },
+              {
+                icon: Clipboard,
+                title: "Regole",
+                body: "Limiti, conferme e istruzioni sempre attive.",
+              },
+            ]}
+          />
         ) : panel === "connectors" ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-            <Cable className="h-10 w-10 text-sky-400" />
-            <p className="max-w-md text-sm text-sky-200/70">
-              One MCP e app collegate. Le azioni write restano con conferma umana.
-            </p>
-            <Link
-              to="/connectors"
-              className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm text-sky-100 no-underline hover:bg-sky-500/20"
-            >
-              Apri connettori
-            </Link>
-          </div>
+          <FeaturePanel
+            eyebrow="Azioni e automazioni"
+            title="Porta JARVIS nei tuoi strumenti"
+            description="Collega servizi e app tramite One MCP. JARVIS può consultare i dati e proporre azioni; ogni modifica sensibile resta sotto conferma umana."
+            icon={Cable}
+            actions={[{ label: "Gestisci connettori", to: "/connectors" }]}
+            cards={[
+              {
+                icon: Cable,
+                title: "One MCP",
+                body: "Un unico accesso alle integrazioni SaaS abilitate.",
+              },
+              {
+                icon: Search,
+                title: "Ricerca azioni",
+                body: "Trova lo strumento giusto in base alla richiesta.",
+              },
+              {
+                icon: Check,
+                title: "Controllo umano",
+                body: "Conferma esplicita prima di ogni azione write.",
+              },
+            ]}
+          />
         ) : (
           <>
-            <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-6">
+            <section className="flex-1 overflow-y-auto">
               {!activeChat || activeChat.messages.length === 0 ? (
-                <div className="mx-auto flex max-w-lg flex-col items-center gap-3 pt-16 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-400/25 bg-sky-500/10">
-                    <Sparkles className="h-7 w-7 text-sky-300" />
+                <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-5 py-10 sm:px-8">
+                  <div className="mb-8 text-center sm:text-left">
+                    <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-200/20 bg-gradient-to-br from-orange-200/20 to-orange-500/10 text-orange-200 shadow-[0_16px_50px_rgba(251,146,60,0.10)]">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-slate-100 sm:text-4xl">
+                      Ciao, sono JARVIS.
+                    </h2>
+                    <p className="mt-3 max-w-xl text-[13px] leading-6 text-slate-500 sm:text-sm">
+                      Posso ragionare, creare, analizzare file e usare il tuo contesto personale. Da
+                      dove iniziamo?
+                    </p>
                   </div>
-                  <h2 className="font-display text-2xl font-semibold text-sky-50">Come posso aiutarti?</h2>
-                  <p className="text-sm text-sky-200/55">
-                    Chat generale, memoria e connettori. Log e console Minecraft restano in M.I.N.E.
-                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {STARTERS.map((starter) => (
+                      <button
+                        key={starter.label}
+                        type="button"
+                        onClick={() => {
+                          setInput(starter.prompt);
+                          inputRef.current?.focus();
+                        }}
+                        className="group flex items-start gap-3 rounded-2xl border border-white/[0.065] bg-white/[0.018] p-4 text-left transition hover:-translate-y-0.5 hover:border-orange-200/15 hover:bg-white/[0.04]"
+                      >
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/[0.045] text-slate-500 transition group-hover:bg-orange-300/10 group-hover:text-orange-200">
+                          <starter.icon className="h-4 w-4" />
+                        </span>
+                        <span>
+                          <span className="block text-[12px] font-semibold text-slate-300">
+                            {starter.label}
+                          </span>
+                          <span className="mt-1 block text-[10px] leading-4 text-slate-600">
+                            {starter.prompt}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                activeChat.messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`mx-auto flex max-w-3xl ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[90%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed ${
-                        m.role === "user"
-                          ? "bg-sky-500/20 text-sky-50 border border-sky-400/25"
-                          : "bg-white/[0.04] text-sky-100/90 border border-white/[0.06]"
-                      }`}
+                <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 sm:px-8 sm:py-10">
+                  {activeChat.messages.map((message) => (
+                    <article
+                      key={message.id}
+                      className={`group flex gap-3 sm:gap-4 ${message.role === "user" ? "justify-end" : ""}`}
                     >
-                      <p className="whitespace-pre-wrap">{m.content}</p>
+                      {message.role === "assistant" ? (
+                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-orange-200/15 bg-orange-300/[0.08] text-orange-200">
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </div>
+                      ) : null}
+                      <div
+                        className={`min-w-0 ${message.role === "user" ? "max-w-[88%]" : "flex-1"}`}
+                      >
+                        <div
+                          className={
+                            message.role === "user"
+                              ? "rounded-[20px] rounded-tr-md border border-white/[0.07] bg-white/[0.055] px-4 py-3 text-[13px] leading-6 text-slate-200"
+                              : "text-[13px] leading-6 text-slate-300 sm:text-[14px] sm:leading-7"
+                          }
+                        >
+                          <MessageContent content={message.content} />
+                        </div>
+                        <div
+                          className={`mt-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 ${message.role === "user" ? "justify-end" : ""}`}
+                        >
+                          <span className="mr-1 text-[9px] text-slate-700">
+                            {timeLabel(message.createdAt)}
+                          </span>
+                          <IconButton
+                            label="Copia messaggio"
+                            onClick={() => void copyMessage(message)}
+                            className="h-7 w-7"
+                          >
+                            {copiedId === message.id ? (
+                              <Check className="h-3 w-3 text-emerald-300" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </IconButton>
+                          {message.role === "assistant" &&
+                          message.id === activeChat.messages.at(-1)?.id ? (
+                            <IconButton
+                              label="Rigenera risposta"
+                              onClick={() => void onRegenerate()}
+                              className="h-7 w-7"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                            </IconButton>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                  {busy ? (
+                    <div className="flex items-center gap-4" aria-live="polite">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-orange-200/15 bg-orange-300/[0.08] text-orange-200">
+                        <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-.3s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:-.15s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500" />
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ) : null}
+                  <div ref={bottomRef} />
+                </div>
               )}
-              {busy ? (
-                <p className="mx-auto max-w-3xl text-[12px] text-sky-300/60">JARVIS sta pensando…</p>
-              ) : null}
-              <div ref={bottomRef} />
-            </div>
+            </section>
 
-            <div className="border-t border-sky-500/10 px-3 py-3 sm:px-6">
+            <div className="shrink-0 px-3 pb-3 pt-2 sm:px-6 sm:pb-5">
               {error ? (
-                <p className="mb-2 text-center text-[12px] text-red-300/90" role="alert">
-                  {error}
-                </p>
+                <div
+                  className="mx-auto mb-2 flex max-w-3xl items-center justify-between rounded-xl border border-red-400/15 bg-red-400/[0.06] px-3 py-2 text-[10px] text-red-200/80"
+                  role="alert"
+                >
+                  <span>{error}</span>
+                  <button type="button" onClick={() => setError(null)} aria-label="Chiudi errore">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               ) : null}
-              <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-sky-500/20 bg-[#0a101c] p-2 shadow-[0_0_40px_rgba(56,189,248,0.08)]">
+              <div className="mx-auto max-w-3xl rounded-[22px] border border-white/[0.09] bg-[#202126] p-2 shadow-[0_18px_55px_rgba(0,0,0,0.32),0_1px_0_rgba(255,255,255,0.04)_inset] transition focus-within:border-orange-200/20">
+                {visibleFiles.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto px-1 pb-1">
+                    {visibleFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex max-w-48 shrink-0 items-center gap-2 rounded-xl border border-white/[0.07] bg-black/15 px-2.5 py-2"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-orange-200/70" />
+                        <span className="truncate text-[10px] text-slate-400">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => persist(deleteFile(store, file.id))}
+                          aria-label={`Rimuovi ${file.name}`}
+                          className="text-slate-600 hover:text-red-300"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <textarea
+                  ref={inputRef}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
                       void onSend();
                     }
                   }}
                   rows={2}
-                  placeholder="Scrivi un messaggio…"
-                  className="w-full resize-none bg-transparent px-2 py-2 text-[14px] text-sky-50 outline-none placeholder:text-sky-200/30"
+                  maxLength={2_000}
+                  placeholder="Chiedi qualsiasi cosa a JARVIS…"
+                  className="max-h-44 min-h-14 w-full resize-none bg-transparent px-2.5 py-2 text-[13px] leading-6 text-slate-100 outline-none placeholder:text-slate-600"
                 />
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 px-1">
                   <input
                     ref={fileRef}
                     type="file"
                     className="hidden"
-                    accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.log,.html,.css"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void onAttach(f);
-                      e.target.value = "";
+                    accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.log,.html,.css"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void onAttach(file);
+                      event.target.value = "";
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="rounded-lg p-2 text-sky-200/50 hover:bg-white/[0.04] hover:text-sky-100"
-                    title="Allega file testo"
-                  >
+                  <IconButton label="Allega file" onClick={() => fileRef.current?.click()}>
                     <Paperclip className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
+                  </IconButton>
+                  <IconButton
+                    label={listening ? "Ferma dettatura" : "Avvia dettatura"}
                     onClick={toggleVoice}
                     disabled={!voiceSupported}
-                    className={`rounded-lg p-2 hover:bg-white/[0.04] ${
-                      listening ? "text-sky-300" : "text-sky-200/50 hover:text-sky-100"
-                    } disabled:opacity-30`}
-                    title={voiceSupported ? "Dettatura" : "Dettatura non supportata"}
+                    className={listening ? "bg-red-300/10 text-red-200" : ""}
                   >
                     {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1" />
-                  <button
-                    type="button"
-                    disabled={busy || !input.trim()}
-                    onClick={() => void onSend()}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-blue-500 px-4 py-2 text-[13px] font-semibold text-slate-950 disabled:opacity-40"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Invia
-                  </button>
+                  </IconButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-medium text-slate-400 transition hover:bg-white/[0.05] hover:text-slate-200"
+                      >
+                        {(() => {
+                          const ModeIcon = WORK_MODES[workMode].icon;
+                          return <ModeIcon className="h-3 w-3 text-orange-200/70" />;
+                        })()}
+                        {WORK_MODES[workMode].shortLabel}
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="w-64 border-white/10 bg-[#191a1f] p-1.5 text-slate-200"
+                    >
+                      {(
+                        Object.entries(WORK_MODES) as [WorkMode, (typeof WORK_MODES)[WorkMode]][]
+                      ).map(([id, item]) => (
+                        <DropdownMenuItem
+                          key={id}
+                          onSelect={() => {
+                            setWorkMode(id);
+                            window.localStorage.setItem(MODE_KEY, id);
+                          }}
+                          className="items-start py-2"
+                        >
+                          <item.icon className="mt-0.5" />
+                          <span className="flex-1">
+                            <span className="block text-[11px] font-medium">{item.label}</span>
+                            <span className="block text-[9px] leading-4 text-slate-500">
+                              {item.description}
+                            </span>
+                          </span>
+                          {workMode === id ? <Check className="mt-0.5 text-orange-200" /> : null}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <span className="flex-1" />
+                  {busy ? (
+                    <button
+                      type="button"
+                      onClick={onStop}
+                      aria-label="Interrompi generazione"
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-950 transition hover:bg-white"
+                    >
+                      <CircleStop className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!input.trim()}
+                      onClick={() => void onSend()}
+                      aria-label="Invia messaggio"
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-orange-100 to-orange-300 text-[#28170c] shadow-[0_8px_20px_rgba(251,146,60,0.16)] transition hover:brightness-105 disabled:pointer-events-none disabled:opacity-25"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
-              <p className="mt-2 text-center text-[10px] text-sky-200/30">
-                Dati privati in questo browser (isolati per account). Log/console → M.I.N.E.
+              <p className="mt-2 text-center text-[9px] text-slate-700">
+                JARVIS può commettere errori. Verifica le informazioni importanti.
               </p>
             </div>
           </>
         )}
+      </main>
+
+      {contextOpen && panel === "chat" ? (
+        <>
+          <button
+            type="button"
+            aria-label="Chiudi pannello contesto"
+            className="fixed inset-0 z-30 bg-black/45 xl:hidden"
+            onClick={() => setContextOpen(false)}
+          />
+          <aside className="fixed inset-y-0 right-0 z-40 flex w-[min(88vw,340px)] shrink-0 flex-col border-l border-white/[0.06] bg-[#131418] shadow-2xl xl:static xl:w-[310px] xl:shadow-none">
+            <div className="flex h-16 items-center justify-between border-b border-white/[0.055] px-4">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-200">Contesto</p>
+                <p className="mt-0.5 text-[9px] text-slate-600">Istruzioni, file e progetto</p>
+              </div>
+              <IconButton label="Chiudi contesto" onClick={() => setContextOpen(false)}>
+                <X className="h-4 w-4" />
+              </IconButton>
+            </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-4">
+              {activeProject ? (
+                <>
+                  <FieldLabel htmlFor="project-name" label="Progetto">
+                    <input
+                      id="project-name"
+                      value={activeProject.name}
+                      onChange={(event) =>
+                        persist(
+                          updateProject(store, activeProject.id, { name: event.target.value }),
+                        )
+                      }
+                      className="jarvis-field"
+                    />
+                  </FieldLabel>
+                  <FieldLabel htmlFor="project-description" label="Descrizione">
+                    <textarea
+                      id="project-description"
+                      value={activeProject.description}
+                      onChange={(event) =>
+                        persist(
+                          updateProject(store, activeProject.id, {
+                            description: event.target.value,
+                          }),
+                        )
+                      }
+                      rows={3}
+                      placeholder="Di cosa si occupa questo progetto?"
+                      className="jarvis-field resize-none leading-5"
+                    />
+                  </FieldLabel>
+                  <FieldLabel htmlFor="project-instructions" label="Istruzioni personalizzate">
+                    <textarea
+                      id="project-instructions"
+                      value={activeProject.instructions}
+                      onChange={(event) =>
+                        persist(
+                          updateProject(store, activeProject.id, {
+                            instructions: event.target.value,
+                          }),
+                        )
+                      }
+                      rows={5}
+                      placeholder="Come deve lavorare JARVIS in questo progetto?"
+                      className="jarvis-field resize-none leading-5"
+                    />
+                    <p className="mt-1.5 text-[9px] leading-4 text-slate-700">
+                      Vengono aggiunte automaticamente a ogni richiesta del progetto.
+                    </p>
+                  </FieldLabel>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setProjectDialogOpen(true)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-dashed border-white/[0.1] p-4 text-left transition hover:border-orange-200/20 hover:bg-orange-200/[0.025]"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-slate-500">
+                    <FolderPlus className="h-4 w-4" />
+                  </span>
+                  <span>
+                    <span className="block text-[11px] font-medium text-slate-300">
+                      Crea un progetto
+                    </span>
+                    <span className="mt-1 block text-[9px] leading-4 text-slate-600">
+                      Raggruppa chat, file e istruzioni.
+                    </span>
+                  </span>
+                </button>
+              )}
+              <div className="h-px bg-white/[0.055]" />
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-600">
+                    File nel contesto
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="text-[9px] font-medium text-orange-200/70 hover:text-orange-200"
+                  >
+                    + Aggiungi
+                  </button>
+                </div>
+                {visibleFiles.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {visibleFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className="group flex items-center gap-2 rounded-xl border border-white/[0.055] bg-white/[0.02] p-2.5"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-orange-200/60" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[10px] text-slate-400">{file.name}</p>
+                          <p className="mt-0.5 text-[8px] text-slate-700">
+                            {Math.max(1, Math.round(file.size / 1024))} KB
+                          </p>
+                        </div>
+                        <IconButton
+                          label={`Rimuovi ${file.name}`}
+                          onClick={() => persist(deleteFile(store, file.id))}
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-white/[0.018] px-3 py-4 text-center text-[9px] leading-4 text-slate-700">
+                    Allega testo o codice per usarlo come contesto nelle risposte.
+                  </p>
+                )}
+              </div>
+              <div className="h-px bg-white/[0.055]" />
+              <div className="space-y-2 text-[9px] text-slate-600">
+                <Stat
+                  icon={MessageSquareText}
+                  label="Messaggi"
+                  value={activeChat?.messages.length ?? 0}
+                />
+                <Stat icon={FileText} label="File attivi" value={visibleFiles.length} />
+                <Stat icon={Clock3} label="Salvataggio" value="Locale · attivo" success />
+              </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
+
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+        <DialogContent className="border-white/10 bg-[#191a1f] text-slate-100 shadow-2xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Nuovo progetto</DialogTitle>
+            <DialogDescription className="text-[12px] leading-5 text-slate-500">
+              Riunisci conversazioni, documenti e istruzioni in un unico spazio.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <input
+              autoFocus
+              value={projectDraft.name}
+              onChange={(event) =>
+                setProjectDraft((current) => ({ ...current, name: event.target.value }))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onCreateProject();
+              }}
+              placeholder="Nome del progetto"
+              className="jarvis-field"
+            />
+            <textarea
+              value={projectDraft.description}
+              onChange={(event) =>
+                setProjectDraft((current) => ({ ...current, description: event.target.value }))
+              }
+              rows={3}
+              placeholder="Descrizione (opzionale)"
+              className="jarvis-field resize-none leading-5"
+            />
+            <textarea
+              value={projectDraft.instructions}
+              onChange={(event) =>
+                setProjectDraft((current) => ({ ...current, instructions: event.target.value }))
+              }
+              rows={3}
+              placeholder="Istruzioni per JARVIS (opzionale)"
+              className="jarvis-field resize-none leading-5"
+            />
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setProjectDialogOpen(false)}
+              className="rounded-xl px-4 py-2 text-[11px] text-slate-400 hover:bg-white/[0.04]"
+            >
+              Annulla
+            </button>
+            <button
+              type="button"
+              disabled={!projectDraft.name.trim()}
+              onClick={onCreateProject}
+              className="rounded-xl bg-orange-200 px-4 py-2 text-[11px] font-semibold text-[#2d1a0d] disabled:opacity-35"
+            >
+              Crea progetto
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function FieldLabel({
+  htmlFor,
+  label,
+  children,
+}: {
+  htmlFor: string;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={htmlFor}
+        className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.15em] text-slate-600"
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  label,
+  value,
+  success = false,
+}: {
+  icon: typeof Brain;
+  label: string;
+  value: string | number;
+  success?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="flex items-center gap-1.5">
+        <Icon className="h-3 w-3" /> {label}
+      </span>
+      <span className={success ? "text-emerald-400/60" : ""}>{value}</span>
+    </div>
+  );
+}
+
+function FeaturePanel({
+  eyebrow,
+  title,
+  description,
+  icon: Icon,
+  actions,
+  cards,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  icon: typeof Brain;
+  actions: { label: string; to: "/agent" | "/memory" | "/connectors" }[];
+  cards: { icon: typeof Brain; title: string; body: string }[];
+}) {
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-10 sm:px-8 sm:py-16">
+      <div className="mx-auto max-w-4xl">
+        <div className="max-w-2xl">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-200/15 bg-orange-300/[0.07] text-orange-200">
+            <Icon className="h-5 w-5" />
+          </div>
+          <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-orange-200/60">
+            {eyebrow}
+          </p>
+          <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-slate-100 sm:text-4xl">
+            {title}
+          </h2>
+          <p className="mt-4 text-[13px] leading-6 text-slate-500">{description}</p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {actions.map((action, index) => (
+              <Link
+                key={action.to}
+                to={action.to}
+                className={`rounded-xl px-4 py-2.5 text-[11px] font-semibold no-underline transition ${index === 0 ? "bg-orange-200 text-[#2d1a0d] hover:bg-orange-100" : "border border-white/[0.08] text-slate-300 hover:bg-white/[0.04]"}`}
+              >
+                {action.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="mt-12 grid gap-3 sm:grid-cols-3">
+          {cards.map((card) => (
+            <div
+              key={card.title}
+              className="rounded-2xl border border-white/[0.06] bg-white/[0.018] p-4"
+            >
+              <card.icon className="h-4 w-4 text-orange-200/60" />
+              <h3 className="mt-4 text-[12px] font-semibold text-slate-300">{card.title}</h3>
+              <p className="mt-2 text-[10px] leading-5 text-slate-600">{card.body}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
