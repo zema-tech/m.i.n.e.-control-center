@@ -10,7 +10,7 @@ export type BrandLogoTheme = "light" | "dark";
 export type BrandLogoType = "icon" | "logo" | "symbol";
 export type BrandLogoFallback = "lettermark" | "brandfetch" | "transparent" | "404";
 
-/** Domini noti per id catalogo (native + One slug). */
+/** Domini noti per id catalogo (native + One slug + MCP ufficiali). */
 const DOMAIN_BY_ID: Record<string, string> = {
   // Native M.I.N.E
   "one-mcp": "withone.ai",
@@ -26,6 +26,15 @@ const DOMAIN_BY_ID: Record<string, string> = {
   "webhook-generic": "webhook.site",
   "host-research": "falixnodes.net",
   groq: "groq.com",
+  // MCP ufficiali (opzione A)
+  "github-mcp": "github.com",
+  "mcp-filesystem": "modelcontextprotocol.io",
+  "mcp-fetch": "modelcontextprotocol.io",
+  "mcp-git": "modelcontextprotocol.io",
+  "mcp-memory": "modelcontextprotocol.io",
+  "mcp-sequential-thinking": "modelcontextprotocol.io",
+  "mcp-time": "modelcontextprotocol.io",
+  "mcp-everything": "modelcontextprotocol.io",
   // One platforms
   gmail: "gmail.com",
   outlook: "microsoft.com",
