@@ -1,7 +1,11 @@
 /**
- * Connettori storage / MCP / cloud / One (withoneai).
+ * Connettori storage / MCP / cloud / One (withoneai) + MCP ufficiali.
  */
 
+import {
+  ALL_OFFICIAL_MCP,
+  type OfficialMcpServer,
+} from "@/lib/official-mcp";
 import {
   ONE_CLI_REPO,
   ONE_DOCS_URL,
@@ -38,6 +42,10 @@ export type DefaultConnectorDef = {
   mcpTools?: string[];
   /** true se proviene dal catalogo One */
   onePlatform?: boolean;
+  /** true se MCP ufficiale (reference / GitHub) */
+  officialMcp?: boolean;
+  /** remote usabile da browser senza processo locale */
+  browserReady?: boolean;
 };
 
 const KEY = "mine.connectors.v1";
@@ -45,6 +53,25 @@ const SEEDED_KEY = "mine.connectors.seeded.v1";
 
 function canUseStorage() {
   return typeof window !== "undefined";
+}
+
+function officialToDef(s: OfficialMcpServer): DefaultConnectorDef {
+  const modeHint = s.browserReady
+    ? `REMOTE streamable-http: ${s.remoteUrl}`
+    : `LOCAL stdio — ${s.packageHint ?? "n/a"}`;
+  return {
+    id: s.id,
+    label: s.label,
+    kind: "mcp",
+    detail: s.description,
+    connectMode: "mcp",
+    connectHint: `${modeHint}. ${s.installHint}`,
+    docsUrl: s.docsUrl,
+    skillsPath: "/connectors",
+    mcpTools: s.toolHints,
+    officialMcp: true,
+    browserReady: s.browserReady,
+  };
 }
 
 const NATIVE_CATALOG: DefaultConnectorDef[] = [
@@ -59,6 +86,8 @@ const NATIVE_CATALOG: DefaultConnectorDef[] = [
     skillsPath: "/connectors",
     mcpTools: [...ONE_MCP_TOOL_NAMES],
   },
+  // MCP ufficiali (GitHub remote + reference) — prima dei nativi per visibilità
+  ...ALL_OFFICIAL_MCP.map(officialToDef),
   {
     id: "mega",
     label: "MEGA",
@@ -211,7 +240,7 @@ function onePlatformToDef(p: OnePlatform): DefaultConnectorDef {
   };
 }
 
-/** Catalogo completo: nativi M.I.N.E + piattaforme One documentate. */
+/** Catalogo completo: nativi + ufficiali MCP + piattaforme One. */
 export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
   ...NATIVE_CATALOG,
   ...ONE_PLATFORMS.map(onePlatformToDef),
@@ -251,19 +280,22 @@ export function ensureDefaultConnectors(): CustomConnector[] {
     }
     return existing;
   }
-  const seedIds = ["one-mcp", "falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp"];
-  const seeded: CustomConnector[] = seedIds.map((id, i) => {
-    const def = NATIVE_CATALOG.find((d) => d.id === id)!;
-    return {
-      id: `conn:default:${id}`,
-      label: def.label,
-      kind: def.kind,
-      detail: def.detail,
-      status: "online" as const,
-      preset: id,
-      createdAt: Date.now() - i,
-    };
-  });
+  const seedIds = ["one-mcp", "github-mcp", "falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp"];
+  const seeded: CustomConnector[] = seedIds
+    .map((id, i) => {
+      const def = NATIVE_CATALOG.find((d) => d.id === id);
+      if (!def) return null;
+      return {
+        id: `conn:default:${id}`,
+        label: def.label,
+        kind: def.kind,
+        detail: def.detail,
+        status: "online" as const,
+        preset: id,
+        createdAt: Date.now() - i,
+      };
+    })
+    .filter(Boolean) as CustomConnector[];
   saveConnectors(seeded);
   try {
     window.localStorage.setItem(SEEDED_KEY, "1");
@@ -334,4 +366,4 @@ export function connectModeLabel(mode: ConnectMode): string {
   }
 }
 
-export { ONE_MCP_URL, ONE_DOCS_URL, ONE_CLI_REPO };
+export { ONE_MCP_URL, ONE_DOCS_URL, ONE_CLI_REPO, ALL_OFFICIAL_MCP };
