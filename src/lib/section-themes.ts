@@ -1,9 +1,10 @@
 /**
  * Omnicore — mondi del prodotto.
  * Ogni sezione è un agente specializzato sotto un unico nucleo.
+ * Gli id devono coincidere con html[data-section] e le classi .orb-* in styles.css.
  */
 
-export type SectionId = "jarvis" | "edit" | "mine" | "prompt" | "art";
+export type SectionId = "jarvis" | "mine" | "design" | "code";
 
 export type SectionDef = {
   id: SectionId;
@@ -21,25 +22,14 @@ export const SECTIONS: SectionDef[] = [
     title: "J.A.R.V.I.S",
     tagline: "IA principale",
     description:
-      "Orchestratore Omnicore: cervello, chat, 4 pilastri, connettori. Azzurro e nero.",
+      "Orchestratore Omnicore: workspace chat, cervello e connettori. Azzurro e nero.",
     colors: "Azzurro · Nero",
     href: "/jarvis",
     links: [
-      { label: "Hub agente", to: "/jarvis" },
-      { label: "Chat", to: "/assistant" },
-      { label: "Pilastri", to: "/agent" },
+      { label: "Workspace", to: "/jarvis" },
+      { label: "Brain", to: "/agent" },
       { label: "Connettori", to: "/connectors" },
     ],
-  },
-  {
-    id: "edit",
-    title: "E.D.I.T",
-    tagline: "Social & content",
-    description:
-      "Assistente per social, contenuti e presenza online. Rosa e nero.",
-    colors: "Rosa · Nero",
-    href: "/edit",
-    links: [{ label: "Hub E.D.I.T", to: "/edit" }],
   },
   {
     id: "mine",
@@ -57,7 +47,17 @@ export const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    id: "prompt",
+    id: "design",
+    title: "A.R.T",
+    tagline: "Design system",
+    description:
+      "Identità visiva, palette, tipografia, motion e componenti. Violetto e oro.",
+    colors: "Violetto · Oro",
+    href: "/design",
+    links: [{ label: "Studio design", to: "/design" }],
+  },
+  {
+    id: "code",
     title: "P.R.O.M.P.T",
     tagline: "Coding agent",
     description:
@@ -66,23 +66,12 @@ export const SECTIONS: SectionDef[] = [
     href: "/code",
     links: [{ label: "Workspace codice", to: "/code" }],
   },
-  {
-    id: "art",
-    title: "A.R.T",
-    tagline: "Design",
-    description:
-      "Identità visiva, palette, tipografia, motion e componenti. Violetto e oro.",
-    colors: "Violetto · Oro",
-    href: "/design",
-    links: [{ label: "Studio design", to: "/design" }],
-  },
 ];
 
-/** Retro-compat: path storici /code e /design restano validi. */
+/** Mappa path → tema CSS (data-section / orb-*). */
 export function sectionFromPath(pathname: string): SectionId {
-  if (pathname.startsWith("/code")) return "prompt";
-  if (pathname.startsWith("/design")) return "art";
-  if (pathname.startsWith("/edit")) return "edit";
+  if (pathname.startsWith("/code")) return "code";
+  if (pathname.startsWith("/design")) return "design";
   if (
     pathname.startsWith("/mine") ||
     pathname.startsWith("/network") ||
