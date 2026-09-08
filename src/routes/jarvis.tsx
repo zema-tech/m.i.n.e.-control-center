@@ -1,602 +1,1093 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
+  ArrowUp,
   Brain,
   Cable,
-  CheckCircle2,
-  Cpu,
-  FileStack,
+  ChevronDown,
+  File,
   FileText,
-  Hand,
+  Folder,
+  FolderPlus,
+  Home,
+  Loader2,
+  Menu,
   MessageSquare,
-  Monitor,
+  Mic,
+  MicOff,
+  MoreHorizontal,
+  Paperclip,
+  Pencil,
   Pin,
   PinOff,
   Plus,
-  RotateCcw,
-  Scale,
-  Settings2,
-  Shield,
   Sparkles,
-  Terminal,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { SWARM_MODELS } from "@/lib/ai-providers";
 import { getAuthState } from "@/lib/auth.functions";
-import { loadAgentProfile } from "@/lib/agent-profile";
-import { loadSoul } from "@/lib/agent-brain";
+import { type ChatThread, type Msg, loadThreads, newId, saveThreads } from "@/lib/chats";
+import {
+  askJarvis,
+  loadJarvisWorkspace,
+  mutateJarvisWorkspace,
+  uploadJarvisFile,
+  type JarvisMutation,
+} from "@/lib/jarvis.functions";
 
 export const Route = createFileRoute("/jarvis")({
   head: () => ({
-    meta: [{ title: "JARVIS — Agente personale" }],
+    meta: [
+      { title: "JARVIS — Workspace personale" },
+      {
+        name: "description",
+        content: "Workspace JARVIS con progetti, chat, file e memoria privata.",
+      },
+    ],
   }),
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
-    return null;
   },
-  component: JarvisSection,
+  component: JarvisWorkspace,
 });
 
-/** Guardrail operativi — non negoziabili (anche se SOUL è editabile). */
-const FIXED_RULES = [
-  {
-    title: "Conferma umana",
-    body: "Ogni azione write o critical (file, console, app, desktop) richiede approvazione esplicita. Mai eseguire in silenzio.",
-  },
-  {
-    title: "Niente inventati",
-    body: "Non inventare log, output tool o risultati. Se manca un dato, chiedilo o proponi uno strumento di lettura.",
-  },
-  {
-    title: "Read prima di write",
-    body: "Leggi, ispeziona, verifica — poi agisci. Preferisci passi reversibili e backup quando tocchi file o host.",
-  },
-  {
-    title: "Scope controllato",
-    body: "Mani attive: Falix/host, storage, One MCP (app SaaS), codice. Desktop PC solo tramite bridge approvato e conferma.",
-  },
-  {
-    title: "Segreti",
-    body: "Mai esporre o richiedere API key/secret in chiaro nelle risposte. Usa i vault e le competenze già collegate.",
-  },
-  {
-    title: "Rifiuto chiaro",
-    body: "Richieste illegali, dannose o fuori policy: rifiuta in modo netto, spiega il perché, proponi alternative sicure.",
-  },
-] as const;
-
-const CAPABILITIES = [
-  {
-    icon: MessageSquare,
-    title: "Chat agentica",
-    blurb: "Proposte tool, non finte esecuzioni. Conferma su write/critical.",
-    to: "/assistant" as const,
-    badge: "Core",
-  },
-  {
-    icon: FileText,
-    title: "SOUL · USER · MEMORY",
-    blurb: "Identità e memoria file-based stile Hermes. Edit in /agent.",
-    to: "/agent" as const,
-    badge: "Brain",
-  },
-  {
-    icon: Monitor,
-    title: "Desktop Control",
-    blurb: "Bridge locale per app/file/PC — previsto. Oggi: host, storage, SaaS.",
-    to: "/agent" as const,
-    badge: "Tools",
-  },
-  {
-    icon: FileStack,
-    title: "File & storage",
-    blurb: "File host, MEGA, Drive. Write solo dopo approvazione.",
-    to: "/skills" as const,
-    badge: "Tools",
-  },
-  {
-    icon: Cable,
-    title: "App & One MCP",
-    blurb: "list → search → knowledge → execute sulle app collegate.",
-    to: "/connectors" as const,
-    badge: "Tools",
-  },
-  {
-    icon: Terminal,
-    title: "Host & console",
-    blurb: "Power, log, comandi server. Diagnosi con evidenze.",
-    to: "/hosts" as const,
-    badge: "Ops",
-  },
-] as const;
-
-const PERSONALITY = [
-  {
-    label: "Claude",
-    points: ["Strutturato e cauto", "Proposte chiare", "Conferma sulle azioni critiche"],
-  },
-  {
-    label: "Grok",
-    points: ["Diretto", "Curioso e proattivo", "Senza fuffa"],
-  },
-  {
-    label: "JARVIS",
-    points: ["Italiano nativo", "Ops + codice + app", "Assistente personale"],
-  },
-] as const;
-
-const JARVIS_MENU_KEY = "omnicore.jarvis.workspace-menu.v1";
-
-const JARVIS_DESTINATIONS = [
-  { to: "/agent", label: "Sistema neurale", icon: Brain },
-  { to: "/connectors", label: "Connettori", icon: Cable },
-  { to: "/assistant", label: "Chat", icon: MessageSquare },
-  { to: "/memory", label: "Memoria", icon: FileText },
-  { to: "/gateway", label: "Gateway", icon: Terminal },
-  { to: "/pulse", label: "Pulse", icon: Zap },
-] as const;
-
-type JarvisMenuTarget = (typeof JARVIS_DESTINATIONS)[number]["to"];
-
-type JarvisMenuItem = {
+type Project = { id: string; name: string; description: string; updatedAt: number };
+type CloudFile = {
   id: string;
-  label: string;
-  to: JarvisMenuTarget;
-  pinned: boolean;
+  projectId: string | null;
+  chatId: string | null;
+  name: string;
+  mimeType: string;
+  size: number;
 };
-
-const DEFAULT_JARVIS_MENU: JarvisMenuItem[] = [
-  { id: "neural", label: "Sistema neurale", to: "/agent", pinned: true },
-  { id: "connectors", label: "Connettori", to: "/connectors", pinned: true },
-  { id: "chat", label: "Chat", to: "/assistant", pinned: true },
+type WorkspaceSnapshot = {
+  cloud: boolean;
+  projects: Array<Record<string, unknown>>;
+  chats: Array<Record<string, unknown>>;
+  messages: Array<Record<string, unknown>>;
+  files: Array<Record<string, unknown>>;
+};
+const PROJECTS_KEY = "omnicore.jarvis.projects.v1";
+const MIGRATION_KEY = "omnicore.jarvis.cloud-import.v1";
+const ACCEPTED_EXTENSIONS = [
+  "txt",
+  "md",
+  "markdown",
+  "json",
+  "csv",
+  "js",
+  "jsx",
+  "ts",
+  "tsx",
+  "css",
+  "html",
+  "py",
+  "java",
+  "c",
+  "cpp",
+  "h",
+  "go",
+  "rs",
+  "sql",
+  "yaml",
+  "yml",
+  "xml",
+  "pdf",
 ];
 
-function isJarvisTarget(value: unknown): value is JarvisMenuTarget {
-  return JARVIS_DESTINATIONS.some((destination) => destination.to === value);
-}
-
-function loadJarvisMenu(): JarvisMenuItem[] {
+function localProjects(): Project[] {
   try {
-    const raw = window.localStorage.getItem(JARVIS_MENU_KEY);
-    if (!raw) return DEFAULT_JARVIS_MENU.map((item) => ({ ...item }));
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return DEFAULT_JARVIS_MENU.map((item) => ({ ...item }));
-
-    return parsed
-      .filter(
-        (item): item is JarvisMenuItem =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof (item as JarvisMenuItem).id === "string" &&
-          typeof (item as JarvisMenuItem).label === "string" &&
-          isJarvisTarget((item as JarvisMenuItem).to) &&
-          typeof (item as JarvisMenuItem).pinned === "boolean",
-      )
-      .slice(0, 12);
+    return JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]") as Project[];
   } catch {
-    return DEFAULT_JARVIS_MENU.map((item) => ({ ...item }));
+    return [];
   }
 }
+function persist(projects: Project[], chats: ChatThread[]) {
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  saveThreads(chats);
+}
+function titleFor(question: string) {
+  return question.trim().replace(/\s+/g, " ").slice(0, 52) || "Nuova chat";
+}
+function bytesLabel(size: number) {
+  return size < 1024
+    ? `${size} B`
+    : size < 1048576
+      ? `${Math.ceil(size / 1024)} KB`
+      : `${(size / 1048576).toFixed(1)} MB`;
+}
+function makeBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+}
+async function extractFile(file: globalThis.File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!ACCEPTED_EXTENSIONS.includes(extension))
+    throw new Error(`Formato .${extension || "?"} non supportato.`);
+  if (file.size > 10 * 1024 * 1024) throw new Error("Il file supera il limite di 10 MB.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (extension !== "pdf")
+    return { text: new TextDecoder().decode(bytes), base64: makeBase64(bytes) };
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const content = await (await pdf.getPage(pageNumber)).getTextContent();
+    pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+  }
+  const text = pages.join("\n").trim();
+  if (!text)
+    throw new Error(
+      "Questo PDF non contiene testo selezionabile. I PDF scansionati richiedono OCR.",
+    );
+  return { text, base64: makeBase64(bytes) };
+}
 
-function JarvisWorkspaceMenu({ agentName }: { agentName: string }) {
-  const [items, setItems] = useState<JarvisMenuItem[]>(DEFAULT_JARVIS_MENU);
-  const [editing, setEditing] = useState(false);
-  const [newLabel, setNewLabel] = useState("");
-  const [newTarget, setNewTarget] = useState<JarvisMenuTarget>("/agent");
+function JarvisWorkspace() {
+  const loadCloud = useServerFn(loadJarvisWorkspace);
+  const mutateCloud = useServerFn(mutateJarvisWorkspace);
+  const uploadCloud = useServerFn(uploadJarvisFile);
+  const sendToJarvis = useServerFn(askJarvis);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [chats, setChats] = useState<ChatThread[]>([]);
+  const [files, setFiles] = useState<CloudFile[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [model, setModel] = useState(
+    SWARM_MODELS.find((item) => item.tier === "smart")?.id || SWARM_MODELS[0]?.id || "",
+  );
+  const [cloud, setCloud] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [listening, setListening] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+  const active = chats.find((chat) => chat.id === activeId) ?? null;
+  const activeProject = projects.find((project) => project.id === active?.projectId) ?? null;
+  const activeFiles = files.filter((file) =>
+    active?.projectId ? file.projectId === active.projectId : file.chatId === active?.id,
+  );
 
   useEffect(() => {
-    setItems(loadJarvisMenu());
-  }, []);
+    void (async () => {
+      const fallbackChats = loadThreads();
+      const fallbackProjects = localProjects();
+      try {
+        const raw = (await loadCloud({})) as WorkspaceSnapshot;
+        setCloud(raw.cloud);
+        if (raw.cloud) {
+          if (!localStorage.getItem(MIGRATION_KEY) && fallbackChats.length) {
+            await mutateCloud({
+              data: {
+                action: "chat.import",
+                chats: fallbackChats.map((chat) => ({
+                  id: chat.id,
+                  title: chat.title,
+                  updatedAt: chat.updatedAt,
+                  messages: chat.messages.map(({ role, content }) => ({ role, content })),
+                })),
+              },
+            });
+            localStorage.setItem(MIGRATION_KEY, "done");
+            const refreshed = (await loadCloud({})) as WorkspaceSnapshot;
+            hydrate(refreshed);
+          } else hydrate(raw);
+        } else {
+          setProjects(fallbackProjects);
+          setChats(fallbackChats);
+          setActiveId(fallbackChats[0]?.id ?? null);
+        }
+      } catch (reason) {
+        setCloud(false);
+        setProjects(fallbackProjects);
+        setChats(fallbackChats);
+        setActiveId(fallbackChats[0]?.id ?? null);
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "Cloud non raggiungibile: modalità locale attiva.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadCloud, mutateCloud]);
 
-  function commit(next: JarvisMenuItem[]) {
-    setItems(next);
+  function hydrate(raw: WorkspaceSnapshot) {
+    const nextProjects = raw.projects.map((item) => ({
+      id: String(item.id),
+      name: String(item.name),
+      description: String(item.description || ""),
+      updatedAt: Date.parse(String(item.updated_at)) || Date.now(),
+    }));
+    const messagesByChat = new Map<string, Msg[]>();
+    raw.messages.forEach((item) => {
+      const id = String(item.chat_id);
+      messagesByChat.set(id, [
+        ...(messagesByChat.get(id) || []),
+        { role: item.role === "assistant" ? "assistant" : "user", content: String(item.content) },
+      ]);
+    });
+    const nextChats: ChatThread[] = raw.chats.map((item) => ({
+      id: String(item.id),
+      title: String(item.title),
+      updatedAt: Date.parse(String(item.updated_at)) || Date.now(),
+      projectId: item.project_id ? String(item.project_id) : null,
+      pinned: Boolean(item.pinned),
+      cloudId: String(item.id),
+      messages: messagesByChat.get(String(item.id)) || [],
+    }));
+    setProjects(nextProjects);
+    setChats(nextChats);
+    setActiveId((current) =>
+      current && nextChats.some((chat) => chat.id === current)
+        ? current
+        : (nextChats[0]?.id ?? null),
+    );
+    setFiles(
+      raw.files.map((item) => ({
+        id: String(item.id),
+        projectId: item.project_id ? String(item.project_id) : null,
+        chatId: item.chat_id ? String(item.chat_id) : null,
+        name: String(item.name),
+        mimeType: String(item.mime_type),
+        size: Number(item.size),
+      })),
+    );
+  }
+
+  async function syncMutation(data: JarvisMutation) {
+    if (cloud) await mutateCloud({ data });
+  }
+  function commit(nextProjects: Project[], nextChats: ChatThread[]) {
+    setProjects(nextProjects);
+    setChats(nextChats);
+    persist(nextProjects, nextChats);
+  }
+
+  async function newChat(projectId: string | null = null) {
+    const chat: ChatThread = {
+      id: newId(),
+      title: "Nuova chat",
+      updatedAt: Date.now(),
+      projectId,
+      pinned: false,
+      messages: [],
+    };
+    commit(projects, [chat, ...chats]);
+    setActiveId(chat.id);
+    setMobileOpen(false);
+    await syncMutation({ action: "chat.create", id: chat.id, title: chat.title, projectId });
+  }
+  async function createProject() {
+    const name = window.prompt("Nome del progetto intelligente:")?.trim();
+    if (!name) return;
+    const description =
+      window.prompt("Descrizione e istruzioni del progetto (facoltative):")?.trim() || "";
+    const project = { id: `p${newId()}`, name, description, updatedAt: Date.now() };
+    commit([project, ...projects], chats);
+    await syncMutation({ action: "project.create", id: project.id, name, description });
+  }
+  async function editProject(project: Project) {
+    const name = window.prompt("Rinomina progetto:", project.name)?.trim();
+    if (!name) return;
+    const description =
+      window.prompt("Descrizione e istruzioni:", project.description)?.trim() || "";
+    const next = projects.map((item) =>
+      item.id === project.id ? { ...item, name, description, updatedAt: Date.now() } : item,
+    );
+    commit(next, chats);
+    await syncMutation({ action: "project.update", id: project.id, name, description });
+  }
+  async function deleteProject(project: Project) {
+    if (!window.confirm(`Eliminare “${project.name}”? Le chat resteranno senza progetto.`)) return;
+    const nextChats = chats.map((chat) =>
+      chat.projectId === project.id ? { ...chat, projectId: null } : chat,
+    );
+    commit(
+      projects.filter((item) => item.id !== project.id),
+      nextChats,
+    );
+    await syncMutation({ action: "project.delete", id: project.id });
+  }
+  async function updateChat(chat: ChatThread, patch: Partial<ChatThread>) {
+    const changed = { ...chat, ...patch, updatedAt: Date.now() };
+    commit(
+      projects,
+      chats.map((item) => (item.id === chat.id ? changed : item)),
+    );
+    await syncMutation({
+      action: "chat.update",
+      id: changed.id,
+      title: changed.title,
+      projectId: changed.projectId ?? null,
+      pinned: Boolean(changed.pinned),
+    });
+  }
+  async function renameChat(chat: ChatThread) {
+    const title = window.prompt("Rinomina chat:", chat.title)?.trim();
+    if (title) await updateChat(chat, { title });
+  }
+  async function deleteChat(chat: ChatThread) {
+    if (!window.confirm(`Eliminare “${chat.title}”?`)) return;
+    const next = chats.filter((item) => item.id !== chat.id);
+    commit(projects, next);
+    if (activeId === chat.id) setActiveId(next[0]?.id ?? null);
+    await syncMutation({ action: "chat.delete", id: chat.id });
+  }
+
+  async function deleteFile(file: CloudFile) {
+    if (!window.confirm(`Eliminare il file “${file.name}”?`)) return;
+    setFiles((current) => current.filter((item) => item.id !== file.id));
+    await syncMutation({ action: "file.delete", id: file.id });
+  }
+
+  async function send() {
+    const question = draft.trim();
+    if (!question || sending) return;
+    let chat = active;
+    if (!chat) {
+      chat = {
+        id: newId(),
+        title: titleFor(question),
+        updatedAt: Date.now(),
+        projectId: null,
+        pinned: false,
+        messages: [],
+      };
+      await syncMutation({
+        action: "chat.create",
+        id: chat.id,
+        title: chat.title,
+        projectId: null,
+      });
+      setActiveId(chat.id);
+    }
+    const userMessage: Msg = { role: "user", content: question };
+    const nextTitle = chat.title === "Nuova chat" ? titleFor(question) : chat.title;
+    const pending = {
+      ...chat,
+      title: nextTitle,
+      updatedAt: Date.now(),
+      messages: [...chat.messages, userMessage],
+    };
+    const nextChats = [pending, ...chats.filter((item) => item.id !== chat!.id)];
+    commit(projects, nextChats);
+    setDraft("");
+    setSending(true);
+    setError("");
+    const userMessageId = `${chat.id}-${Date.now()}-u`;
     try {
-      window.localStorage.setItem(JARVIS_MENU_KEY, JSON.stringify(next));
-    } catch {
-      /* localStorage can be unavailable in private browsing */
+      await syncMutation({
+        action: "chat.update",
+        id: chat.id,
+        title: nextTitle,
+        projectId: chat.projectId ?? null,
+        pinned: Boolean(chat.pinned),
+      });
+      await syncMutation({
+        action: "message.add",
+        chatId: chat.id,
+        id: userMessageId,
+        role: "user",
+        content: question,
+      });
+      const response = await sendToJarvis({
+        data: {
+          question,
+          chatId: chat.id,
+          projectId: chat.projectId ?? null,
+          model,
+          history: chat.messages.map(({ role, content }) => ({ role, content })),
+        },
+      });
+      const assistant: Msg = { role: "assistant", content: response.risposta };
+      const finished = nextChats.map((item) =>
+        item.id === chat!.id
+          ? { ...item, messages: [...pending.messages, assistant], updatedAt: Date.now() }
+          : item,
+      );
+      commit(projects, finished);
+      await syncMutation({
+        action: "message.add",
+        chatId: chat.id,
+        id: `${chat.id}-${Date.now()}-a`,
+        role: "assistant",
+        content: response.risposta,
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "JARVIS non è riuscito a rispondere.");
+    } finally {
+      setSending(false);
     }
   }
 
-  function addItem(event: React.FormEvent) {
-    event.preventDefault();
-    const label = newLabel.trim();
-    if (!label || items.length >= 12) return;
-
-    commit([
-      ...items,
-      {
-        id: `custom-${Date.now()}`,
-        label,
-        to: newTarget,
-        pinned: false,
-      },
-    ]);
-    setNewLabel("");
+  async function attach(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0];
+    event.target.value = "";
+    if (!selected) return;
+    if (!cloud) {
+      setError(
+        "Configura Supabase per allegare, indicizzare e sincronizzare i file in modo privato.",
+      );
+      return;
+    }
+    const projectId = active?.projectId ?? null;
+    if (!projectId && !active) {
+      setError("Apri una chat o seleziona un progetto prima di allegare un file.");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    try {
+      const extracted = await extractFile(selected);
+      const id = `f${newId()}`;
+      await uploadCloud({
+        data: {
+          id,
+          projectId,
+          chatId: projectId ? null : active!.id,
+          name: selected.name,
+          mimeType: selected.type || "application/octet-stream",
+          size: selected.size,
+          base64: extracted.base64,
+          text: extracted.text,
+        },
+      });
+      setFiles((current) => [
+        {
+          id,
+          projectId,
+          chatId: projectId ? null : active!.id,
+          name: selected.name,
+          mimeType: selected.type,
+          size: selected.size,
+        },
+        ...current,
+      ]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Caricamento file fallito.");
+    } finally {
+      setUploading(false);
+    }
   }
 
-  const orderedItems = [...items].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  function dictate() {
+    const SpeechRecognition = (
+      window as typeof window & {
+        webkitSpeechRecognition?: new () => {
+          lang: string;
+          interimResults: boolean;
+          start(): void;
+          stop(): void;
+          onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
+          onend: () => void;
+          onerror: () => void;
+        };
+      }
+    ).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError(
+        "La dettatura non è supportata da questo browser. Puoi continuare a scrivere normalmente.",
+      );
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "it-IT";
+    recognition.interimResults = false;
+    recognition.onresult = (event) =>
+      setDraft((value) => `${value}${value ? " " : ""}${event.results[0]?.[0]?.transcript || ""}`);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      setListening(false);
+      setError("Dettatura interrotta: controlla il permesso del microfono.");
+    };
+    setListening(true);
+    recognition.start();
+  }
+
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [active?.messages.length, sending]);
+
+  const pinned = useMemo(() => chats.filter((chat) => chat.pinned), [chats]);
+  const recent = useMemo(() => chats.filter((chat) => !chat.pinned && !chat.projectId), [chats]);
+  const sidebar = (
+    <Sidebar
+      projects={projects}
+      chats={chats}
+      pinned={pinned}
+      recent={recent}
+      activeId={activeId}
+      files={files}
+      onSelect={(id) => {
+        setActiveId(id);
+        setMobileOpen(false);
+      }}
+      onNew={newChat}
+      onCreateProject={createProject}
+      onEditProject={editProject}
+      onDeleteProject={deleteProject}
+      onUpdateChat={updateChat}
+      onRenameChat={renameChat}
+      onDeleteChat={deleteChat}
+      onDeleteFile={deleteFile}
+    />
+  );
 
   return (
-    <aside className="jarvis-workspace-menu lg:sticky lg:top-[5.5rem]">
-      <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-4">
-        <div className="min-w-0">
-          <p className="truncate font-display text-sm font-semibold text-foreground">{agentName}</p>
-          <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-primary/70">
-            Workspace IA
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setEditing((value) => !value)}
-          className="btn-matrix inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.07] text-muted-foreground hover:border-primary/25 hover:text-primary"
-          aria-label={editing ? "Chiudi personalizzazione menu" : "Personalizza menu"}
-          title={editing ? "Chiudi" : "Personalizza menu"}
+    <div className="jarvis-app flex h-dvh overflow-hidden bg-[#03070c] text-slate-100">
+      <aside className="hidden w-[304px] shrink-0 border-r border-cyan-300/[0.09] bg-[#050a10] lg:flex">
+        {sidebar}
+      </aside>
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent
+          side="left"
+          className="w-[min(90vw,304px)] border-cyan-300/10 bg-[#050a10] p-0"
         >
-          {editing ? <X className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-
-      <nav className="space-y-1 p-2" aria-label="Navigazione workspace JARVIS">
-        {orderedItems.length > 0 ? (
-          orderedItems.map((item) => {
-            const destination = JARVIS_DESTINATIONS.find((entry) => entry.to === item.to);
-            const Icon = destination?.icon ?? Sparkles;
-            return (
-              <div key={item.id} className="group flex items-center gap-1 rounded-xl">
-                <Link to={item.to} className="jarvis-menu-link min-w-0 flex-1 no-underline">
-                  <Icon className="h-4 w-4 shrink-0 text-primary/80" />
-                  <span className="truncate">{item.label}</span>
-                  {item.pinned ? (
-                    <Pin className="ml-auto h-3 w-3 shrink-0 text-primary/45" />
+          <SheetTitle className="sr-only">Menu JARVIS</SheetTitle>
+          {sidebar}
+        </SheetContent>
+      </Sheet>
+      <main className="relative flex min-w-0 flex-1 flex-col bg-[radial-gradient(circle_at_50%_8%,rgba(15,148,210,0.10),transparent_35%)]">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.05] px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-cyan-300 lg:hidden"
+              aria-label="Apri menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="truncate font-display text-sm font-semibold">
+                {active?.title || "Nuova conversazione"}
+              </h1>
+              <p className="truncate text-[10px] uppercase tracking-[0.14em] text-cyan-300/55">
+                {activeProject?.name || (cloud === false ? "Modalità locale" : "Workspace privato")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden rounded-full border border-cyan-300/10 bg-cyan-300/[0.04] px-2.5 py-1 text-[10px] text-cyan-200/65 sm:block">
+              {cloud
+                ? "Cloud sincronizzato"
+                : cloud === false
+                  ? "Solo dispositivo"
+                  : "Connessione…"}
+            </span>
+            <span className="hidden items-center gap-1.5 rounded-full border border-cyan-300/10 bg-cyan-300/[0.04] px-2.5 py-1 text-[10px] text-cyan-200/65 sm:inline-flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> Account privato
+            </span>
+          </div>
+        </header>
+        {loading ? (
+          <div className="grid flex-1 place-items-center">
+            <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+          </div>
+        ) : (
+          <>
+            <section className="min-h-0 flex-1 overflow-y-auto px-4 pb-44 pt-6 sm:px-8">
+              {activeFiles.length ? (
+                <div
+                  className="mx-auto mb-5 flex max-w-3xl flex-wrap gap-2"
+                  aria-label="File nel contesto"
+                >
+                  {activeFiles.map((file) => (
+                    <span
+                      key={file.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-cyan-200/10 bg-cyan-300/[0.04] px-3 py-1.5 text-[10px] text-slate-300"
+                    >
+                      <FileText className="h-3 w-3 text-cyan-300/70" />
+                      <span className="max-w-40 truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => void deleteFile(file)}
+                        className="text-slate-500 hover:text-rose-300"
+                        aria-label={`Elimina ${file.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {active?.messages.length ? (
+                <div className="mx-auto max-w-3xl space-y-7">
+                  {active.messages.map((message, index) => (
+                    <article
+                      key={`${message.role}-${index}`}
+                      className={
+                        message.role === "user"
+                          ? "ml-auto max-w-[85%] rounded-2xl rounded-br-md border border-cyan-200/10 bg-cyan-300/[0.07] px-4 py-3 text-sm leading-7"
+                          : "max-w-[92%] text-[15px] leading-7 text-slate-200"
+                      }
+                    >
+                      {message.role === "assistant" ? (
+                        <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">
+                          <Sparkles className="h-3.5 w-3.5" /> JARVIS
+                        </div>
+                      ) : null}
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </article>
+                  ))}
+                  {sending ? (
+                    <div className="flex items-center gap-2 text-sm text-cyan-200/70">
+                      <Loader2 className="h-4 w-4 animate-spin" /> JARVIS sta elaborando…
+                    </div>
                   ) : null}
-                </Link>
-
-                {editing ? (
-                  <div className="flex shrink-0 items-center pr-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        commit(
-                          items.map((candidate) =>
-                            candidate.id === item.id
-                              ? { ...candidate, pinned: !candidate.pinned }
-                              : candidate,
-                          ),
-                        )
-                      }
-                      className="btn-matrix rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                      aria-label={
-                        item.pinned ? `Rimuovi ${item.label} dai fissati` : `Fissa ${item.label}`
-                      }
-                      title={item.pinned ? "Non fissare" : "Fissa in alto"}
-                    >
-                      {item.pinned ? (
-                        <PinOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Pin className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => commit(items.filter((candidate) => candidate.id !== item.id))}
-                      className="btn-matrix rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      aria-label={`Elimina ${item.label}`}
-                      title="Elimina voce"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
+                  <div ref={bottom} />
+                </div>
+              ) : (
+                <EmptyState project={activeProject} />
+              )}
+            </section>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#03070c] via-[#03070c] to-transparent px-4 pb-5 pt-14 sm:px-8">
+              <div className="pointer-events-auto mx-auto max-w-3xl">
+                <Composer
+                  draft={draft}
+                  setDraft={setDraft}
+                  model={model}
+                  setModel={setModel}
+                  sending={sending}
+                  uploading={uploading}
+                  listening={listening}
+                  onSend={send}
+                  onAttach={() => fileInput.current?.click()}
+                  onDictate={dictate}
+                />
+                <input
+                  ref={fileInput}
+                  type="file"
+                  className="hidden"
+                  accept={ACCEPTED_EXTENSIONS.map((extension) => `.${extension}`).join(",")}
+                  onChange={(event) => void attach(event)}
+                />
+                {error ? (
+                  <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2 text-xs text-rose-200">
+                    <span>{error}</span>
+                    <button type="button" onClick={() => setError("")} aria-label="Chiudi errore">
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ) : null}
+                <p className="mt-2 text-center text-[10px] text-slate-600">
+                  JARVIS può commettere errori. Verifica sempre le informazioni importanti.
+                </p>
               </div>
-            );
-          })
-        ) : (
-          <div className="rounded-xl border border-dashed border-white/[0.08] px-3 py-5 text-center">
-            <p className="text-xs text-muted-foreground">Nessuna voce nel workspace.</p>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="mt-2 text-[11px] font-semibold text-primary hover:text-primary/80"
-            >
-              Crea la prima
-            </button>
-          </div>
-        )}
-      </nav>
-
-      {editing ? (
-        <div className="border-t border-white/[0.06] p-3">
-          <form onSubmit={addItem} className="space-y-2">
-            <label htmlFor="jarvis-menu-label" className="text-label block">
-              Nuova voce
-            </label>
-            <input
-              id="jarvis-menu-label"
-              value={newLabel}
-              onChange={(event) => setNewLabel(event.target.value)}
-              maxLength={32}
-              placeholder="Nome collegamento"
-              className="input-field py-2 text-xs"
-            />
-            <div className="flex gap-2">
-              <select
-                value={newTarget}
-                onChange={(event) => setNewTarget(event.target.value as JarvisMenuTarget)}
-                className="min-w-0 flex-1 rounded-lg border border-border bg-background/70 px-2 py-2 text-xs text-foreground outline-none focus:border-primary/40"
-                aria-label="Destinazione della nuova voce"
-              >
-                {JARVIS_DESTINATIONS.map((destination) => (
-                  <option key={destination.to} value={destination.to}>
-                    {destination.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                disabled={!newLabel.trim() || items.length >= 12}
-                className="btn-primary inline-flex h-9 w-9 shrink-0 items-center justify-center disabled:opacity-40"
-                aria-label="Crea voce menu"
-                title="Crea voce"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
             </div>
-          </form>
-          <button
-            type="button"
-            onClick={() => commit(DEFAULT_JARVIS_MENU.map((item) => ({ ...item })))}
-            className="btn-matrix mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground hover:bg-white/[0.03] hover:text-foreground"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Ripristina menu
-          </button>
-        </div>
-      ) : (
-        <div className="border-t border-white/[0.06] px-4 py-3">
-          <p className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
-            Nucleo neurale operativo
-          </p>
-        </div>
-      )}
-    </aside>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
 
-function JarvisSection() {
-  const [name, setName] = useState("JARVIS");
-  const [soulPreview, setSoulPreview] = useState("");
-
-  useEffect(() => {
-    setName(loadAgentProfile().name || "JARVIS");
-    setSoulPreview(loadSoul().content.slice(0, 320));
-  }, []);
-
+function Sidebar(props: {
+  projects: Project[];
+  chats: ChatThread[];
+  pinned: ChatThread[];
+  recent: ChatThread[];
+  activeId: string | null;
+  files: CloudFile[];
+  onSelect(id: string): void;
+  onNew(projectId?: string | null): void;
+  onCreateProject(): void;
+  onEditProject(project: Project): void;
+  onDeleteProject(project: Project): void;
+  onUpdateChat(chat: ChatThread, patch: Partial<ChatThread>): void;
+  onRenameChat(chat: ChatThread): void;
+  onDeleteChat(chat: ChatThread): void;
+  onDeleteFile(file: CloudFile): void;
+}) {
   return (
-    <AppShell title="JARVIS" subtitle="Intelligenza operativa · memoria · strumenti">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <div className="grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)]">
-          <JarvisWorkspaceMenu agentName={name} />
-
-          <div className="min-w-0 space-y-8">
-            <section className="panel-spacious relative overflow-hidden animate-fade-in-up">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-sky-400/20 blur-3xl animate-aurora" />
-              <div
-                className="pointer-events-none absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-blue-600/20 blur-3xl animate-aurora"
-                style={{ animationDelay: "-3s" }}
-              />
-              <div className="relative">
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-300/80">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  IA principale · Control Center
-                </p>
-                <h2 className="mt-2 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-                  <span className="bg-gradient-to-r from-sky-200 via-cyan-300 to-blue-400 bg-clip-text text-transparent">
-                    {name}
-                  </span>
-                </h2>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                  Assistente personale: identità in{" "}
-                  <strong className="text-sky-200/90">SOUL.md</strong>, profilo in{" "}
-                  <strong className="text-sky-200/90">USER.md</strong>, note in{" "}
-                  <strong className="text-sky-200/90">MEMORY.md</strong>. Tool con conferma umana su
-                  write/critical.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    to="/assistant"
-                    className="btn-primary inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm no-underline"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    Apri chat
-                  </Link>
-                  <Link
-                    to="/agent"
-                    className="btn-matrix inline-flex items-center gap-2 rounded-lg border border-sky-400/30 px-4 py-2.5 text-sm text-sky-200 no-underline hover:bg-sky-500/10"
-                  >
-                    <Brain className="h-4 w-4" />
-                    SOUL · USER · MEMORY
-                  </Link>
-                </div>
-              </div>
-            </section>
-
-            <section className="animate-fade-in-up" style={{ animationDelay: "40ms" }}>
-              <p className="mb-3 text-label">Personalità · Claude × Grok × JARVIS</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {PERSONALITY.map((p) => (
-                  <div key={p.label} className="panel rounded-2xl border border-sky-400/10 p-4">
-                    <p className="text-sm font-semibold text-sky-200">{p.label}</p>
-                    <ul className="mt-2 space-y-1.5">
-                      {p.points.map((pt) => (
-                        <li
-                          key={pt}
-                          className="flex items-start gap-2 text-[12px] text-muted-foreground"
-                        >
-                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-sky-400/80" />
-                          {pt}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="text-label">Cosa può fare</p>
-                <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-sky-300/70">
-                  <Hand className="h-3 w-3" /> tools + memory
-                </span>
-              </div>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {CAPABILITIES.map((c, i) => (
-                  <li
-                    key={c.title}
-                    style={{ animationDelay: `${100 + i * 40}ms` }}
-                    className="animate-fade-in-up"
-                  >
-                    <Link
-                      to={c.to}
-                      className="card-interactive flex h-full flex-col rounded-2xl border border-sky-400/12 bg-sky-500/[0.04] p-4 no-underline"
-                    >
-                      <div className="mb-2 flex items-center justify-between">
-                        <c.icon className="h-5 w-5 text-sky-300" />
-                        <span className="rounded-full border border-sky-400/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sky-300/80">
-                          {c.badge}
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold text-foreground">{c.title}</span>
-                      <span className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                        {c.blurb}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section
-              className="panel-spacious relative overflow-hidden border border-cyan-400/20 animate-fade-in-up"
-              style={{ animationDelay: "120ms" }}
-            >
-              <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
-              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10">
-                  <Cpu className="h-6 w-6 text-cyan-300" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-display text-lg font-semibold text-foreground">
-                    Controllo PC · app · file
-                  </h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    <strong className="text-cyan-200/90">Oggi</strong>: host (Falix), file server,
-                    storage e One MCP — sempre con proposta e conferma su write/critical.
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    <strong className="text-cyan-200/90">Desktop</strong>: bridge locale previsto;
-                    stesse regole di conferma.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                      <Zap className="h-3 w-3" /> Host & console
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-                      <FileStack className="h-3 w-3" /> File / storage
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-200">
-                      <Monitor className="h-3 w-3" /> Desktop: previsto
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="animate-fade-in-up" style={{ animationDelay: "160ms" }}>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 text-label">
-                  <Scale className="h-3.5 w-3.5 text-rose-300/80" />
-                  Guardrail fissi
-                </p>
-                <Link
-                  to="/agent"
-                  className="text-[10px] uppercase tracking-wider text-sky-300/80 no-underline hover:text-sky-200"
-                >
-                  modifica SOUL →
-                </Link>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {FIXED_RULES.map((r) => (
-                  <div
-                    key={r.title}
-                    className="rounded-xl border border-rose-400/15 bg-rose-500/[0.04] p-3.5"
-                  >
-                    <p className="flex items-center gap-2 text-xs font-semibold text-rose-200/90">
-                      <Shield className="h-3.5 w-3.5" />
-                      {r.title}
-                    </p>
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                      {r.body}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              {soulPreview ? (
-                <div className="mt-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
-                  <p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Anteprima SOUL.md
-                  </p>
-                  <pre className="max-h-28 overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground/90">
-                    {soulPreview}
-                    {soulPreview.length >= 320 ? "…" : ""}
-                  </pre>
-                </div>
-              ) : null}
-            </section>
-
-            <section
-              className="grid gap-3 sm:grid-cols-3 animate-fade-in-up"
-              style={{ animationDelay: "200ms" }}
-            >
-              <Link
-                to="/assistant"
-                className="card-interactive flex items-center gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/5 p-4 no-underline"
-              >
-                <MessageSquare className="h-5 w-5 text-sky-300" />
-                <div>
-                  <p className="text-sm font-semibold">Chat</p>
-                  <p className="text-caption">Proposte e azioni</p>
-                </div>
-              </Link>
-              <Link
-                to="/agent"
-                className="card-interactive flex items-center gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/5 p-4 no-underline"
-              >
-                <Brain className="h-5 w-5 text-sky-300" />
-                <div>
-                  <p className="text-sm font-semibold">Brain</p>
-                  <p className="text-caption">SOUL · USER · MEMORY</p>
-                </div>
-              </Link>
-              <Link
-                to="/connectors"
-                className="card-interactive flex items-center gap-3 rounded-2xl border border-sky-400/15 bg-sky-500/5 p-4 no-underline"
-              >
-                <Cable className="h-5 w-5 text-sky-300" />
-                <div>
-                  <p className="text-sm font-semibold">Connettori</p>
-                  <p className="text-caption">One MCP · app</p>
-                </div>
-              </Link>
-            </section>
-          </div>
-        </div>
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex h-16 items-center justify-between border-b border-white/[0.05] px-4">
+        <Link to="/home" className="flex items-center gap-2.5 no-underline">
+          <span className="grid h-8 w-8 place-items-center rounded-xl border border-cyan-200/20 bg-cyan-300/[0.08] text-cyan-300">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <span>
+            <strong className="block font-display text-sm tracking-wide">JARVIS</strong>
+            <small className="block text-[8px] uppercase tracking-[0.2em] text-cyan-300/55">
+              Omnicore intelligence
+            </small>
+          </span>
+        </Link>
+        <Link
+          to="/home"
+          className="rounded-lg p-2 text-slate-500 hover:bg-white/5 hover:text-cyan-300"
+          aria-label="Torna all'Hub"
+        >
+          <Home className="h-4 w-4" />
+        </Link>
       </div>
-    </AppShell>
+      <div className="p-3">
+        <button
+          type="button"
+          onClick={() => props.onNew(null)}
+          className="flex w-full items-center gap-3 rounded-xl border border-cyan-200/15 bg-cyan-300/[0.08] px-3.5 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/30 hover:bg-cyan-300/[0.12]"
+        >
+          <Plus className="h-4 w-4" /> Nuova chat
+        </button>
+      </div>
+      <nav className="space-y-1 px-3" aria-label="Strumenti JARVIS">
+        <Link to="/agent" className="jarvis-side-link">
+          <Brain className="h-4 w-4" /> Sistema neurale
+        </Link>
+        <Link to="/connectors" className="jarvis-side-link">
+          <Cable className="h-4 w-4" /> Connettori
+        </Link>
+      </nav>
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-6">
+        <SectionTitle
+          label="Progetti"
+          action={props.onCreateProject}
+          icon={<FolderPlus className="h-3.5 w-3.5" />}
+        />
+        {props.projects.map((project) => (
+          <div
+            key={project.id}
+            className="mb-2 rounded-xl border border-white/[0.045] bg-white/[0.018] p-1"
+          >
+            <div className="group flex items-center gap-2 px-2 py-2">
+              <Folder className="h-4 w-4 text-cyan-300/65" />
+              <span className="min-w-0 flex-1 truncate text-xs font-medium">{project.name}</span>
+              <button
+                type="button"
+                onClick={() => props.onNew(project.id)}
+                className="text-slate-600 hover:text-cyan-300"
+                aria-label={`Nuova chat in ${project.name}`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => props.onEditProject(project)}
+                className="text-slate-600 hover:text-cyan-300"
+                aria-label={`Modifica ${project.name}`}
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => props.onDeleteProject(project)}
+                className="text-slate-600 hover:text-rose-300"
+                aria-label={`Elimina ${project.name}`}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+            {project.description ? (
+              <p className="line-clamp-2 px-2 pb-2 text-[10px] leading-4 text-slate-600">
+                {project.description}
+              </p>
+            ) : null}
+            {props.chats
+              .filter((chat) => chat.projectId === project.id)
+              .map((chat) => (
+                <ChatRow key={chat.id} chat={chat} active={chat.id === props.activeId} {...props} />
+              ))}
+            {props.files
+              .filter((file) => file.projectId === project.id)
+              .slice(0, 3)
+              .map((file) => (
+                <div
+                  key={file.id}
+                  className="flex items-center gap-2 px-3 py-1.5 text-[10px] text-slate-600"
+                >
+                  <FileText className="h-3 w-3" />
+                  <span className="truncate">{file.name}</span>
+                  <span className="ml-auto">{bytesLabel(file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => props.onDeleteFile(file)}
+                    className="hover:text-rose-300"
+                    aria-label={`Elimina ${file.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+          </div>
+        ))}
+        {props.pinned.length ? (
+          <>
+            <SectionTitle label="Fissate" />
+            {props.pinned.map((chat) => (
+              <ChatRow key={chat.id} chat={chat} active={chat.id === props.activeId} {...props} />
+            ))}
+          </>
+        ) : null}
+        <SectionTitle label="Recenti" />
+        {props.recent.length ? (
+          props.recent.map((chat) => (
+            <ChatRow key={chat.id} chat={chat} active={chat.id === props.activeId} {...props} />
+          ))
+        ) : (
+          <p className="px-2 py-3 text-xs text-slate-400">
+            Le nuove conversazioni appariranno qui.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+function SectionTitle({
+  label,
+  action,
+  icon,
+}: {
+  label: string;
+  action?: () => void;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-1 mt-5 flex items-center justify-between px-2">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </span>
+      {action ? (
+        <button
+          type="button"
+          onClick={action}
+          className="text-slate-600 hover:text-cyan-300"
+          aria-label={`Aggiungi ${label}`}
+        >
+          {icon}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+function ChatRow({
+  chat,
+  active,
+  projects,
+  onSelect,
+  onUpdateChat,
+  onRenameChat,
+  onDeleteChat,
+}: {
+  chat: ChatThread;
+  active: boolean;
+  projects: Project[];
+  onSelect(id: string): void;
+  onUpdateChat(chat: ChatThread, patch: Partial<ChatThread>): void;
+  onRenameChat(chat: ChatThread): void;
+  onDeleteChat(chat: ChatThread): void;
+}) {
+  const [tools, setTools] = useState(false);
+  return (
+    <div
+      className={`group relative mb-0.5 rounded-lg ${active ? "bg-cyan-300/[0.09] text-cyan-100" : "text-slate-400 hover:bg-white/[0.035] hover:text-slate-200"}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(chat.id)}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-xs"
+      >
+        <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setTools((value) => !value)}
+        className="absolute right-1.5 top-1.5 rounded p-1 opacity-0 hover:bg-black/30 group-hover:opacity-100 focus:opacity-100"
+        aria-label={`Azioni per ${chat.title}`}
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      {tools ? (
+        <div className="absolute right-1 top-9 z-20 w-48 rounded-xl border border-cyan-200/10 bg-[#091019] p-1.5 shadow-2xl">
+          <ToolButton
+            icon={chat.pinned ? PinOff : Pin}
+            label={chat.pinned ? "Rimuovi dai fissati" : "Fissa"}
+            onClick={() => {
+              onUpdateChat(chat, { pinned: !chat.pinned });
+              setTools(false);
+            }}
+          />
+          <ToolButton
+            icon={Pencil}
+            label="Rinomina"
+            onClick={() => {
+              onRenameChat(chat);
+              setTools(false);
+            }}
+          />
+          <label className="flex items-center gap-2 rounded-lg px-2 py-2 text-[11px] text-slate-400">
+            <Folder className="h-3.5 w-3.5" />
+            <select
+              value={chat.projectId || ""}
+              onChange={(event) => {
+                onUpdateChat(chat, { projectId: event.target.value || null });
+                setTools(false);
+              }}
+              className="min-w-0 flex-1 bg-transparent outline-none"
+            >
+              <option value="">Nessun progetto</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ToolButton
+            icon={Trash2}
+            label="Elimina"
+            danger
+            onClick={() => {
+              onDeleteChat(chat);
+              setTools(false);
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+function ToolButton({
+  icon: Icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: typeof Pin;
+  label: string;
+  onClick(): void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] hover:bg-white/5 ${danger ? "text-rose-300" : "text-slate-400"}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  );
+}
+function EmptyState({ project }: { project: Project | null }) {
+  return (
+    <div className="mx-auto flex min-h-[55vh] max-w-2xl flex-col items-center justify-center text-center">
+      <div className="relative mb-7 grid h-20 w-20 place-items-center rounded-full border border-cyan-200/15 bg-cyan-300/[0.04] shadow-[0_0_60px_rgba(34,211,238,0.12)]">
+        <div className="absolute inset-2 rounded-full border border-dashed border-cyan-300/20" />
+        <Sparkles className="h-7 w-7 text-cyan-300" />
+      </div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/60">
+        {project ? project.name : "Intelligenza personale"}
+      </p>
+      <h2 className="font-display text-3xl font-semibold tracking-tight text-slate-100 sm:text-5xl">
+        Come posso aiutarti?
+      </h2>
+      <p className="mt-4 max-w-lg text-sm leading-6 text-slate-500">
+        {project?.description ||
+          "Inizia una conversazione, collega le tue fonti o crea un progetto. JARVIS mantiene ogni spazio ordinato e privato."}
+      </p>
+    </div>
+  );
+}
+function Composer({
+  draft,
+  setDraft,
+  model,
+  setModel,
+  sending,
+  uploading,
+  listening,
+  onSend,
+  onAttach,
+  onDictate,
+}: {
+  draft: string;
+  setDraft(value: string): void;
+  model: string;
+  setModel(value: string): void;
+  sending: boolean;
+  uploading: boolean;
+  listening: boolean;
+  onSend(): void;
+  onAttach(): void;
+  onDictate(): void;
+}) {
+  return (
+    <div className="rounded-2xl border border-cyan-200/15 bg-[#091019]/95 p-2 shadow-[0_20px_70px_rgba(0,0,0,0.45),0_0_35px_rgba(8,145,178,0.05)] backdrop-blur-xl">
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            onSend();
+          }
+        }}
+        placeholder="Scrivi a JARVIS…"
+        rows={2}
+        className="max-h-40 min-h-16 w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600"
+        aria-label="Messaggio per JARVIS"
+      />
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onAttach}
+          disabled={uploading}
+          className="composer-tool"
+          aria-label="Allega file"
+          title="Allega TXT, Markdown, JSON, CSV, sorgenti o PDF"
+        >
+          {uploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Paperclip className="h-4 w-4" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onDictate}
+          className={`composer-tool ${listening ? "text-cyan-300" : ""}`}
+          aria-label="Dettatura vocale"
+        >
+          {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </button>
+        <label className="ml-1 flex min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-white/5">
+          <select
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            className="max-w-36 bg-transparent outline-none sm:max-w-52"
+            aria-label="Modello IA"
+          >
+            {SWARM_MODELS.map((item) => (
+              <option key={`${item.provider}-${item.id}`} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="h-3 w-3" />
+        </label>
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={!draft.trim() || sending}
+          className="ml-auto grid h-9 w-9 place-items-center rounded-xl bg-cyan-300 text-[#031017] transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Invia messaggio"
+        >
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
   );
 }

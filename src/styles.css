@@ -455,6 +455,13 @@ html[data-section="prompt"] {
 }
 
 @layer components {
+  .jarvis-side-link {
+    @apply flex items-center gap-3 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 no-underline transition hover:bg-white/[0.04] hover:text-cyan-200;
+  }
+
+  .composer-tool {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-white/[0.05] hover:text-cyan-300 disabled:opacity-40;
+  }
   .panel::before,
   .panel-spacious::before {
     content: "";

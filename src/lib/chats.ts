@@ -33,6 +33,9 @@ export type ChatThread = {
   title: string;
   updatedAt: number;
   messages: Msg[];
+  projectId?: string | null;
+  pinned?: boolean;
+  cloudId?: string;
 };
 
 const KEY = "mine.chats.v1";
@@ -89,9 +92,7 @@ export function updateThread(id: string, messages: Msg[]): ChatThread[] {
           messages,
           updatedAt: Date.now(),
           title:
-            t.title === "Nuova chat" && messages[0]
-              ? messages[0].content.slice(0, 40)
-              : t.title,
+            t.title === "Nuova chat" && messages[0] ? messages[0].content.slice(0, 40) : t.title,
         }
       : t,
   );

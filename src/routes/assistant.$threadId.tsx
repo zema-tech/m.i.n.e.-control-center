@@ -63,7 +63,7 @@ export const Route = createFileRoute("/assistant/$threadId")({
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
-    return null;
+    throw redirect({ to: "/jarvis" });
   },
   component: AssistantPage,
 });
@@ -625,8 +625,8 @@ function AssistantPage() {
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             {messages.length === 0 ? (
               <p className="text-caption text-muted-foreground">
-                Configura SOUL / USER / MEMORY in{" "}
-                <span className="text-primary">/agent</span> · skill in /skills.
+                Configura SOUL / USER / MEMORY in <span className="text-primary">/agent</span> ·
+                skill in /skills.
               </p>
             ) : null}
             {messages.map((m, mi) => (
@@ -749,10 +749,10 @@ function AssistantPage() {
           <section className="panel flex min-h-0 flex-1 flex-col p-3">
             <div className="mb-2 flex items-center gap-2">
               <Terminal className="h-4 w-4 text-primary" />
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Log</span>
-              {logDemo ? (
-                <span className="text-[10px] text-amber-300">demo</span>
-              ) : null}
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                Log
+              </span>
+              {logDemo ? <span className="text-[10px] text-amber-300">demo</span> : null}
             </div>
             {logError ? <p className="text-[11px] text-destructive">{logError}</p> : null}
             <div className="min-h-0 flex-1 overflow-hidden">
