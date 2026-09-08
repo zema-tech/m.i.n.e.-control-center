@@ -43,6 +43,7 @@ export type CoworkLogEntry = {
 const KEY_CONSENT = "mine.cowork.consent.v1";
 const KEY_GOAL = "mine.cowork.goal.v1";
 const KEY_LOG = "mine.cowork.log.v1";
+const KEY_AUTOSTART = "mine.cowork.autostart.v1";
 
 const DEFAULT_CONSENT: ConsentLevel = {
   autoRead: true,
@@ -159,6 +160,19 @@ export function appendLog(
 
 export function clearLog() {
   if (canUse()) window.localStorage.setItem(KEY_LOG, "[]");
+}
+
+/** Segnala alla pagina Cowork di avviare subito l'obiettivo creato dal composer JARVIS. */
+export function requestCoworkAutoStart() {
+  if (canUse()) window.sessionStorage.setItem(KEY_AUTOSTART, "1");
+}
+
+/** Consuma il segnale una sola volta, anche con Strict Mode attivo. */
+export function consumeCoworkAutoStart(): boolean {
+  if (!canUse()) return false;
+  const pending = window.sessionStorage.getItem(KEY_AUTOSTART) === "1";
+  window.sessionStorage.removeItem(KEY_AUTOSTART);
+  return pending;
 }
 
 /** Prompt utente costruito per un passo autonomo. */

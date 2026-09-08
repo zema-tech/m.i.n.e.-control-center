@@ -3,6 +3,10 @@ import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-mo
 
 export type NodeKind =
   | "server"
+  | "device"
+  | "folder"
+  | "file"
+  | "mcp"
   | "player"
   | "world"
   | "plugin"
@@ -18,6 +22,7 @@ export type GraphNode = {
   detail?: string;
   size?: number;
   items?: string[];
+  parentId?: string;
 };
 
 type SimNode = GraphNode & {
@@ -34,17 +39,18 @@ type SimNode = GraphNode & {
 
 type Link = { source: string; target: string };
 
-const KIND_META: Record<
-  NodeKind,
-  { hue: number; label: string; order: number; hint: string }
-> = {
+const KIND_META: Record<NodeKind, { hue: number; label: string; order: number; hint: string }> = {
   server: { hue: 145, label: "Server", order: 0, hint: "Hub centrale Minecraft" },
-  player: { hue: 200, label: "Giocatori", order: 1, hint: "Click per roster" },
-  world: { hue: 270, label: "Mondi", order: 2, hint: "Dimensioni" },
-  plugin: { hue: 45, label: "Plugin", order: 3, hint: "Stack moduli" },
-  metric: { hue: 330, label: "Metriche", order: 4, hint: "CPU RAM TPS" },
-  service: { hue: 160, label: "Servizi / MCP", order: 5, hint: "API IA connettori" },
-  log: { hue: 220, label: "Log / eventi", order: 6, hint: "Eventi IA" },
+  device: { hue: 205, label: "Dispositivo", order: 1, hint: "Dispositivo locale autorizzato" },
+  folder: { hue: 42, label: "Cartelle", order: 2, hint: "Cartelle e progetti importati" },
+  file: { hue: 188, label: "File", order: 3, hint: "File disponibili nel contesto IA" },
+  mcp: { hue: 150, label: "MCP", order: 4, hint: "Connettori e strumenti disponibili" },
+  player: { hue: 200, label: "Giocatori", order: 5, hint: "Click per roster" },
+  world: { hue: 270, label: "Mondi", order: 6, hint: "Dimensioni" },
+  plugin: { hue: 45, label: "Plugin", order: 7, hint: "Stack moduli" },
+  metric: { hue: 330, label: "Metriche", order: 8, hint: "CPU RAM TPS" },
+  service: { hue: 160, label: "Servizi", order: 9, hint: "API IA e connettori" },
+  log: { hue: 220, label: "Log / eventi", order: 10, hint: "Eventi IA" },
 };
 
 const MODEL_KEY = "mine.groq.model";
@@ -85,9 +91,9 @@ function project(
   const sinY = Math.sin(rotY);
   const cosX = Math.cos(rotX);
   const sinX = Math.sin(rotX);
-  let x1 = x * cosY - z * sinY;
+  const x1 = x * cosY - z * sinY;
   let z1 = x * sinY + z * cosY;
-  let y1 = y * cosX - z1 * sinX;
+  const y1 = y * cosX - z1 * sinX;
   z1 = y * sinX + z1 * cosX;
   const depth = z1 + FOCAL * 0.85;
   const scale = FOCAL / Math.max(120, depth);
@@ -141,22 +147,21 @@ export function NeuralGraph({
     const sim: SimNode[] = nodes.map((n, i) => {
       const meta = KIND_META[n.kind];
       const angle = ((hash(n.id) % 360) * Math.PI) / 180 + i * 0.4;
-      const elev = (((hash(n.id + "e") % 100) / 100) - 0.5) * Math.PI * 0.7;
-      const ring =
-        n.kind === "server"
-          ? 0
-          : n.kind === "metric"
-            ? 90 + (hash(n.id) % 40)
-            : n.kind === "player"
-              ? 120 + (hash(n.id) % 50)
-              : 150 + (hash(n.id) % 90);
+      const elev = ((hash(n.id + "e") % 100) / 100 - 0.5) * Math.PI * 0.7;
+      const isRoot = n.kind === "server" || n.kind === "device";
+      const ring = isRoot
+        ? 0
+        : n.kind === "metric"
+          ? 90 + (hash(n.id) % 40)
+          : n.kind === "player"
+            ? 120 + (hash(n.id) % 50)
+            : 150 + (hash(n.id) % 90);
       const baseR =
-        n.size ??
-        (n.kind === "server" ? 18 : n.kind === "player" ? 11 : n.kind === "metric" ? 10 : 9);
+        n.size ?? (isRoot ? 18 : n.kind === "player" ? 11 : n.kind === "metric" ? 10 : 9);
       const hueJitter = (hash(n.id + "h") % 24) - 12;
-      const x = n.kind === "server" ? 0 : Math.cos(angle) * Math.cos(elev) * ring;
-      const y = n.kind === "server" ? 0 : Math.sin(elev) * ring * 0.85;
-      const z = n.kind === "server" ? 0 : Math.sin(angle) * Math.cos(elev) * ring;
+      const x = isRoot ? 0 : Math.cos(angle) * Math.cos(elev) * ring;
+      const y = isRoot ? 0 : Math.sin(elev) * ring * 0.85;
+      const z = isRoot ? 0 : Math.sin(angle) * Math.cos(elev) * ring;
       return {
         ...n,
         x,
@@ -174,10 +179,15 @@ export function NeuralGraph({
 
     const byKind = (k: NodeKind) => sim.filter((n) => n.kind === k);
     const links: Link[] = [];
-    const server = sim.find((n) => n.kind === "server");
-    if (server) {
+    const root = sim.find((n) => n.kind === "server" || n.kind === "device");
+    if (root) {
       for (const n of sim) {
-        if (n.id !== server.id) links.push({ source: server.id, target: n.id });
+        if (n.id !== root.id && !n.parentId) links.push({ source: root.id, target: n.id });
+      }
+    }
+    for (const n of sim) {
+      if (n.parentId && sim.some((candidate) => candidate.id === n.parentId)) {
+        links.push({ source: n.parentId, target: n.id });
       }
     }
     const worlds = byKind("world");
@@ -335,10 +345,10 @@ export function NeuralGraph({
       ctx.arc(p.sx - r * 0.25, p.sy - r * 0.28, r * 0.28, 0, Math.PI * 2);
       ctx.fill();
 
-      if (n.kind === "server" || isSel || n.baseR >= 11) {
+      if (n.kind === "server" || n.kind === "device" || isSel || n.baseR >= 11) {
         ctx.fillStyle = "rgba(255,255,255,0.92)";
         ctx.font =
-          n.kind === "server"
+          n.kind === "server" || n.kind === "device"
             ? "bold 12px Orbitron, system-ui, sans-serif"
             : "10px 'Share Tech Mono', ui-monospace, monospace";
         ctx.textAlign = "center";
@@ -371,11 +381,7 @@ export function NeuralGraph({
           let dz = a.z - b.z;
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.01;
           const minD =
-            a.kind === "server" || b.kind === "server"
-              ? 100
-              : a.kind === b.kind
-                ? 42
-                : 55;
+            a.kind === "server" || b.kind === "server" ? 100 : a.kind === b.kind ? 42 : 55;
           if (dist < minD) {
             const f = ((minD - dist) / dist) * 0.09;
             dx *= f;
