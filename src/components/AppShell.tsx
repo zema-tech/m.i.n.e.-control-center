@@ -1,23 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  Activity,
-  Bot,
   Brain,
-  Cable,
   Code2,
-  Database,
-  Home,
   KeyRound,
   LayoutGrid,
   LogOut,
   Menu,
-  MessageSquare,
   Network,
   Palette,
-  Server,
   Sparkles,
-  Users,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -35,44 +27,14 @@ import { getAuthState, logout } from "@/lib/auth.functions";
 import type { Permission } from "@/lib/auth.permissions";
 import { sectionFromPath } from "@/lib/section-themes";
 
-type NavTo =
-  | "/home"
-  | "/jarvis"
-  | "/mine"
-  | "/design"
-  | "/code"
-  | "/agent"
-  | "/assistant"
-  | "/network"
-  | "/skills"
-  | "/hosts"
-  | "/connectors"
-  | "/memory"
-  | "/gateway"
-  | "/cowork"
-  | "/pulse"
-  | "/access";
+type NavTo = "/home" | "/jarvis" | "/mine" | "/design" | "/code" | "/access";
 
-const NAV_WORLDS: { to: NavTo; label: string; icon: typeof Home; perm: Permission }[] = [
+const NAV_ITEMS: { to: NavTo; label: string; icon: typeof LayoutGrid; perm: Permission }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid, perm: "home" },
   { to: "/jarvis", label: "JARVIS", icon: Sparkles, perm: "jarvis" },
   { to: "/mine", label: "M.I.N.E", icon: Network, perm: "mine" },
   { to: "/design", label: "Design", icon: Palette, perm: "design" },
   { to: "/code", label: "Code", icon: Code2, perm: "code" },
-];
-
-const NAV_TOOLS: { to: NavTo; label: string; icon: typeof Home; perm: Permission }[] = [
-  { to: "/assistant", label: "Chat", icon: MessageSquare, perm: "assistant" },
-  { to: "/cowork", label: "Cowork", icon: Users, perm: "cowork" },
-  { to: "/pulse", label: "Pulse", icon: Activity, perm: "pulse" },
-  { to: "/agent", label: "Brain", icon: Brain, perm: "agent" },
-  { to: "/gateway", label: "Gateway", icon: Bot, perm: "gateway" },
-  { to: "/memory", label: "Memoria", icon: Database, perm: "memory" },
-  { to: "/network", label: "Rete", icon: Network, perm: "network" },
-  { to: "/skills", label: "Competenze", icon: KeyRound, perm: "skills" },
-  { to: "/hosts", label: "Host", icon: Server, perm: "hosts" },
-  { to: "/connectors", label: "Connettori", icon: Cable, perm: "connectors" },
-  { to: "/access", label: "Accesso", icon: KeyRound, perm: "access" },
 ];
 
 function NavLink({
@@ -84,14 +46,11 @@ function NavLink({
 }: {
   to: NavTo;
   label: string;
-  icon: typeof Home;
+  icon: typeof LayoutGrid;
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const active =
-    pathname === to ||
-    (to === "/assistant" && pathname.startsWith("/assistant")) ||
-    (to === "/code" && pathname.startsWith("/code"));
+  const active = pathname === to || (to !== "/home" && pathname.startsWith(`${to}/`));
   return (
     <Link
       to={to}
@@ -127,31 +86,32 @@ function SideNav({
 }) {
   const section = sectionFromPath(pathname);
   const can = (p: Permission) => isAdmin || permissions.includes(p);
-  const worlds = NAV_WORLDS.filter((i) => can(i.perm));
-  const tools = NAV_TOOLS.filter((i) => can(i.perm));
+  const items = NAV_ITEMS.filter((i) => can(i.perm));
+  const showAccess = isAdmin || permissions.includes("access");
 
   return (
     <nav className="flex flex-1 flex-col gap-0.5 p-3">
-      {worlds.length > 0 ? (
+      {items.length > 0 ? (
         <>
           <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-            Mondi
+            Navigazione
           </p>
-          {worlds.map((item) => (
+          {items.map((item) => (
             <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
           ))}
         </>
       ) : null}
 
-      {tools.length > 0 ? (
-        <>
-          <p className="mb-1.5 mt-5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
-            Strumenti
-          </p>
-          {tools.map((item) => (
-            <NavLink key={item.to} {...item} pathname={pathname} onNavigate={onNavigate} />
-          ))}
-        </>
+      {showAccess ? (
+        <div className="mt-4">
+          <NavLink
+            to="/access"
+            label="Accesso"
+            icon={KeyRound}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        </div>
       ) : null}
 
       <div className="mt-auto rounded-xl border border-white/[0.05] bg-white/[0.02] p-3">
