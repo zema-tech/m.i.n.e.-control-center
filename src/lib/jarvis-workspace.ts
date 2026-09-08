@@ -10,6 +10,8 @@ export type JarvisMsg = {
 export type JarvisFile = {
   id: string;
   name: string;
+  /** Percorso relativo concesso dal browser durante l'import di una cartella. */
+  path?: string;
   mime: string;
   size: number;
   text: string;
@@ -209,9 +211,7 @@ export function appendMessage(
       if (c.id !== chatId) return c;
       const messages = [...c.messages, full];
       const title =
-        c.title === "Nuova chat" && full.role === "user"
-          ? full.content.slice(0, 48)
-          : c.title;
+        c.title === "Nuova chat" && full.role === "user" ? full.content.slice(0, 48) : c.title;
       return { ...c, messages, title, updatedAt: Date.now() };
     }),
   };
@@ -221,6 +221,7 @@ export function addTextFile(
   store: JarvisStore,
   opts: {
     name: string;
+    path?: string;
     text: string;
     mime?: string;
     projectId?: string | null;
@@ -230,6 +231,7 @@ export function addTextFile(
   const file: JarvisFile = {
     id: newId("file"),
     name: opts.name,
+    path: opts.path,
     mime: opts.mime || "text/plain",
     size: opts.text.length,
     text: opts.text.slice(0, 500_000),

@@ -1,9 +1,14 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Brain,
+  Bot,
   Cable,
+  CheckSquare,
+  Folder,
+  FolderOpen,
   FolderPlus,
+  HardDrive,
   Home,
   Menu,
   Mic,
@@ -14,6 +19,7 @@ import {
   Plus,
   Search,
   Send,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -22,6 +28,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getAuthState } from "@/lib/auth.functions";
 import { buildBrainContextForPrompt } from "@/lib/agent-brain";
+import { NeuralGraph, type GraphNode } from "@/components/NeuralGraph";
+import { ensureDefaultConnectors, type CustomConnector } from "@/lib/connectors";
+import { appendLog, createGoal, requestCoworkAutoStart } from "@/lib/cowork";
 import { askAssistant } from "@/lib/panel.functions";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
@@ -37,9 +46,7 @@ import {
   saveJarvisStore,
   searchFileContext,
   updateChat,
-  updateProject,
   type JarvisChat,
-  type JarvisFile,
   type JarvisProject,
   type JarvisStore,
 } from "@/lib/jarvis-workspace";
@@ -66,15 +73,24 @@ export const Route = createFileRoute("/jarvis")({
 const MODEL_KEY = "omnicore.jarvis.model";
 
 type Panel = "chat" | "neural" | "connectors";
+type InteractionMode = "chat" | "cowork";
 
 function JarvisWorkspace() {
   const { accountKey } = Route.useLoaderData();
   const ask = useServerFn(askAssistant);
+  const navigate = useNavigate();
 
-  const [store, setStore] = useState<JarvisStore>({ version: 1, projects: [], chats: [], files: [] });
+  const [store, setStore] = useState<JarvisStore>({
+    version: 1,
+    projects: [],
+    chats: [],
+    files: [],
+  });
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("chat");
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>("chat");
+  const [connectors, setConnectors] = useState<CustomConnector[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,6 +101,7 @@ function JarvisWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const persist = useCallback(
@@ -98,6 +115,7 @@ function JarvisWorkspace() {
   useEffect(() => {
     const migrated = migrateLegacyChats(accountKey);
     setStore(migrated);
+    setConnectors(ensureDefaultConnectors());
     if (migrated.chats[0]) setActiveChatId(migrated.chats[0].id);
     try {
       const m = window.localStorage.getItem(MODEL_KEY);
@@ -107,9 +125,14 @@ function JarvisWorkspace() {
     }
     const SR =
       typeof window !== "undefined"
-        ? (window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown })
-            .SpeechRecognition ||
-          (window as unknown as { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition
+        ? (
+            window as unknown as {
+              SpeechRecognition?: new () => unknown;
+              webkitSpeechRecognition?: new () => unknown;
+            }
+          ).SpeechRecognition ||
+          (window as unknown as { webkitSpeechRecognition?: new () => unknown })
+            .webkitSpeechRecognition
         : undefined;
     setVoiceSupported(Boolean(SR));
   }, [accountKey]);
@@ -142,6 +165,79 @@ function JarvisWorkspace() {
       (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt,
     );
   }, [store.chats, activeProjectId, search]);
+
+  const neuralNodes = useMemo<GraphNode[]>(() => {
+    const nodes: GraphNode[] = [
+      {
+        id: "device:local",
+        label: "Questo dispositivo",
+        kind: "device",
+        status: "online",
+        detail:
+          "File e cartelle scelti esplicitamente dal browser. JARVIS non accede al resto del dispositivo.",
+        size: 19,
+      },
+    ];
+
+    for (const project of store.projects) {
+      nodes.push({
+        id: `project:${project.id}`,
+        parentId: "device:local",
+        label: project.name,
+        kind: "folder",
+        status: "online",
+        detail: project.description || "Progetto locale JARVIS",
+        size: 11,
+      });
+    }
+
+    const knownFolders = new Set<string>();
+    for (const file of store.files.slice(0, 60)) {
+      const scope = file.projectId || file.chatId || "local";
+      let parentId = file.projectId ? `project:${file.projectId}` : "device:local";
+      const parts = (file.path || file.name).split("/").filter(Boolean).slice(0, -1);
+      let relativePath = "";
+      for (const part of parts) {
+        relativePath = relativePath ? `${relativePath}/${part}` : part;
+        const folderId = `folder:${scope}:${relativePath}`;
+        if (!knownFolders.has(folderId)) {
+          nodes.push({
+            id: folderId,
+            parentId,
+            label: part,
+            kind: "folder",
+            status: "online",
+            detail: relativePath,
+            size: 9,
+          });
+          knownFolders.add(folderId);
+        }
+        parentId = folderId;
+      }
+      nodes.push({
+        id: `file:${file.id}`,
+        parentId,
+        label: file.name,
+        kind: "file",
+        status: "online",
+        detail: `${file.path || file.name} · ${Math.max(1, Math.round(file.size / 1024))} KB`,
+        size: 7,
+      });
+    }
+
+    for (const connector of connectors) {
+      nodes.push({
+        id: `mcp:${connector.id}`,
+        parentId: "device:local",
+        label: connector.label,
+        kind: "mcp",
+        status: connector.status,
+        detail: connector.detail,
+        size: 10,
+      });
+    }
+    return nodes;
+  }, [connectors, store.files, store.projects]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -201,6 +297,13 @@ function JarvisWorkspace() {
     s = appendMessage(s, chatId, { role: "user", content: text });
     persist(s);
     setInput("");
+    if (interactionMode === "cowork") {
+      const goal = createGoal(text, "Obiettivo avviato dal composer JARVIS in modalità Cowork.", 6);
+      appendLog("info", `Obiettivo ricevuto da JARVIS: ${goal.title}`);
+      requestCoworkAutoStart();
+      await navigate({ to: "/cowork" });
+      return;
+    }
     setBusy(true);
     setError(null);
 
@@ -248,39 +351,44 @@ function JarvisWorkspace() {
     }
   }
 
-  async function onAttach(file: File) {
+  async function onAttachFiles(files: File[]) {
     const max = 10 * 1024 * 1024;
-    if (file.size > max) {
-      setError("File oltre 10 MB.");
-      return;
+    let next = store;
+    let imported = 0;
+    let skipped = Math.max(0, files.length - 100);
+    for (const file of files.slice(0, 100)) {
+      const supported =
+        /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs|go|java|css|html|log|yml|yaml|xml)$/i.test(
+          file.name,
+        );
+      if (!supported || file.size > max) {
+        skipped += 1;
+        continue;
+      }
+      const text = await file.text();
+      if (!text.trim()) {
+        skipped += 1;
+        continue;
+      }
+      next = addTextFile(next, {
+        name: file.name,
+        path: file.webkitRelativePath || file.name,
+        text,
+        mime: file.type || "text/plain",
+        projectId: activeProjectId,
+        chatId: activeChatId,
+      }).store;
+      imported += 1;
     }
-    const name = file.name;
-    const lower = name.toLowerCase();
-    const okExt = /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs|go|java|css|html|log)$/i.test(lower);
-    const isPdf = lower.endsWith(".pdf");
-    if (!okExt && !isPdf) {
-      setError("Formato non supportato. Usa testo, codice o PDF con testo.");
-      return;
-    }
-    let text = "";
-    if (isPdf) {
-      setError("PDF: estrazione testo non disponibile offline. Usa TXT/MD/JSON per ora.");
-      return;
-    }
-    text = await file.text();
-    if (!text.trim()) {
-      setError("File vuoto.");
-      return;
-    }
-    const { store: next } = addTextFile(store, {
-      name,
-      text,
-      mime: file.type || "text/plain",
-      projectId: activeProjectId,
-      chatId: activeChatId,
-    });
     persist(next);
-    setError(null);
+    setError(
+      imported === 0
+        ? "Nessun file di testo supportato trovato."
+        : skipped > 0
+          ? `${imported} file importati · ${skipped} ignorati`
+          : null,
+    );
+    if (imported > 0) setPanel("neural");
   }
 
   function toggleVoice() {
@@ -332,40 +440,54 @@ function JarvisWorkspace() {
   }
 
   const sidebar = (
-    <aside className="flex h-full w-full flex-col border-r border-sky-500/15 bg-[#060a12]">
-      <div className="flex items-center justify-between gap-2 border-b border-sky-500/10 px-3 py-3">
-        <Link to="/home" className="inline-flex items-center gap-1.5 text-[12px] text-sky-200/70 no-underline hover:text-sky-100">
-          <Home className="h-3.5 w-3.5" /> Hub
+    <aside className="flex h-full w-full flex-col border-r border-white/[0.08] bg-[#0d0e10] text-[#e7e5df]">
+      <div className="flex items-center justify-between gap-2 px-5 pb-4 pt-5">
+        <Link
+          to="/home"
+          className="font-serif text-[25px] font-semibold tracking-tight text-[#f2f0ea] no-underline"
+        >
+          Jarvis
         </Link>
-        <span className="flex items-center gap-1.5 font-display text-sm font-semibold text-sky-100">
-          <Sparkles className="h-4 w-4 text-sky-400" /> JARVIS
-        </span>
-        <button type="button" className="md:hidden text-sky-200/60" onClick={() => setSidebarOpen(false)} aria-label="Chiudi">
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <Link
+            to="/home"
+            className="rounded-lg p-2 text-white/45 no-underline hover:bg-white/[0.06] hover:text-white"
+            aria-label="Torna all'hub"
+          >
+            <Home className="h-4 w-4" />
+          </Link>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-white/45 hover:bg-white/[0.06] hover:text-white md:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Chiudi"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-1 p-2">
+      <div className="space-y-1 px-3">
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center gap-2 rounded-lg bg-sky-500/15 px-3 py-2 text-[13px] font-medium text-sky-100 transition hover:bg-sky-500/25"
+          className="flex w-full items-center gap-3 rounded-xl bg-[#333333] px-4 py-3 text-[14px] font-medium text-white transition hover:bg-[#3d3d3d]"
         >
-          <Plus className="h-4 w-4" /> Nuova chat
+          <Plus className="h-[18px] w-[18px]" /> Nuovo
         </button>
         <button
           type="button"
           onClick={onNewProject}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-sky-200/70 hover:bg-white/[0.04] hover:text-sky-100"
+          className="flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-[13px] text-white/65 hover:bg-white/[0.05] hover:text-white"
         >
-          <FolderPlus className="h-3.5 w-3.5" /> Nuovo progetto
+          <FolderPlus className="h-4 w-4" /> Nuovo progetto
         </button>
       </div>
 
-      <div className="flex gap-1 border-y border-sky-500/10 px-2 py-2">
+      <div className="mt-1 space-y-0.5 px-3 pb-3">
         {(
           [
-            { id: "chat" as const, label: "Chat", icon: Sparkles },
+            { id: "chat" as const, label: "Chat", icon: Bot },
             { id: "neural" as const, label: "Neurale", icon: Brain },
             { id: "connectors" as const, label: "Connettori", icon: Cable },
           ] as const
@@ -374,53 +496,56 @@ function JarvisWorkspace() {
             key={t.id}
             type="button"
             onClick={() => setPanel(t.id)}
-            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-[10px] font-medium uppercase tracking-wide ${
-              panel === t.id ? "bg-sky-500/20 text-sky-100" : "text-sky-200/50 hover:text-sky-100"
+            className={`flex w-full items-center gap-3 rounded-lg px-4 py-2 text-left text-[13px] transition ${
+              panel === t.id
+                ? "bg-white/[0.07] text-white"
+                : "text-white/60 hover:bg-white/[0.04] hover:text-white"
             }`}
           >
-            <t.icon className="h-3 w-3" />
+            <t.icon className="h-4 w-4" />
             {t.label}
           </button>
         ))}
       </div>
 
-      <div className="px-2 py-2">
+      <div className="border-t border-white/[0.06] px-3 py-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sky-200/40" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca chat…"
-            className="w-full rounded-lg border border-sky-500/15 bg-black/30 py-2 pl-8 pr-2 text-[12px] text-sky-50 outline-none placeholder:text-sky-200/30 focus:border-sky-400/40"
+            className="w-full rounded-lg border border-white/[0.08] bg-black/20 py-2 pl-9 pr-2 text-[12px] text-white outline-none placeholder:text-white/30 focus:border-white/20"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
-        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+        <p className="mb-1.5 flex items-center justify-between px-3 text-[12px] text-white/40">
           Progetti
+          <Plus className="h-3.5 w-3.5" />
         </p>
         <button
           type="button"
           onClick={() => setActiveProjectId(null)}
-          className={`mb-0.5 w-full rounded-md px-2 py-1.5 text-left text-[12px] ${
-            !activeProjectId ? "bg-sky-500/15 text-sky-100" : "text-sky-200/60 hover:bg-white/[0.03]"
+          className={`mb-0.5 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] ${
+            !activeProjectId ? "bg-white/[0.06] text-white" : "text-white/60 hover:bg-white/[0.03]"
           }`}
         >
-          Tutti
+          <FolderOpen className="h-4 w-4" /> Tutti i progetti
         </button>
         {store.projects.map((p) => (
           <div key={p.id} className="group mb-0.5 flex items-center gap-1">
             <button
               type="button"
               onClick={() => setActiveProjectId(p.id)}
-              className={`min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-[12px] ${
+              className={`flex min-w-0 flex-1 items-center gap-2 truncate rounded-md px-3 py-2 text-left text-[13px] ${
                 activeProjectId === p.id
-                  ? "bg-sky-500/15 text-sky-100"
-                  : "text-sky-200/60 hover:bg-white/[0.03]"
+                  ? "bg-white/[0.06] text-white"
+                  : "text-white/60 hover:bg-white/[0.03]"
               }`}
             >
-              {p.name}
+              <Folder className="h-4 w-4 shrink-0" /> <span className="truncate">{p.name}</span>
             </button>
             <button
               type="button"
@@ -433,17 +558,15 @@ function JarvisWorkspace() {
           </div>
         ))}
 
-        <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
-          Conversazioni
-        </p>
+        <p className="mb-1.5 mt-5 px-3 text-[12px] text-white/40">Conversazioni</p>
         {filteredChats.length === 0 ? (
-          <p className="px-2 text-[11px] text-sky-200/40">Nessuna chat</p>
+          <p className="px-3 text-[12px] text-white/35">Nessuna chat</p>
         ) : (
           filteredChats.map((c) => (
             <div
               key={c.id}
               className={`group mb-0.5 flex items-center gap-0.5 rounded-md ${
-                activeChatId === c.id ? "bg-sky-500/20" : "hover:bg-white/[0.03]"
+                activeChatId === c.id ? "bg-white/[0.07]" : "hover:bg-white/[0.03]"
               }`}
             >
               <button
@@ -454,7 +577,7 @@ function JarvisWorkspace() {
                   setSidebarOpen(false);
                 }}
                 onDoubleClick={() => onRenameChat(c)}
-                className="min-w-0 flex-1 truncate px-2 py-2 text-left text-[12px] text-sky-50"
+                className="min-w-0 flex-1 truncate px-3 py-2 text-left text-[13px] text-white/75"
                 title="Doppio click per rinominare"
               >
                 {c.pinned ? "📌 " : ""}
@@ -482,11 +605,12 @@ function JarvisWorkspace() {
 
         {projectFiles.length > 0 ? (
           <>
-            <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-200/40">
-              File
-            </p>
+            <p className="mb-1.5 mt-5 px-3 text-[12px] text-white/40">File</p>
             {projectFiles.map((f) => (
-              <div key={f.id} className="group flex items-center gap-1 px-2 py-1 text-[11px] text-sky-200/60">
+              <div
+                key={f.id}
+                className="group flex items-center gap-1 px-2 py-1 text-[11px] text-sky-200/60"
+              >
                 <span className="min-w-0 flex-1 truncate">{f.name}</span>
                 <button
                   type="button"
@@ -504,38 +628,38 @@ function JarvisWorkspace() {
   );
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-[#030712] text-sky-50">
+    <div className="flex h-[100dvh] overflow-hidden bg-[#121315] text-[#eeeae2]">
       {/* Desktop sidebar */}
-      <div className="hidden w-[280px] shrink-0 md:block">{sidebar}</div>
+      <div className="hidden w-[320px] shrink-0 md:block">{sidebar}</div>
 
       {/* Mobile drawer */}
       {sidebarOpen ? (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-          <div className="relative z-10 h-full w-[min(100%,280px)]">{sidebar}</div>
+          <div className="relative z-10 h-full w-[min(100%,320px)]">{sidebar}</div>
         </div>
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-sky-500/10 px-3 py-2.5 sm:px-4">
+        <header className="flex min-h-14 items-center gap-3 border-b border-white/[0.06] px-3 py-2.5 sm:px-5">
           <button
             type="button"
-            className="rounded-lg border border-sky-500/20 p-2 text-sky-200 md:hidden"
+            className="rounded-lg border border-white/10 p-2 text-white/60 md:hidden"
             onClick={() => setSidebarOpen(true)}
             aria-label="Menu"
           >
             <Menu className="h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-base font-semibold tracking-tight text-sky-50">
+            <h1 className="truncate text-[14px] font-medium tracking-tight text-white/80">
               {panel === "neural"
                 ? "Sistema neurale"
                 : panel === "connectors"
                   ? "Connettori"
                   : activeChat?.title || "JARVIS"}
             </h1>
-            <p className="truncate text-[11px] text-sky-200/45">
-              Workspace personale · nero &amp; azzurro
+            <p className="truncate text-[10px] text-white/35">
+              Workspace personale · memoria e strumenti connessi
             </p>
           </div>
           <select
@@ -549,7 +673,7 @@ function JarvisWorkspace() {
                 /* ignore */
               }
             }}
-            className="max-w-[140px] truncate rounded-lg border border-sky-500/20 bg-black/40 px-2 py-1.5 text-[11px] text-sky-100 outline-none"
+            className="max-w-[150px] truncate rounded-lg border border-white/10 bg-[#1b1c1d] px-2 py-1.5 text-[11px] text-white/70 outline-none"
           >
             {GROQ_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -560,31 +684,152 @@ function JarvisWorkspace() {
         </header>
 
         {panel === "neural" ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-            <Brain className="h-10 w-10 text-sky-400" />
-            <p className="max-w-md text-sm text-sky-200/70">
-              Sistema neurale e SOUL/USER/MEMORY restano nel Brain agent. Apri la sezione dedicata per
-              modificarli.
-            </p>
-            <Link
-              to="/agent"
-              className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm text-sky-100 no-underline hover:bg-sky-500/20"
-            >
-              Apri Brain
-            </Link>
-            <Link to="/network" className="text-[12px] text-sky-300/70 no-underline hover:text-sky-200">
-              Rete neurale host →
-            </Link>
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+            <div className="mx-auto max-w-[1400px] space-y-4">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300/60">
+                    Sistema neurale
+                  </p>
+                  <h2 className="font-serif text-2xl font-medium text-[#f1eee7]">
+                    La rete di Jarvis
+                  </h2>
+                  <p className="mt-1 text-[12px] text-white/45">
+                    MCP, progetti, cartelle e file accessibili all&apos;IA in un&apos;unica mappa.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    className="hidden"
+                    accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.log,.html,.css,.yml,.yaml,.xml"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void onAttachFiles([file]);
+                      e.target.value = "";
+                    }}
+                  />
+                  <input
+                    ref={folderRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      if (files.length) void onAttachFiles(files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      folderRef.current?.setAttribute("webkitdirectory", "");
+                      folderRef.current?.click();
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-[12px] text-white/70 hover:bg-white/[0.09] hover:text-white"
+                  >
+                    <FolderPlus className="h-4 w-4" /> Importa cartella
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-[12px] text-white/70 hover:bg-white/[0.09] hover:text-white"
+                  >
+                    <Paperclip className="h-4 w-4" /> Aggiungi file
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+                <NeuralGraph nodes={neuralNodes} serverOnline />
+                <aside className="space-y-3">
+                  <div className="rounded-xl border border-white/[0.08] bg-[#191a1c] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-white/80">
+                      <HardDrive className="h-4 w-4 text-cyan-300" /> Questo dispositivo
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-black/20 p-2">
+                        <strong className="block text-lg text-white">
+                          {store.projects.length}
+                        </strong>
+                        <span className="text-[9px] uppercase tracking-wide text-white/35">
+                          progetti
+                        </span>
+                      </div>
+                      <div className="rounded-lg bg-black/20 p-2">
+                        <strong className="block text-lg text-white">{store.files.length}</strong>
+                        <span className="text-[9px] uppercase tracking-wide text-white/35">
+                          file
+                        </span>
+                      </div>
+                      <div className="rounded-lg bg-black/20 p-2">
+                        <strong className="block text-lg text-white">{connectors.length}</strong>
+                        <span className="text-[9px] uppercase tracking-wide text-white/35">
+                          MCP
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+                      Per privacy il browser mostra soltanto elementi selezionati da te.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-white/[0.08] bg-[#191a1c] p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-[12px] font-medium text-white/80">
+                        <Cable className="h-4 w-4 text-emerald-300" /> Nodi MCP
+                      </span>
+                      <Link
+                        to="/connectors"
+                        className="text-[10px] text-white/40 no-underline hover:text-white"
+                      >
+                        Gestisci
+                      </Link>
+                    </div>
+                    <div className="space-y-2">
+                      {connectors.slice(0, 6).map((connector) => (
+                        <div
+                          key={connector.id}
+                          className="flex items-center gap-2 text-[11px] text-white/55"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${connector.status === "online" ? "bg-emerald-400" : connector.status === "error" ? "bg-red-400" : "bg-white/25"}`}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{connector.label}</span>
+                          <span className="uppercase text-white/25">{connector.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Link
+                      to="/agent"
+                      className="rounded-xl border border-white/[0.08] bg-[#191a1c] p-3 text-center text-[11px] text-white/55 no-underline hover:bg-white/[0.06] hover:text-white"
+                    >
+                      <Brain className="mx-auto mb-1.5 h-4 w-4" /> Brain
+                    </Link>
+                    <Link
+                      to="/network"
+                      className="rounded-xl border border-white/[0.08] bg-[#191a1c] p-3 text-center text-[11px] text-white/55 no-underline hover:bg-white/[0.06] hover:text-white"
+                    >
+                      <SlidersHorizontal className="mx-auto mb-1.5 h-4 w-4" /> Host live
+                    </Link>
+                  </div>
+                </aside>
+              </div>
+            </div>
           </div>
         ) : panel === "connectors" ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-            <Cable className="h-10 w-10 text-sky-400" />
-            <p className="max-w-md text-sm text-sky-200/70">
+            <Cable className="h-10 w-10 text-emerald-300" />
+            <p className="max-w-md text-sm text-white/55">
               One MCP e app collegate. Le azioni write restano con conferma umana.
             </p>
             <Link
               to="/connectors"
-              className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm text-sky-100 no-underline hover:bg-sky-500/20"
+              className="rounded-lg border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-white/80 no-underline hover:bg-white/[0.1]"
             >
               Apri connettori
             </Link>
@@ -593,13 +838,16 @@ function JarvisWorkspace() {
           <>
             <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-6">
               {!activeChat || activeChat.messages.length === 0 ? (
-                <div className="mx-auto flex max-w-lg flex-col items-center gap-3 pt-16 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-400/25 bg-sky-500/10">
-                    <Sparkles className="h-7 w-7 text-sky-300" />
+                <div className="mx-auto flex max-w-xl flex-col items-center gap-3 pt-[14vh] text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/[0.06]">
+                    <Sparkles className="h-6 w-6 text-cyan-300" />
                   </div>
-                  <h2 className="font-display text-2xl font-semibold text-sky-50">Come posso aiutarti?</h2>
-                  <p className="text-sm text-sky-200/55">
-                    Chat generale, memoria e connettori. Log e console Minecraft restano in M.I.N.E.
+                  <h2 className="font-serif text-4xl font-medium tracking-tight text-[#f1eee7]">
+                    Benvenuto, {accountKey}
+                  </h2>
+                  <p className="max-w-md text-sm leading-relaxed text-white/40">
+                    Parla con Jarvis oppure affidagli un obiettivo in Cowork. File, memoria e MCP
+                    sono già nel suo contesto.
                   </p>
                 </div>
               ) : (
@@ -611,8 +859,8 @@ function JarvisWorkspace() {
                     <div
                       className={`max-w-[90%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed ${
                         m.role === "user"
-                          ? "bg-sky-500/20 text-sky-50 border border-sky-400/25"
-                          : "bg-white/[0.04] text-sky-100/90 border border-white/[0.06]"
+                          ? "border border-white/10 bg-[#2d2e30] text-white"
+                          : "border border-white/[0.06] bg-white/[0.035] text-white/85"
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{m.content}</p>
@@ -621,18 +869,22 @@ function JarvisWorkspace() {
                 ))
               )}
               {busy ? (
-                <p className="mx-auto max-w-3xl text-[12px] text-sky-300/60">JARVIS sta pensando…</p>
+                <p className="mx-auto max-w-3xl text-[12px] text-cyan-300/60">
+                  Jarvis sta pensando…
+                </p>
               ) : null}
               <div ref={bottomRef} />
             </div>
 
-            <div className="border-t border-sky-500/10 px-3 py-3 sm:px-6">
+            <div className="px-3 pb-4 pt-2 sm:px-6 sm:pb-6">
               {error ? (
                 <p className="mb-2 text-center text-[12px] text-red-300/90" role="alert">
                   {error}
                 </p>
               ) : null}
-              <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-sky-500/20 bg-[#0a101c] p-2 shadow-[0_0_40px_rgba(56,189,248,0.08)]">
+              <div
+                className={`mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border p-2 shadow-[0_18px_60px_rgba(0,0,0,0.28)] ${interactionMode === "cowork" ? "border-violet-300/25 bg-[#201e25]" : "border-white/10 bg-[#1b1c1d]"}`}
+              >
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -642,26 +894,30 @@ function JarvisWorkspace() {
                       void onSend();
                     }
                   }}
-                  rows={2}
-                  placeholder="Scrivi un messaggio…"
-                  className="w-full resize-none bg-transparent px-2 py-2 text-[14px] text-sky-50 outline-none placeholder:text-sky-200/30"
+                  rows={3}
+                  placeholder={
+                    interactionMode === "cowork"
+                      ? "Descrivi il risultato: Jarvis pianificherà ed eseguirà i passi…"
+                      : "Come posso aiutarti oggi?"
+                  }
+                  className="w-full resize-none bg-transparent px-3 py-2 text-[14px] text-white outline-none placeholder:text-white/20"
                 />
                 <div className="flex items-center gap-1.5">
                   <input
                     ref={fileRef}
                     type="file"
                     className="hidden"
-                    accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.log,.html,.css"
+                    accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.log,.html,.css,.yml,.yaml,.xml"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) void onAttach(f);
+                      if (f) void onAttachFiles([f]);
                       e.target.value = "";
                     }}
                   />
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    className="rounded-lg p-2 text-sky-200/50 hover:bg-white/[0.04] hover:text-sky-100"
+                    className="rounded-lg p-2 text-white/45 hover:bg-white/[0.06] hover:text-white"
                     title="Allega file testo"
                   >
                     <Paperclip className="h-4 w-4" />
@@ -671,26 +927,49 @@ function JarvisWorkspace() {
                     onClick={toggleVoice}
                     disabled={!voiceSupported}
                     className={`rounded-lg p-2 hover:bg-white/[0.04] ${
-                      listening ? "text-sky-300" : "text-sky-200/50 hover:text-sky-100"
+                      listening ? "text-cyan-300" : "text-white/45 hover:text-white"
                     } disabled:opacity-30`}
                     title={voiceSupported ? "Dettatura" : "Dettatura non supportata"}
                   >
                     {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </button>
+                  <div
+                    className="ml-1 flex items-center rounded-lg bg-black/20 p-0.5"
+                    aria-label="Modalità messaggio"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setInteractionMode("chat")}
+                      aria-pressed={interactionMode === "chat"}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] ${interactionMode === "chat" ? "bg-white/10 text-white" : "text-white/35 hover:text-white/70"}`}
+                    >
+                      <Bot className="h-3.5 w-3.5" /> Chat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInteractionMode("cowork")}
+                      aria-pressed={interactionMode === "cowork"}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] ${interactionMode === "cowork" ? "bg-violet-400/15 text-violet-200" : "text-white/35 hover:text-white/70"}`}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5" /> Cowork
+                    </button>
+                  </div>
                   <div className="flex-1" />
                   <button
                     type="button"
                     disabled={busy || !input.trim()}
                     onClick={() => void onSend()}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-blue-500 px-4 py-2 text-[13px] font-semibold text-slate-950 disabled:opacity-40"
+                    className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-semibold disabled:opacity-40 ${interactionMode === "cowork" ? "bg-violet-300 text-violet-950" : "bg-[#e8e5de] text-[#18191a]"}`}
                   >
                     <Send className="h-3.5 w-3.5" />
-                    Invia
+                    {interactionMode === "cowork" ? "Avvia" : "Invia"}
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-center text-[10px] text-sky-200/30">
-                Dati privati in questo browser (isolati per account). Log/console → M.I.N.E.
+              <p className="mt-2 text-center text-[10px] text-white/25">
+                {interactionMode === "cowork"
+                  ? "Cowork lavora in autonomia secondo i permessi configurati."
+                  : "I dati locali restano isolati per account in questo browser."}
               </p>
             </div>
           </>

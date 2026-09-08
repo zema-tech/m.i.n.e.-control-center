@@ -1,21 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  AlertTriangle,
-  Bot,
-  Pause,
-  Play,
-  Shield,
-  Square,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, Bot, Pause, Play, Shield, Square, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
-import {
-  activeCredentials,
-  getActiveFalixAccount,
-} from "@/lib/accounts";
+import { activeCredentials, getActiveFalixAccount } from "@/lib/accounts";
 import { buildBrainContextForPrompt } from "@/lib/agent-brain";
 import { logAiActivity } from "@/lib/ai-activity";
 import { getAuthState } from "@/lib/auth.functions";
@@ -24,6 +13,7 @@ import {
   buildCoworkStepPrompt,
   canAutoApprove,
   clearLog,
+  consumeCoworkAutoStart,
   consentSummary,
   createGoal,
   loadConsent,
@@ -133,13 +123,7 @@ function CoworkPage() {
         },
       });
 
-      setLog(
-        appendLog(
-          "think",
-          `Risposta passo ${step}`,
-          (res.risposta ?? "").slice(0, 800),
-        ),
-      );
+      setLog(appendLog("think", `Risposta passo ${step}`, (res.risposta ?? "").slice(0, 800)));
 
       const c = loadConsent();
       if (c.autoResident) {
@@ -189,13 +173,7 @@ function CoworkPage() {
                 ...(credentials ? { credentials } : {}),
               },
             });
-            setLog(
-              appendLog(
-                "auto",
-                `${a.id} [${risk}]`,
-                String(out.output ?? "").slice(0, 500),
-              ),
-            );
+            setLog(appendLog("auto", `${a.id} [${risk}]`, String(out.output ?? "").slice(0, 500)));
           }
           logAiActivity({
             accountId: active?.id ?? "unknown",
@@ -206,13 +184,7 @@ function CoworkPage() {
             status: "done",
           });
         } catch (e) {
-          setLog(
-            appendLog(
-              "error",
-              `Fallita ${a.id}`,
-              e instanceof Error ? e.message : String(e),
-            ),
-          );
+          setLog(appendLog("error", `Fallita ${a.id}`, e instanceof Error ? e.message : String(e)));
         }
       }
 
@@ -231,20 +203,10 @@ function CoworkPage() {
             },
           });
           setLog(
-            appendLog(
-              "auto",
-              `Console /${cmd.comando}`,
-              String(out.output ?? "").slice(0, 400),
-            ),
+            appendLog("auto", `Console /${cmd.comando}`, String(out.output ?? "").slice(0, 400)),
           );
         } catch (e) {
-          setLog(
-            appendLog(
-              "error",
-              `Console fallita`,
-              e instanceof Error ? e.message : String(e),
-            ),
-          );
+          setLog(appendLog("error", `Console fallita`, e instanceof Error ? e.message : String(e)));
         }
       }
 
@@ -256,7 +218,7 @@ function CoworkPage() {
     [ask, execAction, execOne],
   );
 
-  async function startLoop() {
+  const startLoop = useCallback(async () => {
     const g = loadGoal();
     if (!g || busy) return;
     stopRef.current = false;
@@ -295,13 +257,16 @@ function CoworkPage() {
     } catch (e) {
       patchGoal({ status: "error" });
       setGoal(loadGoal());
-      setLog(
-        appendLog("error", "Loop interrotto", e instanceof Error ? e.message : String(e)),
-      );
+      setLog(appendLog("error", "Loop interrotto", e instanceof Error ? e.message : String(e)));
     } finally {
       setBusy(false);
     }
-  }
+  }, [busy, runStep]);
+
+  useEffect(() => {
+    if (!consumeCoworkAutoStart()) return;
+    window.setTimeout(() => void startLoop(), 0);
+  }, [startLoop]);
 
   function stopLoop() {
     stopRef.current = true;
@@ -344,9 +309,7 @@ function CoworkPage() {
             />
             <span>
               <span className="text-sm text-foreground">Auto scrittura</span>
-              <span className="block text-caption">
-                Console, restart, write file, One execute…
-              </span>
+              <span className="block text-caption">Console, restart, write file, One execute…</span>
             </span>
           </label>
 
