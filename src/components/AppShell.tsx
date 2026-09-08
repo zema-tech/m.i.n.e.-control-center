@@ -33,8 +33,8 @@ const NAV_ITEMS: { to: NavTo; label: string; icon: typeof LayoutGrid; perm: Perm
   { to: "/home", label: "Hub", icon: LayoutGrid, perm: "home" },
   { to: "/jarvis", label: "JARVIS", icon: Sparkles, perm: "jarvis" },
   { to: "/mine", label: "M.I.N.E", icon: Network, perm: "mine" },
-  { to: "/design", label: "Design", icon: Palette, perm: "design" },
-  { to: "/code", label: "Code", icon: Code2, perm: "code" },
+  { to: "/design", label: "A.R.T", icon: Palette, perm: "design" },
+  { to: "/code", label: "P.R.O.M.P.T", icon: Code2, perm: "code" },
 ];
 
 function NavLink({
