@@ -21,7 +21,10 @@ export function SectionBackdrop() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const id = sectionFromPath(pathname);
   return (
-    <div className="section-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
+    <div
+      className="section-backdrop pointer-events-none fixed inset-0 z-0 overflow-hidden"
+      aria-hidden
+    >
       <div className={`orb orb-a orb-${id}`} />
       <div className={`orb orb-b orb-${id}`} />
       <div className={`orb orb-c orb-${id}`} />

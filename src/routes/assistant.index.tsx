@@ -25,7 +25,7 @@ export const Route = createFileRoute("/assistant/")({
   loader: async () => {
     const state = await getAuthState();
     if (!state.authenticated) throw redirect({ to: "/login" });
-    return null;
+    throw redirect({ to: "/jarvis" });
   },
   component: AssistantIndex,
 });

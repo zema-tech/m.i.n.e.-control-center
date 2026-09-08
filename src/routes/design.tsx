@@ -29,7 +29,10 @@ function DesignStudio() {
       <div className="mx-auto max-w-4xl space-y-8 px-4 py-8 sm:px-6">
         <section className="panel-spacious relative overflow-hidden animate-fade-in-up">
           <div className="pointer-events-none absolute -right-10 top-0 h-48 w-48 rounded-full bg-violet-500/25 blur-3xl animate-aurora" />
-          <div className="pointer-events-none absolute -left-10 bottom-0 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl animate-aurora" style={{ animationDelay: "-2s" }} />
+          <div
+            className="pointer-events-none absolute -left-10 bottom-0 h-40 w-40 rounded-full bg-amber-400/15 blur-3xl animate-aurora"
+            style={{ animationDelay: "-2s" }}
+          />
           <div className="relative">
             <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-300/90">
               <Palette className="h-3.5 w-3.5" />
@@ -41,8 +44,8 @@ function DesignStudio() {
               </span>
             </h2>
             <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-              Quattro mondi cromatici, tipografia Syne + DM Sans, motion cubic-bezier. Premium, non
-              alpha.
+              Quattro mondi cromatici, tipografia Space Grotesk + Plus Jakarta Sans, motion
+              misurato. Un sistema visivo coerente, non una semplice skin.
             </p>
           </div>
         </section>
@@ -72,8 +75,8 @@ function DesignStudio() {
             <p className="mb-2 flex items-center gap-2 text-label">
               <Type className="h-3.5 w-3.5" /> Tipografia
             </p>
-            <p className="font-display text-2xl font-bold">Syne — titoli</p>
-            <p className="mt-1 text-sm">DM Sans — interfaccia leggibile</p>
+            <p className="font-display text-2xl font-bold">Space Grotesk — titoli</p>
+            <p className="mt-1 text-sm">Plus Jakarta Sans — interfaccia leggibile</p>
             <p className="mt-1 font-mono text-xs text-muted-foreground">JetBrains Mono — dati</p>
           </div>
           <div className="panel-spacious animate-fade-in-up" style={{ animationDelay: "160ms" }}>
