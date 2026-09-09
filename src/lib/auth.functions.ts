@@ -69,9 +69,11 @@ export const login = createServerFn({ method: "POST" })
     z
       .object({
         password: z.string().min(1).max(200),
-        // Anti-bot: honeypot deve restare vuoto, startedAt = ms quando il form è apparso
+        // Anti-bot: honeypot deve restare vuoto, startedAt = ms quando il form è apparso.
+        // Niente .max(Date.now()): sarebbe congelato all'avvio del server e dopo
+        // ~60s rifiuterebbe ogni login. La freschezza è verificata nell'handler.
         honeypot: z.string().max(100).optional().default(""),
-        startedAt: z.number().int().positive().max(Date.now() + 60_000).optional(),
+        startedAt: z.number().int().positive().optional(),
       })
       .parse(input),
   )

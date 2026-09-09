@@ -218,11 +218,22 @@ export function checkBotSignals(input: {
   if (input.honeypot && input.honeypot.trim().length > 0) {
     return { ok: false, reason: "bot" };
   }
+  // startedAt assente = client datato (cache pre-anti-bot): lascia passare,
+  // la honeypot + rate limit restano attivi.
+  if (input.startedAt === undefined || input.startedAt === null) {
+    return { ok: true, reason: "" };
+  }
   const started = typeof input.startedAt === "number" ? input.startedAt : NaN;
   if (!Number.isFinite(started)) return { ok: false, reason: "bot" };
-  const elapsed = Date.now() - started;
-  // Compilazione umana minima 1.5s; tolleranza max 30min (form lasciato aperto)
-  if (elapsed < 1500) return { ok: false, reason: "too-fast" };
+  let elapsed = Date.now() - started;
+  if (elapsed < 0) {
+    // Orologio client avanti rispetto al server: tolleranza 30s, oltre è replay.
+    if (elapsed < -30_000) return { ok: false, reason: "stale" };
+    elapsed = 2000;
+  }
+  // Soglia 800ms: i bot inviano in decine di ms, anche il password manager
+  // più veloce con autofill+Enter resta sopra. Max 30min (form lasciato aperto).
+  if (elapsed < 800) return { ok: false, reason: "too-fast" };
   if (elapsed > 30 * 60 * 1000) return { ok: false, reason: "stale" };
   return { ok: true, reason: "" };
 }
