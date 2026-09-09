@@ -55,6 +55,7 @@ export type SessionRole = "admin" | "guest" | "member";
 export const ROUTE_PERMISSION: Record<string, Permission> = {
   "/home": "home",
   "/jarvis": "jarvis",
+  "/customize": "jarvis",
   "/mine": "mine",
   "/design": "design",
   "/code": "code",

@@ -14,6 +14,7 @@ import {
   Plus,
   Search,
   Send,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -37,6 +38,7 @@ import {
   type JarvisStore,
 } from "@/lib/jarvis-workspace";
 import { useJarvisAgent } from "@/lib/use-jarvis-agent";
+import { JARVIS_COMPOSER_KEY } from "@/lib/jarvis-plugins";
 
 export const Route = createFileRoute("/jarvis")({
   head: () => ({
@@ -59,7 +61,12 @@ type Panel = "chat" | "neural" | "connectors";
 
 function JarvisWorkspace() {
   const { accountKey } = Route.useLoaderData();
-  const [store, setStore] = useState<JarvisStore>({ version: 1, projects: [], chats: [], files: [] });
+  const [store, setStore] = useState<JarvisStore>({
+    version: 1,
+    projects: [],
+    chats: [],
+    files: [],
+  });
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>("chat");
@@ -98,6 +105,11 @@ function JarvisWorkspace() {
     try {
       const m = window.localStorage.getItem(MODEL_KEY);
       if (m && GROQ_MODELS.some((x) => x.id === m)) setModel(m as GroqModelId);
+      const composerPrompt = window.localStorage.getItem(JARVIS_COMPOSER_KEY);
+      if (composerPrompt) {
+        setInput(composerPrompt);
+        window.localStorage.removeItem(JARVIS_COMPOSER_KEY);
+      }
     } catch {
       /* ignore */
     }
@@ -260,23 +272,45 @@ function JarvisWorkspace() {
   const sidebar = (
     <aside className="flex h-full w-full flex-col border-r border-[#abddf7]/12 bg-[#05070c]/85 backdrop-blur-xl">
       <div className="flex items-center justify-between gap-2 border-b border-[#abddf7]/10 px-3 py-3">
-        <Link to="/home" className="inline-flex items-center gap-1.5 text-[12px] text-[#abddf7]/70 no-underline hover:text-[#e8f4fb]">
+        <Link
+          to="/home"
+          className="inline-flex items-center gap-1.5 text-[12px] text-[#abddf7]/70 no-underline hover:text-[#e8f4fb]"
+        >
           <Home className="h-3.5 w-3.5" /> Hub
         </Link>
         <span className="flex items-center gap-1.5 font-display text-sm font-semibold text-[#e8f4fb]">
           <Sparkles className="h-4 w-4 text-[#abddf7]" /> JARVIS
         </span>
-        <button type="button" className="md:hidden text-[#abddf7]/60" onClick={() => setSidebarOpen(false)} aria-label="Chiudi">
+        <button
+          type="button"
+          className="md:hidden text-[#abddf7]/60"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Chiudi"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
       <div className="space-y-1 p-2">
-        <button type="button" onClick={onNewChat} className="flex w-full items-center gap-2 rounded-xl bg-[#026ca3]/35 px-3 py-2.5 text-[13px] font-semibold text-[#e8f4fb] hover:bg-[#026ca3]/50">
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="flex w-full items-center gap-2 rounded-xl bg-[#026ca3]/35 px-3 py-2.5 text-[13px] font-semibold text-[#e8f4fb] hover:bg-[#026ca3]/50"
+        >
           <Plus className="h-4 w-4" /> Nuova chat
         </button>
-        <button type="button" onClick={onNewProject} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] text-[#abddf7]/70 hover:bg-white/[0.04]">
+        <button
+          type="button"
+          onClick={onNewProject}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] text-[#abddf7]/70 hover:bg-white/[0.04]"
+        >
           <FolderPlus className="h-3.5 w-3.5" /> Nuovo progetto
         </button>
+        <Link
+          to="/customize"
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] text-[#abddf7]/70 no-underline hover:bg-white/[0.04] hover:text-[#e8f4fb]"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" /> Personalizza
+        </Link>
       </div>
       <div className="flex gap-1 border-y border-[#abddf7]/10 px-2 py-2">
         {(
@@ -291,7 +325,9 @@ function JarvisWorkspace() {
             type="button"
             onClick={() => setPanel(t.id)}
             className={`flex flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1.5 text-[10px] font-medium uppercase ${
-              panel === t.id ? "bg-[#026ca3]/40 text-[#e8f4fb]" : "text-[#abddf7]/45 hover:text-[#e8f4fb]"
+              panel === t.id
+                ? "bg-[#026ca3]/40 text-[#e8f4fb]"
+                : "text-[#abddf7]/45 hover:text-[#e8f4fb]"
             }`}
           >
             <t.icon className="h-3 w-3" />
@@ -311,12 +347,16 @@ function JarvisWorkspace() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-2 pb-3">
-        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">Progetti</p>
+        <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">
+          Progetti
+        </p>
         <button
           type="button"
           onClick={() => setActiveProjectId(null)}
           className={`mb-0.5 w-full rounded-lg px-2 py-1.5 text-left text-[12px] ${
-            !activeProjectId ? "bg-[#026ca3]/30 text-[#e8f4fb]" : "text-[#abddf7]/60 hover:bg-white/[0.03]"
+            !activeProjectId
+              ? "bg-[#026ca3]/30 text-[#e8f4fb]"
+              : "text-[#abddf7]/60 hover:bg-white/[0.03]"
           }`}
         >
           Tutti
@@ -327,22 +367,33 @@ function JarvisWorkspace() {
               type="button"
               onClick={() => setActiveProjectId(p.id)}
               className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-left text-[12px] ${
-                activeProjectId === p.id ? "bg-[#026ca3]/30 text-[#e8f4fb]" : "text-[#abddf7]/60 hover:bg-white/[0.03]"
+                activeProjectId === p.id
+                  ? "bg-[#026ca3]/30 text-[#e8f4fb]"
+                  : "text-[#abddf7]/60 hover:bg-white/[0.03]"
               }`}
             >
               {p.name}
             </button>
-            <button type="button" className="opacity-0 group-hover:opacity-100 text-[#abddf7]/40 hover:text-red-300" onClick={() => onDeleteProject(p)}>
+            <button
+              type="button"
+              className="opacity-0 group-hover:opacity-100 text-[#abddf7]/40 hover:text-red-300"
+              onClick={() => onDeleteProject(p)}
+            >
               <Trash2 className="h-3 w-3" />
             </button>
           </div>
         ))}
-        <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">Conversazioni</p>
+        <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">
+          Conversazioni
+        </p>
         {filteredChats.length === 0 ? (
           <p className="px-2 text-[11px] text-[#abddf7]/40">Nessuna chat</p>
         ) : (
           filteredChats.map((c) => (
-            <div key={c.id} className={`group mb-0.5 flex items-center gap-0.5 rounded-lg ${activeChatId === c.id ? "bg-[#026ca3]/35" : "hover:bg-white/[0.03]"}`}>
+            <div
+              key={c.id}
+              className={`group mb-0.5 flex items-center gap-0.5 rounded-lg ${activeChatId === c.id ? "bg-[#026ca3]/35" : "hover:bg-white/[0.03]"}`}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -356,10 +407,18 @@ function JarvisWorkspace() {
                 {c.pinned ? "📌 " : ""}
                 {c.title}
               </button>
-              <button type="button" className="p-1 text-[#abddf7]/40 opacity-0 hover:text-[#e8f4fb] group-hover:opacity-100" onClick={() => onTogglePin(c)}>
+              <button
+                type="button"
+                className="p-1 text-[#abddf7]/40 opacity-0 hover:text-[#e8f4fb] group-hover:opacity-100"
+                onClick={() => onTogglePin(c)}
+              >
                 {c.pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
               </button>
-              <button type="button" className="p-1 text-[#abddf7]/40 opacity-0 hover:text-red-300 group-hover:opacity-100" onClick={() => onDeleteChat(c)}>
+              <button
+                type="button"
+                className="p-1 text-[#abddf7]/40 opacity-0 hover:text-red-300 group-hover:opacity-100"
+                onClick={() => onDeleteChat(c)}
+              >
                 <Trash2 className="h-3 w-3" />
               </button>
             </div>
@@ -367,11 +426,20 @@ function JarvisWorkspace() {
         )}
         {projectFiles.length > 0 ? (
           <>
-            <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">File</p>
+            <p className="mb-1.5 mt-4 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#abddf7]/40">
+              File
+            </p>
             {projectFiles.map((f) => (
-              <div key={f.id} className="group flex items-center gap-1 px-2 py-1 text-[11px] text-[#abddf7]/60">
+              <div
+                key={f.id}
+                className="group flex items-center gap-1 px-2 py-1 text-[11px] text-[#abddf7]/60"
+              >
                 <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                <button type="button" className="opacity-0 group-hover:opacity-100 hover:text-red-300" onClick={() => persist(deleteFile(store, f.id))}>
+                <button
+                  type="button"
+                  className="opacity-0 group-hover:opacity-100 hover:text-red-300"
+                  onClick={() => persist(deleteFile(store, f.id))}
+                >
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
@@ -402,12 +470,20 @@ function JarvisWorkspace() {
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-[#abddf7]/10 bg-[#05070c]/50 px-3 py-2.5 backdrop-blur-xl sm:px-4">
-          <button type="button" className="rounded-xl border border-[#abddf7]/20 p-2 text-[#abddf7] md:hidden" onClick={() => setSidebarOpen(true)}>
+          <button
+            type="button"
+            className="rounded-xl border border-[#abddf7]/20 p-2 text-[#abddf7] md:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
             <Menu className="h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-display text-base font-semibold text-[#e8f4fb]">
-              {panel === "neural" ? "Sistema neurale" : panel === "connectors" ? "Connettori" : activeChat?.title || "JARVIS"}
+              {panel === "neural"
+                ? "Sistema neurale"
+                : panel === "connectors"
+                  ? "Connettori"
+                  : activeChat?.title || "JARVIS"}
             </h1>
             <p className="truncate text-[11px] text-[#abddf7]/50">Workspace · agente locale</p>
           </div>
@@ -441,7 +517,10 @@ function JarvisWorkspace() {
             <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
               <div className="mx-auto max-w-3xl space-y-3">
                 {(activeChat?.messages ?? []).map((m) => (
-                  <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    key={m.id}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
                     <div
                       className={`max-w-[90%] rounded-2xl px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap ${
                         m.role === "user"
@@ -526,10 +605,20 @@ function JarvisWorkspace() {
                       e.target.value = "";
                     }}
                   />
-                  <button type="button" onClick={() => fileRef.current?.click()} className="rounded-xl p-2 text-[#abddf7]/50 hover:bg-white/[0.04]" title="Allega">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="rounded-xl p-2 text-[#abddf7]/50 hover:bg-white/[0.04]"
+                    title="Allega"
+                  >
                     <Paperclip className="h-4 w-4" />
                   </button>
-                  <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`rounded-xl p-2 ${listening ? "text-[#abddf7]" : "text-[#abddf7]/50"} disabled:opacity-30`}>
+                  <button
+                    type="button"
+                    onClick={toggleVoice}
+                    disabled={!voiceSupported}
+                    className={`rounded-xl p-2 ${listening ? "text-[#abddf7]" : "text-[#abddf7]/50"} disabled:opacity-30`}
+                  >
                     {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </button>
                   <button
@@ -553,7 +642,9 @@ function JarvisWorkspace() {
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-center text-[10px] text-[#abddf7]/30">Dati privati · tool solo workspace locale</p>
+              <p className="mt-2 text-center text-[10px] text-[#abddf7]/30">
+                Dati privati · tool solo workspace locale
+              </p>
             </div>
           </>
         )}

@@ -65,6 +65,13 @@ export const AGENT_SECTIONS = [
     group: "core" as const,
   },
   {
+    id: "customize",
+    to: "/customize" as const,
+    title: "Personalizza",
+    blurb: "Skill, plugin e connettori del tuo agente",
+    group: "core" as const,
+  },
+  {
     id: "code",
     to: "/code" as const,
     title: "Codice",

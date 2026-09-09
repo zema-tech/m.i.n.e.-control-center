@@ -21,12 +21,12 @@ export const SECTIONS: SectionDef[] = [
     id: "jarvis",
     title: "J.A.R.V.I.S",
     tagline: "IA principale",
-    description:
-      "Orchestratore Omnicore: workspace chat, cervello e connettori. Azzurro e nero.",
+    description: "Orchestratore Omnicore: workspace chat, cervello e connettori. Azzurro e nero.",
     colors: "Azzurro · Nero",
     href: "/jarvis",
     links: [
       { label: "Workspace", to: "/jarvis" },
+      { label: "Personalizza", to: "/customize" },
       { label: "Brain", to: "/agent" },
       { label: "Connettori", to: "/connectors" },
     ],
@@ -35,8 +35,7 @@ export const SECTIONS: SectionDef[] = [
     id: "mine",
     title: "M.I.N.E",
     tagline: "Gaming & host",
-    description:
-      "Server Minecraft/Falix, rete, log, power e host. Verde matrix e nero.",
+    description: "Server Minecraft/Falix, rete, log, power e host. Verde matrix e nero.",
     colors: "Verde · Nero",
     href: "/mine",
     links: [
@@ -50,8 +49,7 @@ export const SECTIONS: SectionDef[] = [
     id: "design",
     title: "A.R.T",
     tagline: "Design system",
-    description:
-      "Identità visiva, palette, tipografia, motion e componenti. Violetto e oro.",
+    description: "Identità visiva, palette, tipografia, motion e componenti. Violetto e oro.",
     colors: "Violetto · Oro",
     href: "/design",
     links: [{ label: "Studio design", to: "/design" }],
@@ -60,8 +58,7 @@ export const SECTIONS: SectionDef[] = [
     id: "code",
     title: "P.R.O.M.P.T",
     tagline: "Coding agent",
-    description:
-      "Code, Architect, Debug, Review — stile agentic coding. Blu scuro e nero.",
+    description: "Code, Architect, Debug, Review — stile agentic coding. Blu scuro e nero.",
     colors: "Blu scuro · Nero",
     href: "/code",
     links: [{ label: "Workspace codice", to: "/code" }],

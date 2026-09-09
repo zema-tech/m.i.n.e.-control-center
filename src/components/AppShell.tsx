@@ -9,29 +9,25 @@ import {
   Menu,
   Network,
   Palette,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AccountSelector } from "@/components/AccountSelector";
 import { SectionBackdrop } from "@/components/SectionTheme";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { loadAgentProfile } from "@/lib/agent-profile";
 import { getAuthState, logout } from "@/lib/auth.functions";
 import type { Permission } from "@/lib/auth.permissions";
 import { sectionFromPath } from "@/lib/section-themes";
 
-type NavTo = "/home" | "/jarvis" | "/mine" | "/design" | "/code" | "/access";
+type NavTo = "/home" | "/jarvis" | "/customize" | "/mine" | "/design" | "/code" | "/access";
 
 const NAV_ITEMS: { to: NavTo; label: string; icon: typeof LayoutGrid; perm: Permission }[] = [
   { to: "/home", label: "Hub", icon: LayoutGrid, perm: "home" },
   { to: "/jarvis", label: "JARVIS", icon: Sparkles, perm: "jarvis" },
+  { to: "/customize", label: "Personalizza", icon: SlidersHorizontal, perm: "jarvis" },
   { to: "/mine", label: "M.I.N.E", icon: Network, perm: "mine" },
   { to: "/design", label: "A.R.T", icon: Palette, perm: "design" },
   { to: "/code", label: "P.R.O.M.P.T", icon: Code2, perm: "code" },

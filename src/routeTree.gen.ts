@@ -15,6 +15,7 @@ import { Route as AgentRouteImport } from './routes/agent'
 import { Route as CodeRouteImport } from './routes/code'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as CoworkRouteImport } from './routes/cowork'
+import { Route as CustomizeRouteImport } from './routes/customize'
 import { Route as DesignRouteImport } from './routes/design'
 import { Route as GatewayRouteImport } from './routes/gateway'
 import { Route as HomeRouteImport } from './routes/home'
@@ -58,6 +59,11 @@ const ConnectorsRoute = ConnectorsRouteImport.update({
 const CoworkRoute = CoworkRouteImport.update({
   id: '/cowork',
   path: '/cowork',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomizeRoute = CustomizeRouteImport.update({
+  id: '/customize',
+  path: '/customize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignRoute = DesignRouteImport.update({
@@ -138,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/cowork': typeof CoworkRoute
+  '/customize': typeof CustomizeRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/cowork': typeof CoworkRoute
+  '/customize': typeof CustomizeRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/code': typeof CodeRoute
   '/connectors': typeof ConnectorsRoute
   '/cowork': typeof CoworkRoute
+  '/customize': typeof CustomizeRoute
   '/design': typeof DesignRoute
   '/gateway': typeof GatewayRoute
   '/home': typeof HomeRoute
@@ -207,6 +216,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/cowork'
+    | '/customize'
     | '/design'
     | '/gateway'
     | '/home'
@@ -229,6 +239,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/cowork'
+    | '/customize'
     | '/design'
     | '/gateway'
     | '/home'
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/code'
     | '/connectors'
     | '/cowork'
+    | '/customize'
     | '/design'
     | '/gateway'
     | '/home'
@@ -274,6 +286,7 @@ export interface RootRouteChildren {
   CodeRoute: typeof CodeRoute
   ConnectorsRoute: typeof ConnectorsRoute
   CoworkRoute: typeof CoworkRoute
+  CustomizeRoute: typeof CustomizeRoute
   DesignRoute: typeof DesignRoute
   GatewayRoute: typeof GatewayRoute
   HomeRoute: typeof HomeRoute
@@ -332,6 +345,13 @@ declare module '@tanstack/react-router' {
       path: '/cowork'
       fullPath: '/cowork'
       preLoaderRoute: typeof CoworkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/customize': {
+      id: '/customize'
+      path: '/customize'
+      fullPath: '/customize'
+      preLoaderRoute: typeof CustomizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design': {
@@ -442,6 +462,7 @@ const rootRouteChildren: RootRouteChildren = {
   CodeRoute: CodeRoute,
   ConnectorsRoute: ConnectorsRoute,
   CoworkRoute: CoworkRoute,
+  CustomizeRoute: CustomizeRoute,
   DesignRoute: DesignRoute,
   GatewayRoute: GatewayRoute,
   HomeRoute: HomeRoute,
