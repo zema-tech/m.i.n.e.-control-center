@@ -49,12 +49,12 @@ const permissionSchema = z.enum(
   ALL_PERMISSIONS as unknown as [Permission, ...Permission[]],
 );
 
+/** Cookie di sessione: HttpOnly + Secure + SameSite=Lax (control center personale). */
 function cookieOpts(maxAge = 60 * 60 * 24) {
   return {
     httpOnly: true,
     secure: true,
-    sameSite: "none" as const,
-    partitioned: true,
+    sameSite: "lax" as const,
     path: "/",
     maxAge,
   };
@@ -169,8 +169,7 @@ export const logout = createServerFn({ method: "POST" }).handler(async () => {
   deleteCookie(sessionCookieName, {
     path: "/",
     secure: true,
-    sameSite: "none",
-    partitioned: true,
+    sameSite: "lax",
   });
   logAction("info", "Sessione terminata");
   return { ok: true as const };

@@ -24,6 +24,8 @@ const COOKIE_NAME = "mine_session";
 const TOKEN_TTL = "24h";
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 15 * 60 * 1000;
+/** Cost factor for new password hashes (bcrypt). */
+const BCRYPT_COST = 12;
 
 type Attempt = { count: number; lockedUntil: number };
 const attempts = new Map<string, Attempt>();
@@ -172,7 +174,7 @@ export async function createTempPassword(opts: {
   pruneExpired();
   const id = randomBytes(8).toString("hex");
   const password = randomBytes(9).toString("base64url");
-  const hash = await bcrypt.hash(password, 10);
+  const hash = await bcrypt.hash(password, BCRYPT_COST);
   const createdAt = Date.now();
   const expiresAt = createdAt + opts.durationMs;
   const maxUses = opts.maxUses ?? null;
@@ -255,14 +257,23 @@ export type AuthMatch =
   | { kind: "member"; id: string; label: string; permissions: Permission[] }
   | null;
 
+/**
+ * Verifica password admin (env), membri registrati e password temporanee.
+ * MINE_PASSWORD_HASH deve essere un hash bcrypt ($2a$ / $2b$).
+ * In non-produzione è tollerato un confronto plaintext solo se il valore non è bcrypt (legacy).
+ */
 export async function matchPassword(password: string): Promise<AuthMatch> {
   const hash = process.env["MINE_PASSWORD_HASH"];
   if (hash) {
     try {
       if (hash.startsWith("$2")) {
         if (await bcrypt.compare(password, hash)) return { kind: "admin" };
-      } else {
-        if (await bcrypt.compare(password, await bcrypt.hash(hash, 10))) {
+      } else if (process.env.NODE_ENV !== "production") {
+        // Legacy plaintext — solo fuori produzione; genera sempre un hash bcrypt in prod.
+        if (password === hash) {
+          console.warn(
+            "[auth] MINE_PASSWORD_HASH è in chiaro. Genera un hash bcrypt e aggiorna l'env.",
+          );
           return { kind: "admin" };
         }
       }
@@ -316,7 +327,7 @@ export async function registerMemberFromGuest(opts: {
     throw new Error("Password troppo corta (min 8)");
   }
   const id = randomBytes(8).toString("hex");
-  const hash = await bcrypt.hash(opts.password, 10);
+  const hash = await bcrypt.hash(opts.password, BCRYPT_COST);
   const permissions = normalizePermissions(opts.permissions).filter((p) => p !== "access");
   registeredUsers.set(id, {
     id,
@@ -349,7 +360,10 @@ export async function readSession(token: string | undefined): Promise<SessionCla
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    const role = (payload.role as SessionRole) || "admin";
+    // Default sicuro: guest, non admin, se il claim manca o è invalido.
+    const rawRole = payload.role as string | undefined;
+    const role: SessionRole =
+      rawRole === "admin" || rawRole === "member" || rawRole === "guest" ? rawRole : "guest";
     const permissions =
       role === "admin"
         ? ([...ALL_PERMISSIONS] as Permission[])
@@ -369,6 +383,16 @@ export async function readSession(token: string | undefined): Promise<SessionCla
 
 export async function isValidToken(token: string | undefined): Promise<boolean> {
   return (await readSession(token)) !== null;
+}
+
+/** True se la sessione ha almeno uno dei permessi richiesti (admin ha tutto). */
+export function sessionHasPermission(
+  session: SessionClaims,
+  required: Permission | Permission[],
+): boolean {
+  if (session.role === "admin") return true;
+  const list = Array.isArray(required) ? required : [required];
+  return list.some((p) => session.permissions.includes(p));
 }
 
 export function pathAllowed(pathname: string, session: SessionClaims | null): boolean {

@@ -2,7 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
-import { isValidToken, logAction, sessionCookieName } from "./auth.server";
+import {
+  logAction,
+  readSession,
+  sessionCookieName,
+  sessionHasPermission,
+  type Permission,
+  type SessionClaims,
+} from "./auth.server";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./groq-models";
 
 const credSchema = z
@@ -20,15 +27,34 @@ const storageCredSchema = z.object({
   baseUrl: z.string().max(500).optional(),
 });
 
-async function requireAdmin() {
-  if (!(await isValidToken(getCookie(sessionCookieName)))) {
+/**
+ * Carica la sessione e verifica autenticazione + permessi.
+ * - adminOnly: solo ruolo admin
+ * - permissions: almeno uno dei permessi elencati (admin bypassa)
+ */
+async function requireSession(opts?: {
+  adminOnly?: boolean;
+  permissions?: Permission[];
+}): Promise<SessionClaims> {
+  const session = await readSession(getCookie(sessionCookieName));
+  if (!session) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
   }
+  if (session.mustSetPassword) {
+    throw new Error("Completa il setup della password prima di continuare.");
+  }
+  if (opts?.adminOnly && session.role !== "admin") {
+    throw new Error("Solo l'amministratore può eseguire questa operazione.");
+  }
+  if (opts?.permissions?.length && !sessionHasPermission(session, opts.permissions)) {
+    throw new Error("Permesso insufficiente per questa operazione.");
+  }
+  return session;
 }
 
 /** Stato env (senza rivelare secret). */
 export const getSystemHealth = createServerFn({ method: "GET" }).handler(async () => {
-  await requireAdmin();
+  await requireSession({ adminOnly: true });
   const { getSystemHealth: run } = await import("./system-health.server");
   return run();
 });
@@ -42,7 +68,7 @@ export const getLogs = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["console", "mine"] });
     const { fetchServerLogs } = await import("./falix.server");
     try {
       return { ok: true as const, ...(await fetchServerLogs(data.credentials ?? null)) };
@@ -63,7 +89,7 @@ export const runCommand = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["console"] });
     const { sendServerCommand } = await import("./falix.server");
     try {
       return { ok: true as const, ...(await sendServerCommand(data.command, data.credentials)) };
@@ -84,7 +110,7 @@ export const powerAction = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["power"] });
     const { sendPowerAction } = await import("./falix.server");
     try {
       return { ok: true as const, ...(await sendPowerAction(data.signal, data.credentials)) };
@@ -107,7 +133,7 @@ export const testAccountConnection = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["hosts", "connectors"] });
     const provider = data.provider ?? "falix";
 
     if (provider === "mega" || provider === "gdrive") {
@@ -157,7 +183,7 @@ export const analyzeNetwork = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["network"] });
     const { analyzeNetworkWithGroq } = await import("./neural.server");
     const res = await analyzeNetworkWithGroq(data);
     logAction(res.ok ? "info" : "warn", `Analisi neurale: ${data.serverLabel}`);
@@ -174,7 +200,7 @@ export const researchHost = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["hosts"] });
     const { researchHostProvider } = await import("./host-research.server");
     try {
       const res = await researchHostProvider({
@@ -213,14 +239,12 @@ export const askAssistant = createServerFn({ method: "POST" })
         accountLabel: z.string().max(80).optional(),
         brainContext: z.string().max(12000).optional(),
         swarmMode: z.enum(["auto", "rapido", "swarm", "deep"]).optional(),
-
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["assistant", "jarvis", "mine"] });
     const { fetchServerLogs } = await import("./falix.server");
-    
 
     let logContext = "";
     let logDemo = true;
@@ -288,7 +312,6 @@ export const askAssistant = createServerFn({ method: "POST" })
     }
   });
 
-
 export const askCodeAgent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -311,7 +334,7 @@ export const askCodeAgent = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["code"] });
     const { askCodeAgent: run } = await import("./code.server");
     try {
       const reply = await run({
@@ -354,7 +377,7 @@ export const runOneHand = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["connectors", "jarvis"] });
     const { runOneHand: run } = await import("./one-hands.server");
     const res = await run(data.tool, data.params, data.approved);
     logAction(res.ok ? "info" : "warn", `One hand ${data.tool}: ${res.output.slice(0, 120)}`);
@@ -375,7 +398,7 @@ export const runFalixAction = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["power", "console", "mine"] });
     const { getAction } = await import("./falix-actions");
     const def = getAction(data.id);
     if (!def) return { ok: false as const, demo: false, output: `Azione sconosciuta: ${data.id}` };
@@ -423,7 +446,7 @@ export const runStorageAction = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireSession({ permissions: ["connectors", "hosts"] });
     const { storageStatus, registerUploadNote } = await import("./storage.server");
     const writeTools = new Set([
       "mega_upload_note",
