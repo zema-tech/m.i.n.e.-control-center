@@ -2,6 +2,7 @@
 import { useCallback, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { askAssistant } from "@/lib/panel.functions";
+import { mcpCallTool } from "@/lib/mcp.functions";
 import { buildBrainContextForPrompt } from "@/lib/agent-brain";
 import { type GroqModelId } from "@/lib/groq-models";
 import {
@@ -11,9 +12,10 @@ import {
   type JarvisStore,
 } from "@/lib/jarvis-workspace";
 import {
-  executePlan,
+  executePlanAsync,
   formatPlanForChat,
   jarvisAgentBrainPrompt,
+  loadGithubPat,
   parsePlanFromReply,
   shouldPreferAgentMode,
   summarizeFilesForPrompt,
@@ -29,6 +31,7 @@ export function useJarvisAgent(opts: {
   model: GroqModelId;
 }) {
   const ask = useServerFn(askAssistant);
+  const mcpCall = useServerFn(mcpCallTool);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentMode, setAgentMode] = useState(true);
@@ -40,10 +43,26 @@ export function useJarvisAgent(opts: {
       setBusy(true);
       setPendingPlan(null);
       try {
-        const { store: nextStore, plan: done, downloads } = executePlan(
+        const pat = loadGithubPat();
+        const { store: nextStore, plan: done, downloads } = await executePlanAsync(
           baseStore,
           plan,
           { projectId: opts.activeProjectId, chatId },
+          async ({ serverId, name, arguments: args, approved }) => {
+            const res = await mcpCall({
+              data: {
+                serverId,
+                name,
+                arguments: args,
+                approved,
+                bearerToken: pat || undefined,
+              },
+            });
+            return {
+              ok: Boolean((res as { ok?: boolean }).ok),
+              text: String((res as { text?: string }).text ?? ""),
+            };
+          },
         );
         opts.persist(nextStore);
         let msg = formatPlanForChat(done);
@@ -74,7 +93,7 @@ export function useJarvisAgent(opts: {
         setBusy(false);
       }
     },
-    [opts],
+    [opts, mcpCall],
   );
 
   async function sendMessage(text: string) {
@@ -105,7 +124,12 @@ export function useJarvisAgent(opts: {
       buildBrainContextForPrompt(),
       project?.instructions ? `### Istruzioni progetto\n${project.instructions}` : "",
       fileCtx ? `### Contesto file\n${fileCtx}` : "",
-      useAgent ? jarvisAgentBrainPrompt(summarizeFilesForPrompt(s)) : "",
+      useAgent
+        ? jarvisAgentBrainPrompt(
+            summarizeFilesForPrompt(s),
+            "- get_me, search_code, get_file_contents, list_issues, … (GitHub MCP)",
+          )
+        : "",
     ]
       .filter(Boolean)
       .join("\n\n")
