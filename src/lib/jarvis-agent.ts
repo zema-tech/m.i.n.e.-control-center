@@ -1,5 +1,6 @@
 /**
  * JARVIS Fase 1 — pianificazione autonoma + tool interni sul workspace locale.
+ * + mcp_call verso server MCP HTTP (es. GitHub) via serverFn.
  * Opera solo su localStorage isolato per account (nessun accesso disco OS).
  */
 
@@ -19,6 +20,7 @@ export type JarvisToolName =
   | "create_file"
   | "update_file"
   | "generate_csv_report"
+  | "mcp_call"
   | "think";
 
 export type JarvisPlanStep = {
@@ -53,17 +55,18 @@ const TOOL_NAMES: JarvisToolName[] = [
   "create_file",
   "update_file",
   "generate_csv_report",
+  "mcp_call",
   "think",
 ];
 
 /** Prompt da iniettare in brainContext quando Modalità Agente è attiva. */
-export function jarvisAgentBrainPrompt(fileSummary: string): string {
+export function jarvisAgentBrainPrompt(fileSummary: string, mcpHint?: string): string {
   return [
-    "### MODALITÀ AGENTE JARVIS (workspace locale)",
+    "### MODALITÀ AGENTE JARVIS (workspace locale + MCP HTTP)",
     "Sei JARVIS in modalità pianificazione. Prima di rispondere con testo libero,",
     "se il compito richiede più passi o tool, produci un PIANO strutturato.",
     "",
-    "Tool disponibili (solo workspace browser, nessun disco OS):",
+    "Tool disponibili (workspace browser, nessun disco OS):",
     "- list_files — elenca file nel progetto/chat",
     "- list_projects — elenca progetti",
     "- search_files — cerca testo nei file (args: query)",
@@ -71,14 +74,22 @@ export function jarvisAgentBrainPrompt(fileSummary: string): string {
     "- create_file — crea file testo (args: name, content)",
     "- update_file — aggiorna file esistente (args: name o id, content)",
     "- generate_csv_report — genera report CSV (args: filename, headers=col1|col2, rows=a;b||c;d)",
+    "- mcp_call — chiama tool su server MCP HTTP (args: server=github, name=<tool>, args_json={...})",
     "- think — ragionamento senza side-effect (args: note)",
+    "",
+    "MCP HTTP configurato (stile Cursor):",
+    '  servers.github = { type: "http", url: "https://api.githubcopilot.com/mcp/" }',
+    "Per GitHub: mcp_call | server=github | name=get_me | desc=Chi sono su GitHub",
+    "oppure name=search_code | args_json={\"query\":\"repo:owner/name\"}",
+    mcpHint ? `Tool MCP noti:\n${mcpHint}` : "(lista tool: usa mcp_call dopo list lato server)",
     "",
     "Formato obbligatorio se usi tool (includilo nella risposta testuale):",
     "```piano",
     "GOAL: <obiettivo in una riga>",
     "CONFIRM: yes|no",
     "1. tool=search_files | query=fattura | desc=Cerca riferimenti fatture",
-    "2. tool=generate_csv_report | filename=report.csv | headers=Data|Importo|Voce | rows=2026-01-01;12.50;Pranzo||2026-01-02;30;Taxi | desc=Report spese",
+    "2. tool=mcp_call | server=github | name=get_me | desc=Profilo GitHub autenticato",
+    "3. tool=generate_csv_report | filename=report.csv | headers=Data|Importo|Voce | rows=2026-01-01;12.50;Pranzo | desc=Report",
     "```",
     "Poi spiega all'utente in italiano cosa farai.",
     "Se la richiesta è banale (saluto, domanda teorica), NON usare il blocco piano.",
@@ -147,6 +158,8 @@ export function parsePlanFromReply(text: string): JarvisPlan | null {
   }
 
   if (steps.length === 0) return null;
+  // mcp_call di scrittura → conferma
+  if (steps.some((s) => s.tool === "mcp_call")) needsConfirm = true;
   return { goal, steps, needsConfirm };
 }
 
@@ -167,6 +180,13 @@ export function runJarvisTool(
     switch (tool) {
       case "think":
         return { ok: true, message: args.note || args.content || "(ok)" };
+
+      case "mcp_call":
+        // Eseguito async dal hook via serverFn mcpCallTool
+        return {
+          ok: false,
+          message: "mcp_call va eseguito dal client (serverFn) — non usare runJarvisTool sync.",
+        };
 
       case "list_projects": {
         if (store.projects.length === 0) return { ok: true, message: "Nessun progetto." };
@@ -296,18 +316,33 @@ export function runJarvisTool(
   }
 }
 
-/** Esegue tutti gli step in sequenza; aggiorna status in-place su copia del piano. */
+/** Esegue step locali in sequenza. Gli step mcp_call restano pending (li gestisce il hook). */
 export function executePlan(
   store: JarvisStore,
   plan: JarvisPlan,
   ctx?: { projectId?: string | null; chatId?: string | null },
   onStep?: (step: JarvisPlanStep, index: number) => void,
-): { store: JarvisStore; plan: JarvisPlan; downloads: NonNullable<ToolRunResult["download"]>[] } {
+  mcpRunner?: (step: JarvisPlanStep) => Promise<ToolRunResult>,
+): {
+  store: JarvisStore;
+  plan: JarvisPlan;
+  downloads: NonNullable<ToolRunResult["download"]>[];
+  /** true se c'erano mcp_call e mcpRunner non era fornito */
+  needsAsyncMcp: boolean;
+} {
   let s = store;
   const steps = plan.steps.map((st) => ({ ...st }));
   const downloads: NonNullable<ToolRunResult["download"]>[] = [];
+  let needsAsyncMcp = false;
 
+  // Nota: executePlan sync non aspetta mcpRunner async — il hook usa executePlanAsync
   for (let i = 0; i < steps.length; i++) {
+    if (steps[i].tool === "mcp_call") {
+      needsAsyncMcp = true;
+      steps[i] = { ...steps[i], status: "pending", result: "In attesa MCP…" };
+      onStep?.(steps[i], i);
+      continue;
+    }
     steps[i] = { ...steps[i], status: "running" };
     onStep?.(steps[i], i);
     const res = runJarvisTool(s, steps[i].tool, steps[i].args, ctx);
@@ -321,11 +356,78 @@ export function executePlan(
     onStep?.(steps[i], i);
   }
 
+  void mcpRunner;
+
   return {
     store: s,
     plan: { ...plan, steps },
     downloads,
+    needsAsyncMcp,
   };
+}
+
+/** Esecuzione completa inclusi mcp_call (async). */
+export async function executePlanAsync(
+  store: JarvisStore,
+  plan: JarvisPlan,
+  ctx: { projectId?: string | null; chatId?: string | null } | undefined,
+  mcpCall: (args: {
+    serverId: string;
+    name: string;
+    arguments: Record<string, unknown>;
+    approved: boolean;
+  }) => Promise<{ ok: boolean; text: string }>,
+): Promise<{ store: JarvisStore; plan: JarvisPlan; downloads: NonNullable<ToolRunResult["download"]>[] }> {
+  let s = store;
+  const steps = plan.steps.map((st) => ({ ...st }));
+  const downloads: NonNullable<ToolRunResult["download"]>[] = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    steps[i] = { ...steps[i], status: "running" };
+    if (steps[i].tool === "mcp_call") {
+      const serverId = steps[i].args.server || steps[i].args.serverid || "github";
+      const name = steps[i].args.name || steps[i].args.tool_name || "";
+      let argumentsObj: Record<string, unknown> = {};
+      const raw = steps[i].args.args_json || steps[i].args.arguments || steps[i].args.args || "{}";
+      try {
+        argumentsObj = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        argumentsObj = {};
+      }
+      // copia altri args stringa non riservati
+      for (const [k, v] of Object.entries(steps[i].args)) {
+        if (["server", "serverid", "name", "tool_name", "args_json", "arguments", "args"].includes(k))
+          continue;
+        if (!(k in argumentsObj)) argumentsObj[k] = v;
+      }
+      if (!name) {
+        steps[i] = { ...steps[i], status: "error", result: "mcp_call senza name" };
+        continue;
+      }
+      const res = await mcpCall({
+        serverId,
+        name,
+        arguments: argumentsObj,
+        approved: true, // già confermato dall'UI
+      });
+      steps[i] = {
+        ...steps[i],
+        status: res.ok ? "done" : "error",
+        result: res.text.slice(0, 2000),
+      };
+      continue;
+    }
+    const res = runJarvisTool(s, steps[i].tool, steps[i].args, ctx);
+    if (res.store) s = res.store;
+    if (res.download) downloads.push(res.download);
+    steps[i] = {
+      ...steps[i],
+      status: res.ok ? "done" : "error",
+      result: res.message,
+    };
+  }
+
+  return { store: s, plan: { ...plan, steps }, downloads };
 }
 
 export function formatPlanForChat(plan: JarvisPlan): string {
@@ -349,7 +451,7 @@ export function formatPlanForChat(plan: JarvisPlan): string {
   return lines.join("\n");
 }
 
-/** Heuristica: messaggio che probabilmente vuole multi-step / file / report. */
+/** Heuristica: messaggio che probabilmente vuole multi-step / file / report / github. */
 export function shouldPreferAgentMode(text: string): boolean {
   const q = text.toLowerCase();
   const keys = [
@@ -372,6 +474,32 @@ export function shouldPreferAgentMode(text: string): boolean {
     "analizza i file",
     "cerca nei file",
     "riassumi i file",
+    "github",
+    "pull request",
+    "issue",
+    "repository",
+    "repo ",
   ];
   return keys.some((k) => q.includes(k));
+}
+
+export const JARVIS_GITHUB_PAT_KEY = "jarvis.mcp.github.pat";
+
+export function loadGithubPat(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(JARVIS_GITHUB_PAT_KEY)?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveGithubPat(token: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (token.trim()) window.localStorage.setItem(JARVIS_GITHUB_PAT_KEY, token.trim());
+    else window.localStorage.removeItem(JARVIS_GITHUB_PAT_KEY);
+  } catch {
+    /* ignore */
+  }
 }
