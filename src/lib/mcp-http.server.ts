@@ -1,11 +1,13 @@
 /**
  * Client MCP Streamable HTTP (JSON-RPC) — solo server-side.
- * Spec: POST + Accept application/json, text/event-stream
- *
- * Usato da JARVIS per il primo server remoto: GitHub MCP.
  */
 
-import { getMcpServer, type McpServerConfig } from "./mcp-servers";
+import {
+  configFromUrl,
+  getMcpServer,
+  isValidMcpHttpUrl,
+  type McpServerConfig,
+} from "./mcp-servers";
 
 export type McpToolDef = {
   name: string;
@@ -86,8 +88,6 @@ export class McpHttpClient {
     if (cfg.type !== "http" || !cfg.url) {
       throw new Error("McpHttpClient richiede type=http e url");
     }
-    this.url = cfg.url.replace(/\/?$/, "/");
-    // GitHub endpoint is often without trailing path issues — keep as provided
     this.url = cfg.url;
     this.headers = {
       ...(cfg.headers ?? {}),
@@ -145,7 +145,6 @@ export class McpHttpClient {
       capabilities: {},
       clientInfo: { name: "mine-jarvis", version: "1.0.0" },
     });
-    // notification (no id) — best effort
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -190,23 +189,64 @@ export class McpHttpClient {
   }
 }
 
-/** Crea client per un server noto (preset) + token opzionale. */
-export function createMcpClient(
+function resolveAuth(
   serverId: string,
   opts?: { bearerToken?: string; extraHeaders?: Record<string, string> },
-): McpHttpClient {
-  const cfg = getMcpServer(serverId);
-  if (!cfg) throw new Error(`MCP server sconosciuto: ${serverId}`);
+): Record<string, string> {
   const auth: Record<string, string> = { ...(opts?.extraHeaders ?? {}) };
-  const token =
-    opts?.bearerToken?.trim() ||
-    process.env["GITHUB_PERSONAL_ACCESS_TOKEN"]?.trim() ||
-    process.env["GITHUB_MCP_TOKEN"]?.trim() ||
-    "";
-  if (token && serverId === "github") {
-    auth["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+  const token = opts?.bearerToken?.trim() || "";
+
+  if (token) {
+    if (token.includes(":") && !token.startsWith("Bearer")) {
+      const i = token.indexOf(":");
+      auth[token.slice(0, i).trim()] = token.slice(i + 1).trim();
+    } else {
+      auth["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+    }
+    return auth;
   }
-  return new McpHttpClient(cfg, auth);
+
+  if (serverId === "github") {
+    const envTok =
+      process.env["GITHUB_PERSONAL_ACCESS_TOKEN"]?.trim() ||
+      process.env["GITHUB_MCP_TOKEN"]?.trim() ||
+      "";
+    if (envTok) auth["Authorization"] = envTok.startsWith("Bearer ") ? envTok : `Bearer ${envTok}`;
+  }
+  if (serverId === "composio") {
+    const k = process.env["COMPOSIO_API_KEY"]?.trim();
+    if (k) auth["x-api-key"] = k;
+  }
+  if (serverId === "vercel") {
+    const k = process.env["VERCEL_TOKEN"]?.trim() || process.env["VERCEL_ACCESS_TOKEN"]?.trim();
+    if (k) auth["Authorization"] = k.startsWith("Bearer ") ? k : `Bearer ${k}`;
+  }
+  if (serverId === "netlify") {
+    const k = process.env["NETLIFY_AUTH_TOKEN"]?.trim();
+    if (k) auth["Authorization"] = k.startsWith("Bearer ") ? k : `Bearer ${k}`;
+  }
+  return auth;
+}
+
+/** Crea client da preset id, oppure da url custom. */
+export function createMcpClient(
+  serverId: string,
+  opts?: {
+    bearerToken?: string;
+    extraHeaders?: Record<string, string>;
+    /** Override / custom URL (MCP creato dall'utente) */
+    customUrl?: string;
+  },
+): McpHttpClient {
+  let cfg = getMcpServer(serverId);
+  if (!cfg && opts?.customUrl && isValidMcpHttpUrl(opts.customUrl)) {
+    cfg = configFromUrl(opts.customUrl);
+  }
+  if (!cfg) throw new Error(`MCP server sconosciuto: ${serverId}`);
+  if (opts?.customUrl && isValidMcpHttpUrl(opts.customUrl)) {
+    cfg = { ...cfg, url: opts.customUrl.trim() };
+  }
+  return new McpHttpClient(cfg, resolveAuth(serverId, opts));
 }
 
 export function githubMcpTokenConfigured(clientToken?: string): boolean {
@@ -215,4 +255,21 @@ export function githubMcpTokenConfigured(clientToken?: string): boolean {
       process.env["GITHUB_PERSONAL_ACCESS_TOKEN"]?.trim() ||
       process.env["GITHUB_MCP_TOKEN"]?.trim(),
   );
+}
+
+export function mcpAuthConfigured(
+  serverId: string,
+  clientToken?: string,
+): boolean {
+  if (clientToken?.trim()) return true;
+  if (serverId === "github") return githubMcpTokenConfigured();
+  if (serverId === "composio") return Boolean(process.env["COMPOSIO_API_KEY"]?.trim());
+  if (serverId === "vercel")
+    return Boolean(
+      process.env["VERCEL_TOKEN"]?.trim() || process.env["VERCEL_ACCESS_TOKEN"]?.trim(),
+    );
+  if (serverId === "netlify") return Boolean(process.env["NETLIFY_AUTH_TOKEN"]?.trim());
+  // custom: token opzionale
+  if (serverId.startsWith("custom:")) return true;
+  return true;
 }
