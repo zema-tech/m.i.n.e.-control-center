@@ -15,9 +15,14 @@ export const Route = createFileRoute("/home")({
     ],
   }),
   loader: async () => {
-    const state = await getAuthState();
-    if (!state.authenticated) throw redirect({ to: "/login" });
-    if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
+    try {
+      const state = await getAuthState();
+      if (!state.authenticated) throw redirect({ to: "/login" });
+      if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
+    } catch (e) {
+      if (e instanceof Response) throw e;
+      throw redirect({ to: "/login" });
+    }
     return null;
   },
   component: HomeHub,
@@ -30,7 +35,7 @@ function HomeHub() {
     setName(loadAgentProfile().name || "JARVIS");
   }, []);
 
-  const cards = SECTIONS.filter((s) => s.href !== "/edit");
+  const cards = SECTIONS;
 
   return (
     <AppShell title="Hub" subtitle="Scegli il contesto">

@@ -33,7 +33,11 @@ export function loadCustomMcpServers(): CustomMcpServer[] {
 
 export function saveCustomMcpServers(list: CustomMcpServer[]) {
   if (!canUse()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function addCustomMcpServer(input: {

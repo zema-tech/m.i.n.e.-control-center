@@ -92,7 +92,11 @@ export function loadCodeSessions(): CodeSession[] {
 
 export function saveCodeSessions(list: CodeSession[]) {
   if (!canUse()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, 40)));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, 40)));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function createCodeSession(mode: CodeModeId = "code"): CodeSession {

@@ -62,6 +62,7 @@ export async function askCodeAgent(input: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
+    signal: AbortSignal.timeout(90_000),
     body: JSON.stringify({
       model: chosen,
       temperature: input.mode === "architect" ? 0.3 : 0.15,
@@ -92,9 +93,14 @@ export async function askCodeAgent(input: {
     throw new Error(`Groq ${res.status}: ${text.slice(0, 280)}`);
   }
 
-  const payload = JSON.parse(text) as {
-    choices?: { message?: { content?: string } }[];
-  };
+  let payload: { choices?: { message?: { content?: string } }[] };
+  try {
+    payload = JSON.parse(text) as {
+      choices?: { message?: { content?: string } }[];
+    };
+  } catch {
+    throw new Error("Groq: risposta non JSON, riprova.");
+  }
   const content = payload.choices?.[0]?.message?.content ?? "";
 
   try {

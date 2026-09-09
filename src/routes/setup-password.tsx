@@ -1,9 +1,15 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
 
 import { getAuthState, setupOwnPassword } from "@/lib/auth.functions";
+import {
+  getPasswordChecks,
+  passwordScore,
+  passwordScoreLabel,
+  validateNewPassword,
+} from "@/lib/password-policy";
 
 const LOGIN_BG = "https://files.catbox.moe/1prie3.jpg";
 
@@ -35,29 +41,49 @@ function SetupPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const checks = useMemo(() => getPasswordChecks(password), [password]);
+  const score = useMemo(() => passwordScore(password), [password]);
+  const validation = useMemo(() => validateNewPassword(password), [password]);
+  const match = password.length > 0 && password === confirm;
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
-    setError(null);
-    const res = await doSetup({
-      data: {
-        password,
-        confirm,
-        displayName: displayName.trim() || undefined,
-      },
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.message);
+    if (!validation.ok) {
+      setError(validation.message);
       return;
     }
-    await router.invalidate();
-    await router.navigate({ to: "/home" });
+    if (password !== confirm) {
+      setError("Le password non coincidono");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await doSetup({
+        data: {
+          password,
+          confirm,
+          displayName: displayName.trim() || undefined,
+        },
+      });
+      setBusy(false);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      await router.invalidate();
+      await router.navigate({ to: "/home" });
+    } catch {
+      setBusy(false);
+      setError("Errore di rete. Riprova.");
+    }
   }
 
-  const canSubmit =
-    password.length >= 8 && confirm.length >= 8 && password === confirm && !busy;
+  const canSubmit = validation.ok && match && !busy;
+
+  const scoreColor =
+    score <= 1 ? "bg-red-400" : score === 2 ? "bg-amber-300" : score === 3 ? "bg-lime-300" : "bg-emerald-300";
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
@@ -67,6 +93,9 @@ function SetupPasswordPage() {
           alt=""
           className="h-full w-full scale-105 object-cover object-[center_20%]"
           decoding="async"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#020617]/88 via-[#0a1628]/75 to-[#020617]/92" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_40%,rgba(56,189,248,0.16),transparent_55%)]" />
@@ -130,8 +159,8 @@ function SetupPasswordPage() {
                 autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimo 8 caratteri"
-                minLength={8}
+                placeholder="Minimo 10 caratteri, 3 tra maiuscole/minuscole/numeri/simboli"
+                minLength={10}
                 className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 pr-12 font-mono text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20"
               />
               <button
@@ -144,6 +173,48 @@ function SetupPasswordPage() {
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {password.length > 0 ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex gap-1.5">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 flex-1 rounded-full transition ${
+                        i < score ? scoreColor : "bg-white/10"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p
+                  className={`text-[12px] font-medium ${
+                    score <= 1
+                      ? "text-red-300"
+                      : score === 2
+                        ? "text-amber-200"
+                        : "text-emerald-200"
+                  }`}
+                >
+                  {passwordScoreLabel(score)}
+                </p>
+                <ul className="grid grid-cols-2 gap-1 text-[11px]">
+                  <li className={checks.length ? "text-emerald-200" : "text-white/35"}>
+                    {checks.length ? "✓" : "○"} 10+ caratteri
+                  </li>
+                  <li className={checks.upper ? "text-emerald-200" : "text-white/35"}>
+                    {checks.upper ? "✓" : "○"} Maiuscola
+                  </li>
+                  <li className={checks.lower ? "text-emerald-200" : "text-white/35"}>
+                    {checks.lower ? "✓" : "○"} Minuscola
+                  </li>
+                  <li className={checks.digit ? "text-emerald-200" : "text-white/35"}>
+                    {checks.digit ? "✓" : "○"} Numero
+                  </li>
+                  <li className={checks.symbol ? "text-emerald-200" : "text-white/35"}>
+                    {checks.symbol ? "✓" : "○"} Simbolo
+                  </li>
+                </ul>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -160,9 +231,14 @@ function SetupPasswordPage() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Ripeti la password"
-              minLength={8}
+              minLength={10}
               className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 font-mono text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20"
             />
+            {confirm.length > 0 ? (
+              <p className={`text-[12px] ${match ? "text-emerald-200" : "text-red-300"}`}>
+                {match ? "✓ Le password coincidono" : "Le password non coincidono"}
+              </p>
+            ) : null}
           </div>
 
           {error ? (

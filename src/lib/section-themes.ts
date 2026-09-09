@@ -6,13 +6,15 @@
 
 export type SectionId = "jarvis" | "mine" | "design" | "code";
 
+export type SectionHref = "/jarvis" | "/mine" | "/design" | "/code";
+
 export type SectionDef = {
   id: SectionId;
   title: string;
   tagline: string;
   description: string;
   colors: string;
-  href: string;
+  href: SectionHref;
   links: { label: string; to: string }[];
 };
 

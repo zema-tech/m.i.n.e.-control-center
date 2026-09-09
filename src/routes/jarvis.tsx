@@ -46,10 +46,15 @@ export const Route = createFileRoute("/jarvis")({
     ],
   }),
   loader: async () => {
-    const state = await getAuthState();
-    if (!state.authenticated) throw redirect({ to: "/login" });
-    if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
-    return { accountKey: state.label || state.role || "user" };
+    try {
+      const state = await getAuthState();
+      if (!state.authenticated) throw redirect({ to: "/login" });
+      if (state.mustSetPassword) throw redirect({ to: "/setup-password" });
+      return { accountKey: state.label || state.role || "user" };
+    } catch (e) {
+      if (e instanceof Response) throw e;
+      throw redirect({ to: "/login" });
+    }
   },
   component: JarvisWorkspace,
 });

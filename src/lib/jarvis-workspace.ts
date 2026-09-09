@@ -78,7 +78,11 @@ export function loadJarvisStore(accountKey: string): JarvisStore {
 
 export function saveJarvisStore(accountKey: string, store: JarvisStore) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key(accountKey), JSON.stringify(store));
+  try {
+    window.localStorage.setItem(key(accountKey), JSON.stringify(store));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 /** Importa una volta le chat legacy da mine.chats.v1 */

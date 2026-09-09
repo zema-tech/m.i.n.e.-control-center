@@ -29,15 +29,24 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
   };
 }
 
+function getProcessEnv(key: string): string | undefined {
+  try {
+    if (typeof process !== "undefined" && process.env) return process.env[key];
+  } catch {
+    /* ignore — browser senza process */
+  }
+  return undefined;
+}
+
 function readEnv() {
   const SUPABASE_URL =
     (import.meta.env?.["VITE_SUPABASE_URL"] as string | undefined) ||
-    process.env["SUPABASE_URL"] ||
-    process.env["VITE_SUPABASE_URL"];
+    getProcessEnv("SUPABASE_URL") ||
+    getProcessEnv("VITE_SUPABASE_URL");
   const SUPABASE_PUBLISHABLE_KEY =
     (import.meta.env?.["VITE_SUPABASE_PUBLISHABLE_KEY"] as string | undefined) ||
-    process.env["SUPABASE_PUBLISHABLE_KEY"] ||
-    process.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
+    getProcessEnv("SUPABASE_PUBLISHABLE_KEY") ||
+    getProcessEnv("VITE_SUPABASE_PUBLISHABLE_KEY");
   return { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY };
 }
 

@@ -103,6 +103,8 @@ export async function askGroq(
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
+    // Evita server-fn appese per sempre se Groq non risponde.
+    signal: AbortSignal.timeout(60_000),
     body: JSON.stringify({
       model: chosen,
       temperature: 0.18,
@@ -147,9 +149,14 @@ export async function askGroq(
     throw new Error(`Groq ${res.status}: ${text.slice(0, 300)}`);
   }
 
-  const payload = JSON.parse(text) as {
-    choices?: { message?: { content?: string } }[];
-  };
+  let payload: { choices?: { message?: { content?: string } }[] };
+  try {
+    payload = JSON.parse(text) as {
+      choices?: { message?: { content?: string } }[];
+    };
+  } catch {
+    throw new Error("Groq: risposta non JSON, riprova.");
+  }
   const content = payload.choices?.[0]?.message?.content ?? "";
   return parseAssistantReply(content);
 }

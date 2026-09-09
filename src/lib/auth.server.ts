@@ -22,12 +22,26 @@ export {
 
 const COOKIE_NAME = "mine_session";
 const TOKEN_TTL = "24h";
-const MAX_ATTEMPTS = 5;
-const LOCK_MS = 15 * 60 * 1000;
+/** Ban dopo troppi fallimenti in finestra breve. */
+const BAN_THRESHOLD = 10;
+const BAN_WINDOW_MS = 60 * 60 * 1000;
+const BAN_MS = 24 * 60 * 60 * 1000;
+/** Lock progressivo: fallimenti -> attesa. */
+const LOCK_STEPS: { fails: number; ms: number }[] = [
+  { fails: 3, ms: 60 * 1000 },
+  { fails: 5, ms: 5 * 60 * 1000 },
+  { fails: 7, ms: 15 * 60 * 1000 },
+];
 /** Cost factor for new password hashes (bcrypt). */
 const BCRYPT_COST = 12;
 
-type Attempt = { count: number; lockedUntil: number };
+type Attempt = {
+  count: number;
+  lockedUntil: number;
+  firstSeen: number;
+  totalFails: number;
+  banUntil: number;
+};
 const attempts = new Map<string, Attempt>();
 
 export type ActionLog = {
@@ -64,42 +78,138 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
-export function checkRateLimit(ip: string): {
+export type RateLimitStatus = {
   blocked: boolean;
+  banned: boolean;
   retryInMin: number;
   retryInSec: number;
-} {
-  const entry = attempts.get(ip);
-  if (entry && entry.lockedUntil > Date.now()) {
-    const ms = entry.lockedUntil - Date.now();
-    return {
-      blocked: true,
-      retryInMin: Math.ceil(ms / 60000),
-      retryInSec: Math.max(1, Math.ceil(ms / 1000)),
-    };
+  banInSec: number;
+  remaining: number;
+};
+
+function lockMsForFails(count: number): number {
+  let ms = 0;
+  for (const step of LOCK_STEPS) {
+    if (count >= step.fails) ms = step.ms;
   }
-  return { blocked: false, retryInMin: 0, retryInSec: 0 };
+  return ms;
 }
 
-export function registerFailure(ip: string): {
-  blocked: boolean;
-  remaining: number;
-  retryInSec: number;
-} {
-  const entry = attempts.get(ip) ?? { count: 0, lockedUntil: 0 };
-  entry.count += 1;
-  if (entry.count >= MAX_ATTEMPTS) {
-    entry.lockedUntil = Date.now() + LOCK_MS;
+export function checkRateLimit(ip: string): RateLimitStatus {
+  const now = Date.now();
+  const entry = attempts.get(ip);
+  if (entry) {
+    if (entry.banUntil > now) {
+      const ms = entry.banUntil - now;
+      return {
+        blocked: true,
+        banned: true,
+        retryInMin: Math.ceil(ms / 60000),
+        retryInSec: Math.max(1, Math.ceil(ms / 1000)),
+        banInSec: Math.max(1, Math.ceil(ms / 1000)),
+        remaining: 0,
+      };
+    }
+    if (entry.lockedUntil > now) {
+      const ms = entry.lockedUntil - now;
+      return {
+        blocked: true,
+        banned: false,
+        retryInMin: Math.ceil(ms / 60000),
+        retryInSec: Math.max(1, Math.ceil(ms / 1000)),
+        banInSec: 0,
+        remaining: 0,
+      };
+    }
+  }
+  return { blocked: false, banned: false, retryInMin: 0, retryInSec: 0, banInSec: 0, remaining: 3 };
+}
+
+export function registerFailure(ip: string): RateLimitStatus {
+  const now = Date.now();
+  const entry = attempts.get(ip) ?? {
+    count: 0,
+    lockedUntil: 0,
+    firstSeen: now,
+    totalFails: 0,
+    banUntil: 0,
+  };
+  // Reset finestra se vecchia
+  if (now - entry.firstSeen > BAN_WINDOW_MS) {
     entry.count = 0;
+    entry.totalFails = 0;
+    entry.firstSeen = now;
+  }
+  entry.count += 1;
+  entry.totalFails += 1;
+
+  // Ban: troppi fallimenti nella finestra
+  if (entry.totalFails >= BAN_THRESHOLD) {
+    entry.banUntil = now + BAN_MS;
+    entry.count = 0;
+    entry.lockedUntil = 0;
     attempts.set(ip, entry);
-    return { blocked: true, remaining: 0, retryInSec: Math.ceil(LOCK_MS / 1000) };
+    logAction("error", `IP bannato 24h per troppi tentativi: ${ip}`);
+    return {
+      blocked: true,
+      banned: true,
+      retryInMin: Math.ceil(BAN_MS / 60000),
+      retryInSec: Math.ceil(BAN_MS / 1000),
+      banInSec: Math.ceil(BAN_MS / 1000),
+      remaining: 0,
+    };
+  }
+
+  const lockMs = lockMsForFails(entry.count);
+  if (lockMs > 0) {
+    entry.lockedUntil = now + lockMs;
+    attempts.set(ip, entry);
+    logAction("warn", `Lock login ${Math.round(lockMs / 1000)}s per ${ip} (${entry.count} errori)`);
+    return {
+      blocked: true,
+      banned: false,
+      retryInMin: Math.ceil(lockMs / 60000),
+      retryInSec: Math.ceil(lockMs / 1000),
+      banInSec: 0,
+      remaining: 0,
+    };
   }
   attempts.set(ip, entry);
-  return { blocked: false, remaining: MAX_ATTEMPTS - entry.count, retryInSec: 0 };
+  const nextStep = LOCK_STEPS.find((s) => s.fails > entry.count);
+  const remaining = nextStep ? nextStep.fails - entry.count : 1;
+  return {
+    blocked: false,
+    banned: false,
+    retryInMin: 0,
+    retryInSec: 0,
+    banInSec: 0,
+    remaining,
+  };
 }
 
 export function clearFailures(ip: string) {
   attempts.delete(ip);
+}
+
+/**
+ * Anti-bot: honeypot + tempo minimo di compilazione.
+ * Il client invia `website` (deve restare vuoto) e `startedAt` (ms epoch
+ * di quando il form è stato mostrato). I bot compilano in <1s o riempiono tutto.
+ */
+export function checkBotSignals(input: {
+  honeypot?: string | null;
+  startedAt?: number | null;
+}): { ok: boolean; reason: string } {
+  if (input.honeypot && input.honeypot.trim().length > 0) {
+    return { ok: false, reason: "bot" };
+  }
+  const started = typeof input.startedAt === "number" ? input.startedAt : NaN;
+  if (!Number.isFinite(started)) return { ok: false, reason: "bot" };
+  const elapsed = Date.now() - started;
+  // Compilazione umana minima 1.5s; tolleranza max 30min (form lasciato aperto)
+  if (elapsed < 1500) return { ok: false, reason: "too-fast" };
+  if (elapsed > 30 * 60 * 1000) return { ok: false, reason: "stale" };
+  return { ok: true, reason: "" };
 }
 
 export type TempPasswordIcon =
@@ -323,8 +433,13 @@ export async function registerMemberFromGuest(opts: {
   permissions: Permission[];
   fromTempId?: string;
 }): Promise<{ id: string; label: string }> {
-  if (opts.password.length < 8) {
-    throw new Error("Password troppo corta (min 8)");
+  const { validateNewPassword, PASSWORD_MIN_LENGTH } = await import("./password-policy");
+  const check = validateNewPassword(opts.password);
+  if (!check.ok) {
+    throw new Error(check.message);
+  }
+  if (opts.password.length < PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password troppo corta (min ${PASSWORD_MIN_LENGTH})`);
   }
   const id = randomBytes(8).toString("hex");
   const hash = await bcrypt.hash(opts.password, BCRYPT_COST);

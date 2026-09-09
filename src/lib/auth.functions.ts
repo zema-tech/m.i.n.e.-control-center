@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   ALL_PERMISSIONS,
+  checkBotSignals,
   checkRateLimit,
   clearFailures,
   createTempPassword,
@@ -62,7 +63,14 @@ function cookieOpts(maxAge = 60 * 60 * 24) {
 
 export const login = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ password: z.string().min(1).max(200) }).parse(input),
+    z
+      .object({
+        password: z.string().min(1).max(200),
+        // Anti-bot: honeypot deve restare vuoto, startedAt = ms quando il form è apparso
+        honeypot: z.string().max(100).optional().default(""),
+        startedAt: z.number().int().positive().max(Date.now() + 60_000).optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     const ip = getRequestIP({ xForwardedFor: true }) ?? "unknown";
@@ -70,10 +78,31 @@ export const login = createServerFn({ method: "POST" })
     if (limit.blocked) {
       return {
         ok: false as const,
-        message: `Accesso in pausa. Riprova tra ${limit.retryInMin} min.`,
+        message: limit.banned
+          ? `IP bannato per troppi tentativi. Riprova tra ${limit.retryInMin} min.`
+          : `Accesso in pausa. Riprova tra ${limit.retryInMin} min.`,
         blocked: true as const,
+        banned: limit.banned,
         retryInSec: limit.retryInSec,
+        banInSec: limit.banInSec,
         remaining: 0,
+        mustSetPassword: false as const,
+      };
+    }
+
+    // Anti-bot silenzioso: conta come fallimento, messaggio generico per non dare indizi
+    const bot = checkBotSignals({ honeypot: data.honeypot, startedAt: data.startedAt });
+    if (!bot.ok) {
+      const fail = registerFailure(ip);
+      logAction("warn", `Blocco anti-bot (${bot.reason}) da ${ip}`);
+      return {
+        ok: false as const,
+        message: "Richiesta non valida. Ricarica la pagina e riprova.",
+        blocked: fail.blocked,
+        banned: fail.banned,
+        retryInSec: fail.retryInSec,
+        banInSec: fail.banInSec,
+        remaining: fail.remaining,
         mustSetPassword: false as const,
       };
     }
@@ -86,7 +115,9 @@ export const login = createServerFn({ method: "POST" })
         ok: false as const,
         message: "Password non ancora configurata sul server.",
         blocked: false as const,
+        banned: false as const,
         retryInSec: 0,
+        banInSec: 0,
         remaining: null as number | null,
         mustSetPassword: false as const,
       };
@@ -98,9 +129,13 @@ export const login = createServerFn({ method: "POST" })
       if (fail.blocked) {
         return {
           ok: false as const,
-          message: "Troppi tentativi. Accesso in pausa per 15 minuti.",
+          message: fail.banned
+            ? "Troppi tentativi. IP bannato per 24h."
+            : `Troppi tentativi. Accesso in pausa (${Math.max(1, Math.round(fail.retryInSec / 60))} min).`,
           blocked: true as const,
+          banned: fail.banned,
           retryInSec: fail.retryInSec,
+          banInSec: fail.banInSec,
           remaining: 0,
           mustSetPassword: false as const,
         };
@@ -109,10 +144,12 @@ export const login = createServerFn({ method: "POST" })
         ok: false as const,
         message:
           fail.remaining === 1
-            ? "Password non corretta. Ultimo tentativo disponibile."
+            ? "Password non corretta. Ultimo tentativo prima del blocco."
             : `Password non corretta. Tentativi rimasti: ${fail.remaining}`,
         blocked: false as const,
+        banned: false as const,
         retryInSec: 0,
+        banInSec: 0,
         remaining: fail.remaining,
         mustSetPassword: false as const,
       };
@@ -158,7 +195,9 @@ export const login = createServerFn({ method: "POST" })
         ? "Accesso ospite: crea la tua password"
         : "Accesso consentito",
       blocked: false as const,
+      banned: false as const,
       retryInSec: 0,
+      banInSec: 0,
       remaining: null as number | null,
       mustSetPassword: claims.mustSetPassword,
       role: claims.role,
@@ -199,8 +238,8 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        password: z.string().min(8).max(200),
-        confirm: z.string().min(8).max(200),
+        password: z.string().min(10).max(200),
+        confirm: z.string().min(10).max(200),
         displayName: z.string().max(80).optional(),
       })
       .parse(input),
@@ -216,17 +255,24 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
     if (data.password !== data.confirm) {
       return { ok: false as const, message: "Le password non coincidono" };
     }
-    if (data.password.length < 8) {
-      return { ok: false as const, message: "Minimo 8 caratteri" };
+    const { validateNewPassword } = await import("./password-policy");
+    const check = validateNewPassword(data.password);
+    if (!check.ok) {
+      return { ok: false as const, message: check.message };
     }
 
     const label = (data.displayName?.trim() || session.label || "Membro").slice(0, 80);
-    const registered = await registerMemberFromGuest({
-      label,
-      password: data.password,
-      permissions: session.permissions,
-      fromTempId: session.tempId,
-    });
+    let registered: { id: string; label: string };
+    try {
+      registered = await registerMemberFromGuest({
+        label,
+        password: data.password,
+        permissions: session.permissions,
+        fromTempId: session.tempId,
+      });
+    } catch (e) {
+      return { ok: false as const, message: e instanceof Error ? e.message : "Password non valida" };
+    }
 
     const claims: SessionClaims = {
       role: "member",

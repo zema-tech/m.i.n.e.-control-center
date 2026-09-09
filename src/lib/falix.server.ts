@@ -53,6 +53,7 @@ async function falixFetch(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(15_000),
     ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
   const text = await res.text();
@@ -227,6 +228,7 @@ async function statusFromFalix(cfg: FalixConfig): Promise<LiveStatus> {
 async function statusFromMcStatus(address: string): Promise<LiveStatus> {
   const res = await fetch(`https://api.mcstatus.io/v2/status/java/${encodeURIComponent(address)}`, {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Query Minecraft ${res.status}`);
   const data = (await res.json()) as {

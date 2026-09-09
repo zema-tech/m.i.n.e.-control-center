@@ -63,10 +63,15 @@ export async function callModel(
       });
       const text = await res.text();
       if (!res.ok) throw new Error(`Bytez ${res.status}: ${text.slice(0, 200)}`);
-      const payload = JSON.parse(text) as {
-        output?: string | { content?: string };
-        error?: string;
-      };
+      let payload: { output?: string | { content?: string }; error?: string };
+      try {
+        payload = JSON.parse(text) as {
+          output?: string | { content?: string };
+          error?: string;
+        };
+      } catch {
+        throw new Error("Bytez: risposta non JSON.");
+      }
       if (payload.error) throw new Error(`Bytez: ${payload.error}`);
       const out = payload.output;
       return (typeof out === "string" ? out : out?.content) ?? "";
@@ -102,9 +107,14 @@ export async function callModel(
       if (res.status === 401) throw new Error(`${provider}: chiave API non valida.`);
       throw new Error(`${provider} ${res.status}: ${text.slice(0, 220)}`);
     }
-    const payload = JSON.parse(text) as {
-      choices?: { message?: { content?: string; reasoning?: string } }[];
-    };
+    let payload: { choices?: { message?: { content?: string; reasoning?: string } }[] };
+    try {
+      payload = JSON.parse(text) as {
+        choices?: { message?: { content?: string; reasoning?: string } }[];
+      };
+    } catch {
+      throw new Error(`${provider}: risposta non JSON.`);
+    }
     return payload.choices?.[0]?.message?.content?.trim() ?? "";
   } finally {
     clearTimeout(timer);

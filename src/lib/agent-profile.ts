@@ -50,7 +50,11 @@ export function saveAgentProfile(patch: Partial<AgentProfile>): AgentProfile {
     updatedAt: Date.now(),
   };
   if (canUseStorage()) {
-    window.localStorage.setItem(KEY, JSON.stringify(next));
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
   }
   return next;
 }

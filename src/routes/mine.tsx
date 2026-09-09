@@ -10,8 +10,13 @@ export const Route = createFileRoute("/mine")({
     meta: [{ title: "M.I.N.E — Host Minecraft" }],
   }),
   loader: async () => {
-    const state = await getAuthState();
-    if (!state.authenticated) throw redirect({ to: "/login" });
+    try {
+      const state = await getAuthState();
+      if (!state.authenticated) throw redirect({ to: "/login" });
+    } catch (e) {
+      if (e instanceof Response) throw e;
+      throw redirect({ to: "/login" });
+    }
     return null;
   },
   component: MineSection,

@@ -43,21 +43,35 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
   const [lockSec, setLockSec] = useState(0);
+  const [banSec, setBanSec] = useState(0);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  // Anti-bot: honeypot invisibile + timestamp di apertura form
+  const [honeypot, setHoneypot] = useState("");
+  const startedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    startedAtRef.current = Date.now();
+  }, []);
 
   useEffect(() => {
     if (lockSec <= 0) return;
     const t = window.setInterval(() => {
-      setLockSec((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(t);
-          setError(null);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setLockSec((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => window.clearInterval(t);
-  }, [lockSec > 0]);
+  }, [lockSec]);
+
+  useEffect(() => {
+    if (banSec <= 0) return;
+    const t = window.setInterval(() => {
+      setBanSec((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [banSec]);
+
+  useEffect(() => {
+    if (lockSec === 0 && banSec === 0) setError(null);
+  }, [lockSec, banSec]);
 
   function triggerShake() {
     setShake(true);
@@ -66,29 +80,44 @@ function LoginPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (lockSec > 0 || busy) return;
+    if (lockSec > 0 || banSec > 0 || busy) return;
     setBusy(true);
     setError(null);
-    const res = await doLogin({ data: { password } });
-    setBusy(false);
-    if (res.ok) {
-      await router.invalidate();
-      if (res.mustSetPassword) {
-        await router.navigate({ to: "/setup-password" });
-      } else {
-        await router.navigate({ to: "/home" });
+    try {
+      const res = await doLogin({
+        data: { password, honeypot, startedAt: startedAtRef.current },
+      });
+      setBusy(false);
+      if (res.ok) {
+        await router.invalidate();
+        if (res.mustSetPassword) {
+          await router.navigate({ to: "/setup-password" });
+        } else {
+          await router.navigate({ to: "/home" });
+        }
+        return;
       }
-      return;
-    }
-    triggerShake();
-    setError(res.message);
-    setPassword("");
-    if (res.blocked && res.retryInSec > 0) {
-      setLockSec(res.retryInSec);
+      triggerShake();
+      setError(res.message);
+      setPassword("");
+      const banned = "banned" in res && res.banned;
+      if (banned && "banInSec" in res && res.banInSec > 0) {
+        setBanSec(res.banInSec);
+      } else if (res.blocked && res.retryInSec > 0) {
+        setLockSec(res.retryInSec);
+      }
+      if ("remaining" in res && typeof res.remaining === "number") {
+        setRemaining(res.remaining);
+      }
+    } catch {
+      setBusy(false);
+      setError("Errore di rete. Riprova.");
     }
   }
 
   const locked = lockSec > 0;
+  const banned = banSec > 0;
+  const blocked = locked || banned;
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
@@ -98,6 +127,10 @@ function LoginPage() {
           alt=""
           className="h-full w-full scale-105 object-cover object-[center_20%]"
           decoding="async"
+          onError={(e) => {
+            // Fallback se catbox è down: nascondi bg esterno, resta il gradiente.
+            e.currentTarget.style.display = "none";
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#020617]/85 via-[#0a1628]/72 to-[#020617]/90" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_40%,rgba(56,189,248,0.18),transparent_55%)]" />
@@ -169,7 +202,7 @@ function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Inserisci la password"
-                disabled={locked || busy}
+                disabled={blocked || busy}
                 className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 pr-12 font-mono text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
               />
               <button
@@ -184,12 +217,37 @@ function LoginPage() {
             </div>
           </div>
 
-          {error || locked ? (
+          {/* Honeypot anti-bot: invisibile agli umani */}
+          <div aria-hidden="true" className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden">
+            <label htmlFor="website">Sito web</label>
+            <input
+              id="website"
+              type="text"
+              name="website"
+              autoComplete="off"
+              tabIndex={-1}
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+            />
+          </div>
+
+          {error || blocked ? (
             <div
               role="alert"
-              className="rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-200"
+              className={`rounded-xl border px-3.5 py-2.5 text-sm ${
+                banned
+                  ? "border-red-500/40 bg-red-600/15 text-red-100"
+                  : "border-red-400/25 bg-red-500/10 text-red-200"
+              }`}
             >
-              {locked ? (
+              {banned ? (
+                <>
+                  ⛔ IP bannato per troppi tentativi. Riprova tra{" "}
+                  <span className="font-mono font-semibold tabular-nums">
+                    {formatCountdown(banSec)}
+                  </span>
+                </>
+              ) : locked ? (
                 <>
                   Accesso in pausa. Riprova tra{" "}
                   <span className="font-mono font-semibold tabular-nums text-red-100">
@@ -199,16 +257,23 @@ function LoginPage() {
               ) : (
                 error
               )}
+              {!blocked && remaining !== null && remaining <= 2 && remaining > 0 ? (
+                <span className="mt-1 block text-[12px] opacity-80">
+                  Attenzione: {remaining} tentativi rimasti prima del blocco.
+                </span>
+              ) : null}
             </div>
           ) : null}
 
           <button
             type="submit"
-            disabled={busy || password.length === 0 || locked}
+            disabled={busy || password.length === 0 || blocked}
             className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-400 px-4 py-3.5 text-sm font-semibold tracking-wide text-slate-950 shadow-[0_8px_32px_rgba(56,189,248,0.35)] transition hover:shadow-[0_12px_40px_rgba(56,189,248,0.45)] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {busy ? (
               "Verifica…"
+            ) : banned ? (
+              `Bannato ${formatCountdown(banSec)}`
             ) : locked ? (
               `Attendi ${formatCountdown(lockSec)}`
             ) : (

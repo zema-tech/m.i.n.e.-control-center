@@ -126,7 +126,11 @@ export function loadAccounts(): ApiAccount[] {
 
 export function saveAccounts(list: ApiAccount[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 export function notifyActiveAccountChanged(accountId: string | null) {

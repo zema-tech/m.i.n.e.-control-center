@@ -50,13 +50,16 @@ export function parseIdList(raw: string | undefined | null): string[] {
 }
 
 export function readDiscordConfigFromEnv(): DiscordGatewayConfig {
-  const token = process.env["DISCORD_BOT_TOKEN"]?.trim() ?? "";
+  // Solo server: se bundlato per sbaglio nel client, non crashare su process undefined.
+  const env: Record<string, string | undefined> =
+    typeof process !== "undefined" && process.env ? process.env : {};
+  const token = env["DISCORD_BOT_TOKEN"]?.trim() ?? "";
   return {
     tokenConfigured: token.length > 20,
-    allowedUsers: parseIdList(process.env["DISCORD_ALLOWED_USERS"]),
-    allowedChannels: parseIdList(process.env["DISCORD_ALLOWED_CHANNELS"]),
-    homeChannel: parseIdList(process.env["DISCORD_HOME_CHANNEL"])[0] ?? null,
-    requireMention: process.env["DISCORD_REQUIRE_MENTION"] !== "false",
+    allowedUsers: parseIdList(env["DISCORD_ALLOWED_USERS"]),
+    allowedChannels: parseIdList(env["DISCORD_ALLOWED_CHANNELS"]),
+    homeChannel: parseIdList(env["DISCORD_HOME_CHANNEL"])[0] ?? null,
+    requireMention: env["DISCORD_REQUIRE_MENTION"] !== "false",
   };
 }
 

@@ -284,7 +284,11 @@ export function loadHosts(): HostProfile[] {
 
 export function saveHosts(list: HostProfile[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 /** Seed: profilo Falix vuoto pronto da compilare. */

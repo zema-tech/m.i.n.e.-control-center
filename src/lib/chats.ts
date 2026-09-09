@@ -58,7 +58,11 @@ export function loadThreads(): ChatThread[] {
 
 export function saveThreads(threads: ChatThread[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(threads));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(threads));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 export function createThread(): ChatThread {

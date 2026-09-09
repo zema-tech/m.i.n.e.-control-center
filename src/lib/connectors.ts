@@ -256,7 +256,11 @@ export function loadConnectors(): CustomConnector[] {
 
 export function saveConnectors(list: CustomConnector[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 export function ensureDefaultConnectors(): CustomConnector[] {

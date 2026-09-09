@@ -44,8 +44,12 @@ export function loadAiActivity(): AiActivity[] {
 
 function save(list: AiActivity[]) {
   if (!canUseStorage()) return;
-  window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
-  window.dispatchEvent(new CustomEvent(AI_ACTIVITY_EVENT));
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_EVENT));
+  } catch {
+    /* ignore — quota privata / storage pieno */
+  }
 }
 
 export function logAiActivity(input: {
