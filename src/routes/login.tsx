@@ -3,7 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, Sparkles } from "lucide-react";
 
-import { getAuthState, login } from "@/lib/auth.functions";
+import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
+import { getAuthState, getTurnstileSiteKey, login } from "@/lib/auth.functions";
 
 const LOGIN_BG = "https://files.catbox.moe/1prie3.jpg";
 
@@ -36,6 +37,7 @@ function formatCountdown(totalSec: number) {
 function LoginPage() {
   const router = useRouter();
   const doLogin = useServerFn(login);
+  const doSiteKey = useServerFn(getTurnstileSiteKey);
   const formRef = useRef<HTMLFormElement>(null);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -45,13 +47,18 @@ function LoginPage() {
   const [lockSec, setLockSec] = useState(0);
   const [banSec, setBanSec] = useState(0);
   const [remaining, setRemaining] = useState<number | null>(null);
-  // Anti-bot: honeypot invisibile + timestamp di apertura form
-  const [honeypot, setHoneypot] = useState("");
-  const startedAtRef = useRef<number>(Date.now());
+  // Captcha Turnstile: token dal widget, siteKey dal server (null = non configurato)
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaRef = useRef<TurnstileHandle | null>(null);
 
   useEffect(() => {
-    startedAtRef.current = Date.now();
-  }, []);
+    void doSiteKey({})
+      .then((r) => {
+        if (r.siteKey) setSiteKey(r.siteKey);
+      })
+      .catch(() => {});
+  }, [doSiteKey]);
 
   useEffect(() => {
     if (lockSec <= 0) return;
@@ -85,7 +92,7 @@ function LoginPage() {
     setError(null);
     try {
       const res = await doLogin({
-        data: { password, honeypot, startedAt: startedAtRef.current },
+        data: { password, turnstileToken: captchaToken },
       });
       setBusy(false);
       if (res.ok) {
@@ -100,6 +107,9 @@ function LoginPage() {
       triggerShake();
       setError(res.message);
       setPassword("");
+      // Il token captcha è monouso: si rigenera il widget a ogni fallimento
+      captchaRef.current?.reset();
+      setCaptchaToken("");
       const banned = "banned" in res && res.banned;
       if (banned && "banInSec" in res && res.banInSec > 0) {
         setBanSec(res.banInSec);
@@ -217,19 +227,14 @@ function LoginPage() {
             </div>
           </div>
 
-          {/* Honeypot anti-bot: invisibile agli umani */}
-          <div aria-hidden="true" className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden">
-            <label htmlFor="website">Sito web</label>
-            <input
-              id="website"
-              type="text"
-              name="website"
-              autoComplete="off"
-              tabIndex={-1}
-              value={honeypot}
-              onChange={(e) => setHoneypot(e.target.value)}
+          {siteKey ? (
+            <Turnstile
+              siteKey={siteKey}
+              onToken={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+              handleRef={captchaRef}
             />
-          </div>
+          ) : null}
 
           {error || blocked ? (
             <div
@@ -267,7 +272,7 @@ function LoginPage() {
 
           <button
             type="submit"
-            disabled={busy || password.length === 0 || blocked}
+            disabled={busy || password.length === 0 || blocked || Boolean(siteKey && !captchaToken)}
             className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-400 px-4 py-3.5 text-sm font-semibold tracking-wide text-slate-950 shadow-[0_8px_32px_rgba(56,189,248,0.35)] transition hover:shadow-[0_12px_40px_rgba(56,189,248,0.45)] disabled:cursor-not-allowed disabled:opacity-45"
           >
             {busy ? (

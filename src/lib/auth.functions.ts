@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import {
   ALL_PERMISSIONS,
-  checkBotSignals,
   checkCredentialIp,
   checkGlobalLock,
   checkRateLimit,
@@ -18,6 +17,7 @@ import {
   isCookieSecure,
   isSessionBoundToIp,
   isTempPasswordAlive,
+  isTurnstileConfigured,
   isValidToken,
   listCredentialIpBindings,
   listTempPasswords,
@@ -32,6 +32,8 @@ import {
   revokeToken,
   sessionCookieName,
   setAdminProfile,
+  turnstileSiteKey,
+  verifyTurnstileToken,
   type CredentialIpBinding,
   type Permission,
   type SessionClaims,
@@ -85,11 +87,9 @@ export const login = createServerFn({ method: "POST" })
     z
       .object({
         password: z.string().min(1).max(200),
-        // Anti-bot: honeypot deve restare vuoto, startedAt = ms quando il form è apparso.
-        // Niente .max(Date.now()): sarebbe congelato all'avvio del server e dopo
-        // ~60s rifiuterebbe ogni login. La freschezza è verificata nell'handler.
-        honeypot: z.string().max(100).optional().default(""),
-        startedAt: z.number().int().positive().optional(),
+        // Token Cloudflare Turnstile (captcha). Opzionale: assente quando il
+        // captcha non è configurato o il widget non è ancora stato completato.
+        turnstileToken: z.string().max(2000).optional().default(""),
       })
       .parse(input),
   )
@@ -127,20 +127,35 @@ export const login = createServerFn({ method: "POST" })
       };
     }
 
-    // Anti-bot silenzioso: conta come fallimento, messaggio generico per non dare indizi
-    const bot = checkBotSignals({ honeypot: data.honeypot, startedAt: data.startedAt });
-    if (!bot.ok) {
-      const fail = await registerFailure(ip);
-      registerGlobalFailure();
-      logAction("warn", `Blocco anti-bot (${bot.reason}) da ${ip}`);
+    // Captcha Turnstile: token mancante = widget non completato (nessun
+    // fallimento contato); token invalido = probabile bot (conta come fallimento).
+    const captcha = await verifyTurnstileToken(data.turnstileToken, ip);
+    if (!captcha.ok) {
+      const tokenMissing =
+        !data.turnstileToken.trim() && isTurnstileConfigured();
+      if (!tokenMissing) {
+        const fail = await registerFailure(ip);
+        registerGlobalFailure();
+        logAction("warn", `Captcha fallito da ${ip}`);
+        return {
+          ok: false as const,
+          message: captcha.message,
+          blocked: fail.blocked,
+          banned: fail.banned,
+          retryInSec: fail.retryInSec,
+          banInSec: fail.banInSec,
+          remaining: fail.remaining,
+          mustSetPassword: false as const,
+        };
+      }
       return {
         ok: false as const,
-        message: "Richiesta non valida. Ricarica la pagina e riprova.",
-        blocked: fail.blocked,
-        banned: fail.banned,
-        retryInSec: fail.retryInSec,
-        banInSec: fail.banInSec,
-        remaining: fail.remaining,
+        message: captcha.message,
+        blocked: false as const,
+        banned: false as const,
+        retryInSec: 0,
+        banInSec: 0,
+        remaining: null as number | null,
         mustSetPassword: false as const,
       };
     }
@@ -274,6 +289,11 @@ export const login = createServerFn({ method: "POST" })
       role: claims.role,
     };
   });
+
+/** Site key Turnstile per il widget (null = captcha non configurato). */
+export const getTurnstileSiteKey = createServerFn({ method: "GET" }).handler(async () => {
+  return { siteKey: turnstileSiteKey() };
+});
 
 export const logout = createServerFn({ method: "POST" }).handler(async () => {
   revokeToken(getCookie(sessionCookieName));

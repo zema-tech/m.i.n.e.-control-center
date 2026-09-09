@@ -528,35 +528,48 @@ export async function setAdminProfile(label: string, avatar?: string): Promise<A
 }
 
 /**
- * Anti-bot: honeypot + tempo minimo di compilazione.
- * Il client invia `website` (deve restare vuoto) e `startedAt` (ms epoch
- * di quando il form è stato mostrato). I bot compilano in <1s o riempiono tutto.
+ * Cloudflare Turnstile (captcha) — verifica umano/bot.
+ * Chiavi: TURNSTILE_SITE_KEY (pubblica, al client via server fn) e
+ * TURNSTILE_SECRET_KEY (solo server). Senza secret configurato la verifica
+ * è disattivata (fail-open con warning) per non murare il login.
  */
-export function checkBotSignals(input: {
-  honeypot?: string | null;
-  startedAt?: number | null;
-}): { ok: boolean; reason: string } {
-  if (input.honeypot && input.honeypot.trim().length > 0) {
-    return { ok: false, reason: "bot" };
+export function isTurnstileConfigured(): boolean {
+  return Boolean(process.env["TURNSTILE_SECRET_KEY"]?.trim());
+}
+
+export function turnstileSiteKey(): string | null {
+  const site = process.env["TURNSTILE_SITE_KEY"]?.trim();
+  if (!site || !isTurnstileConfigured()) return null;
+  return site;
+}
+
+export async function verifyTurnstileToken(
+  token: string,
+  ip: string,
+): Promise<{ ok: boolean; message: string }> {
+  const secret = process.env["TURNSTILE_SECRET_KEY"]?.trim();
+  if (!secret) {
+    return { ok: true, message: "" };
   }
-  // startedAt assente = client datato (cache pre-anti-bot): lascia passare,
-  // la honeypot + rate limit restano attivi.
-  if (input.startedAt === undefined || input.startedAt === null) {
-    return { ok: true, reason: "" };
+  if (!token.trim()) {
+    return { ok: false, message: "Completa la verifica anti-bot prima di entrare." };
   }
-  const started = typeof input.startedAt === "number" ? input.startedAt : NaN;
-  if (!Number.isFinite(started)) return { ok: false, reason: "bot" };
-  let elapsed = Date.now() - started;
-  if (elapsed < 0) {
-    // Orologio client avanti rispetto al server: tolleranza 30s, oltre è replay.
-    if (elapsed < -30_000) return { ok: false, reason: "stale" };
-    elapsed = 2000;
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token.trim(), remoteip: ip }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const payload = (await res.json()) as { success?: boolean; ["error-codes"]?: string[] };
+    if (payload.success) return { ok: true, message: "" };
+    const codes = (payload["error-codes"] ?? []).join(",");
+    console.warn(`[turnstile] verifica fallita: ${codes || "unknown"}`);
+    return { ok: false, message: "Verifica anti-bot non riuscita. Riprova." };
+  } catch (e) {
+    console.error("[turnstile] siteverify non raggiungibile:", e instanceof Error ? e.message : e);
+    return { ok: false, message: "Servizio anti-bot non raggiungibile. Riprova tra poco." };
   }
-  // Soglia 800ms: i bot inviano in decine di ms, anche il password manager
-  // più veloce con autofill+Enter resta sopra. Max 30min (form lasciato aperto).
-  if (elapsed < 800) return { ok: false, reason: "too-fast" };
-  if (elapsed > 30 * 60 * 1000) return { ok: false, reason: "stale" };
-  return { ok: true, reason: "" };
 }
 
 export type TempPasswordIcon =

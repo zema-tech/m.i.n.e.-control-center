@@ -67,6 +67,8 @@ Variabili d’ambiente e password di login: vedi configurazione auth / `.env` (n
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | no | Alias frontend delle chiavi sopra |
 | `COOKIE_SECURE=0` | solo LAN http | Permette il cookie su `http://` locale (mai su internet) |
 | `SESSION_BIND_IP=1` | no | Invalida la sessione al cambio IP (protezione furto cookie) |
+| `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` | per captcha | Cloudflare Turnstile sul login (gratis: dash.cloudflare.com → Turnstile → crea widget, dominio = il tuo host). Senza, il login resta senza captcha |
+| `SESSION_BIND_IP=1` | no | Invalida la sessione al cambio IP (protezione furto cookie) |
 | `FALIX_API_KEY` / `FALIX_SERVER_ID` | per Minecraft | Stato live via API Falix (fallback demo + query pubblica `MC_SERVER_ADDRESS`) |
 
 ### Lovable
