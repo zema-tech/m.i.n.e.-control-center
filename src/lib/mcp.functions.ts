@@ -1,5 +1,5 @@
 /**
- * Server functions MCP HTTP — proxy sicuro verso remote (GitHub MCP).
+ * Server functions MCP HTTP — proxy verso remote (GitHub, Composio, Vercel, Netlify, custom).
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -17,11 +17,14 @@ async function requireAdmin() {
 export const mcpListServers = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
   const { listHttpMcpServers, DEFAULT_MCP_SERVERS } = await import("./mcp-servers");
-  const { githubMcpTokenConfigured } = await import("./mcp-http.server");
+  const { mcpAuthConfigured } = await import("./mcp-http.server");
+  const http = listHttpMcpServers();
   return {
     servers: DEFAULT_MCP_SERVERS.servers,
-    http: listHttpMcpServers(),
-    githubTokenOnServer: githubMcpTokenConfigured(),
+    http,
+    authHints: Object.fromEntries(
+      http.map((s) => [s.id, mcpAuthConfigured(s.id)]),
+    ) as Record<string, boolean>,
   };
 });
 
@@ -29,25 +32,28 @@ export const mcpListTools = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        serverId: z.string().min(1).max(64).default("github"),
-        /** PAT opzionale dal client (localStorage); altrimenti env server */
-        bearerToken: z.string().max(500).optional(),
+        serverId: z.string().min(1).max(80).default("github"),
+        bearerToken: z.string().max(800).optional(),
+        customUrl: z.string().url().max(500).optional(),
       })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
     try {
-      const { createMcpClient, githubMcpTokenConfigured } = await import("./mcp-http.server");
-      if (data.serverId === "github" && !githubMcpTokenConfigured(data.bearerToken)) {
+      const { createMcpClient, mcpAuthConfigured } = await import("./mcp-http.server");
+      const needsAuth = ["github", "composio", "vercel", "netlify"].includes(data.serverId);
+      if (needsAuth && !mcpAuthConfigured(data.serverId, data.bearerToken)) {
         return {
           ok: false as const,
           tools: [] as { name: string; description: string }[],
-          message:
-            "Serve un GitHub PAT: imposta GITHUB_PERSONAL_ACCESS_TOKEN su Vercel oppure salva il token in JARVIS (localStorage).",
+          message: `Auth mancante per ${data.serverId}: token client o env server (GITHUB_*, COMPOSIO_API_KEY, VERCEL_TOKEN, NETLIFY_AUTH_TOKEN).`,
         };
       }
-      const client = createMcpClient(data.serverId, { bearerToken: data.bearerToken });
+      const client = createMcpClient(data.serverId, {
+        bearerToken: data.bearerToken,
+        customUrl: data.customUrl,
+      });
       const tools = await client.listTools();
       logAction("info", `MCP ${data.serverId} tools/list: ${tools.length}`);
       return {
@@ -69,18 +75,18 @@ export const mcpCallTool = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        serverId: z.string().min(1).max(64).default("github"),
+        serverId: z.string().min(1).max(80).default("github"),
         name: z.string().min(1).max(120),
         arguments: z.record(z.string(), z.unknown()).default({}),
-        bearerToken: z.string().max(500).optional(),
-        /** Scritture (create issue, PR…) richiedono approved */
+        bearerToken: z.string().max(800).optional(),
+        customUrl: z.string().url().max(500).optional(),
         approved: z.boolean().default(false),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
-    const writeHints = ["create", "update", "delete", "merge", "push", "comment", "close", "open"];
+    const writeHints = ["create", "update", "delete", "merge", "push", "comment", "close", "open", "deploy"];
     const lower = data.name.toLowerCase();
     const maybeWrite = writeHints.some((w) => lower.includes(w));
     if (maybeWrite && !data.approved) {
@@ -90,14 +96,18 @@ export const mcpCallTool = createServerFn({ method: "POST" })
       };
     }
     try {
-      const { createMcpClient, githubMcpTokenConfigured } = await import("./mcp-http.server");
-      if (data.serverId === "github" && !githubMcpTokenConfigured(data.bearerToken)) {
+      const { createMcpClient, mcpAuthConfigured } = await import("./mcp-http.server");
+      const needsAuth = ["github", "composio", "vercel", "netlify"].includes(data.serverId);
+      if (needsAuth && !mcpAuthConfigured(data.serverId, data.bearerToken)) {
         return {
           ok: false as const,
-          text: "GitHub PAT mancante (env o bearerToken).",
+          text: `Auth mancante per ${data.serverId}.`,
         };
       }
-      const client = createMcpClient(data.serverId, { bearerToken: data.bearerToken });
+      const client = createMcpClient(data.serverId, {
+        bearerToken: data.bearerToken,
+        customUrl: data.customUrl,
+      });
       const res = await client.callTool(data.name, data.arguments);
       logAction(
         res.ok ? "info" : "warn",
