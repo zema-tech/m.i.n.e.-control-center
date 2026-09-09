@@ -1,13 +1,13 @@
 /**
- * Config MCP servers per JARVIS — stesso schema mentale di Cursor/VS Code.
+ * Config MCP servers per JARVIS — schema Cursor/VS Code.
  *
- * Esempio:
  * {
  *   "servers": {
- *     "github": {
- *       "type": "http",
- *       "url": "https://api.githubcopilot.com/mcp/"
- *     }
+ *     "github": { "type": "http", "url": "https://api.githubcopilot.com/mcp/" },
+ *     "composio": { "type": "http", "url": "https://connect.composio.dev/mcp" },
+ *     "vercel": { "type": "http", "url": "https://mcp.vercel.com" },
+ *     "netlify": { "type": "http", "url": "https://netlify-mcp.netlify.app/mcp" },
+ *     "mio-server": { "type": "http", "url": "https://example.com/mcp" }
  *   }
  * }
  */
@@ -20,22 +20,39 @@ export type McpServerConfig = {
   url?: string;
   /** Header statici (Authorization, x-api-key, …) */
   headers?: Record<string, string>;
-  /** Comando locale (solo type=stdio — non usato in web) */
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Etichetta UI */
+  label?: string;
 };
 
 export type McpServersFile = {
   servers: Record<string, McpServerConfig>;
 };
 
-/** Preset ufficiali usati da JARVIS (v1: solo GitHub HTTP). */
+/** Preset HTTP usabili da browser/Vercel (streamable-http). */
 export const DEFAULT_MCP_SERVERS: McpServersFile = {
   servers: {
     github: {
       type: "http",
       url: "https://api.githubcopilot.com/mcp/",
+      label: "GitHub MCP",
+    },
+    composio: {
+      type: "http",
+      url: "https://connect.composio.dev/mcp",
+      label: "Composio MCP",
+    },
+    vercel: {
+      type: "http",
+      url: "https://mcp.vercel.com",
+      label: "Vercel MCP",
+    },
+    netlify: {
+      type: "http",
+      url: "https://netlify-mcp.netlify.app/mcp",
+      label: "Netlify MCP",
     },
   },
 };
@@ -44,8 +61,31 @@ export function getMcpServer(id: string): McpServerConfig | undefined {
   return DEFAULT_MCP_SERVERS.servers[id];
 }
 
-export function listHttpMcpServers(): { id: string; url: string }[] {
+export function listHttpMcpServers(): { id: string; url: string; label?: string }[] {
   return Object.entries(DEFAULT_MCP_SERVERS.servers)
     .filter(([, c]) => c.type === "http" && c.url)
-    .map(([id, c]) => ({ id, url: c.url! }));
+    .map(([id, c]) => ({ id, url: c.url!, label: c.label }));
+}
+
+/** Valida URL MCP http(s) */
+export function isValidMcpHttpUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/** Config ad-hoc da URL (custom server). */
+export function configFromUrl(
+  url: string,
+  opts?: { label?: string; headers?: Record<string, string> },
+): McpServerConfig {
+  return {
+    type: "http",
+    url: url.trim(),
+    label: opts?.label,
+    headers: opts?.headers,
+  };
 }
