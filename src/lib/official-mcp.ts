@@ -1,10 +1,11 @@
 /**
- * MCP operativi ufficiali (opzione A)
+ * MCP operativi
+ * - Composio (gateway primario, 500–1000+ app) — streamable-http
+ * - GitHub MCP ufficiale
  * - Reference servers: github.com/modelcontextprotocol/servers
- * - GitHub MCP: remote streamable-http + locale Docker/binary
  *
  * Registry: https://registry.modelcontextprotocol.io
- * Docs: https://modelcontextprotocol.io/examples
+ * Composio MCP: https://docs.composio.dev/docs/mcp
  */
 
 export type OfficialMcpTransport = "stdio" | "streamable-http" | "sse";
@@ -26,6 +27,39 @@ export type OfficialMcpServer = {
   toolHints: string[];
   /** true = remoto usabile da browser/Vercel senza processo locale */
   browserReady: boolean;
+};
+
+/** URL pubblico Composio Connect (meta-tools → 1000+ app). */
+export const COMPOSIO_MCP_URL = "https://connect.composio.dev/mcp";
+
+export const COMPOSIO_DOCS_URL = "https://docs.composio.dev/docs/mcp";
+
+export const COMPOSIO_SESSIONS_DOCS =
+  "https://docs.composio.dev/docs/sessions-via-mcp";
+
+/**
+ * Composio — gateway MCP primario per M.I.N.E / JARVIS.
+ * OAuth gestito, meta-tools (search / connect / execute), streamable-http.
+ * Per app multi-tenant: session.mcp.url via SDK (composio.create + mcp: true).
+ */
+export const COMPOSIO_MCP: OfficialMcpServer = {
+  id: "composio-mcp",
+  label: "Composio MCP",
+  description:
+    "Gateway primario: 500–1000+ app (Gmail, Slack, GitHub, Notion, Discord…). OAuth gestito, meta-tools search/connect/execute.",
+  transport: "streamable-http",
+  remoteUrl: COMPOSIO_MCP_URL,
+  installHint:
+    `REMOTE: ${COMPOSIO_MCP_URL} (header x-consumer-api-key o sessione SDK). Per utente: composio.create(userId, { mcp: true }) → session.mcp.url + headers. Docs: ${COMPOSIO_SESSIONS_DOCS}`,
+  docsUrl: COMPOSIO_DOCS_URL,
+  toolHints: [
+    "COMPOSIO_SEARCH_TOOLS",
+    "COMPOSIO_MANAGE_CONNECTIONS",
+    "COMPOSIO_MULTI_EXECUTE_TOOL",
+    "COMPOSIO_GET_TOOL_SCHEMAS",
+    "COMPOSIO_WAIT_FOR_CONNECTIONS",
+  ],
+  browserReady: true,
 };
 
 /** GitHub MCP ufficiale (remote + local). */
@@ -63,7 +97,7 @@ export const REFERENCE_MCP_SERVERS: OfficialMcpServer[] = [
     transport: "stdio",
     packageHint: "@modelcontextprotocol/server-filesystem",
     installHint:
-      'npx -y @modelcontextprotocol/server-filesystem /percorso/consentito — oppure Docker mcp/filesystem',
+      "npx -y @modelcontextprotocol/server-filesystem /percorso/consentito — oppure Docker mcp/filesystem",
     docsUrl:
       "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
     toolHints: [
@@ -165,7 +199,9 @@ export const REFERENCE_MCP_SERVERS: OfficialMcpServer[] = [
   },
 ];
 
+/** Catalogo: Composio prima (gateway), poi GitHub, poi reference. */
 export const ALL_OFFICIAL_MCP: OfficialMcpServer[] = [
+  COMPOSIO_MCP,
   GITHUB_MCP,
   ...REFERENCE_MCP_SERVERS,
 ];
@@ -183,9 +219,10 @@ export function officialMcpSummaryForAi(): string {
     return `- ${s.label} [${s.id}] ${mode}: ${s.description} tools≈ ${s.toolHints.slice(0, 5).join(", ")}`;
   });
   return [
-    "MCP ufficiali (reference + GitHub):",
+    "MCP: Composio (gateway primario) + GitHub + reference ufficiali:",
     ...lines,
-    "Nota: i reference stdio richiedono processo locale o bridge; GitHub remote è usabile via HTTP con PAT.",
+    "Priorità: Composio per SaaS multi-app; GitHub MCP per repo/issues; reference stdio solo local/bridge.",
+    `Composio Connect: ${COMPOSIO_MCP_URL}`,
     "Registry: https://registry.modelcontextprotocol.io",
   ].join("\n");
 }
