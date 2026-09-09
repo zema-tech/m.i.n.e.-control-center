@@ -20,8 +20,10 @@ import { useCallback, useEffect, useState, type ComponentType } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import {
+  clearCredentialIpBindings,
   createGuestPassword,
   getAuthState,
+  getCredentialIpBindings,
   getGuestPasswords,
   revokeGuestPassword,
 } from "@/lib/auth.functions";
@@ -121,6 +123,8 @@ function AccessPage() {
   const doCreate = useServerFn(createGuestPassword);
   const doList = useServerFn(getGuestPasswords);
   const doRevoke = useServerFn(revokeGuestPassword);
+  const doListIps = useServerFn(getCredentialIpBindings);
+  const doClearIps = useServerFn(clearCredentialIpBindings);
 
   const [label, setLabel] = useState("Ospite");
   const [durationHours, setDurationHours] = useState<1 | 6 | 24 | 168>(24);
@@ -138,11 +142,14 @@ function AccessPage() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bindings, setBindings] = useState<{ key: string; count: number; ips: string[] }[]>([]);
 
   const refresh = useCallback(async () => {
     const res = await doList({});
     if (res.ok) setItems(res.items as GuestItem[]);
-  }, [doList]);
+    const ips = await doListIps({});
+    if (ips.ok) setBindings(ips.items);
+  }, [doList, doListIps]);
 
   useEffect(() => {
     void refresh();
@@ -194,6 +201,11 @@ function AccessPage() {
   async function onRevoke(id: string) {
     await doRevoke({ data: { id } });
     if (fresh) setFresh(null);
+    await refresh();
+  }
+
+  async function onClearIps(key?: string) {
+    await doClearIps({ data: key ? { key } : {} });
     await refresh();
   }
 
@@ -452,6 +464,56 @@ function AccessPage() {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Revoca
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-base font-semibold tracking-tight">
+              Dispositivi per password (max 3 IP)
+            </h2>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="text-[12px] font-medium text-muted-foreground hover:text-primary"
+            >
+              Aggiorna
+            </button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
+            Ogni password si lega ai primi 3 IP che la usano. Un 4° dispositivo viene rifiutato:
+            sbloccalo da qui.
+          </p>
+
+          {bindings.length === 0 ? (
+            <div className="panel rounded-xl px-5 py-8 text-center text-sm text-muted-foreground">
+              Nessun dispositivo registrato.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {bindings.map((b) => (
+                <li
+                  key={b.key}
+                  className="panel flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono text-[13px] font-medium tracking-tight text-foreground">
+                      {b.key}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                      {b.ips.join(" · ")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void onClearIps(b.key)}
+                    className="btn-matrix inline-flex items-center gap-1.5 rounded-lg border border-white/8 px-3 py-2 text-[12px] text-muted-foreground hover:border-primary/40 hover:text-primary"
+                  >
+                    Sblocca
                   </button>
                 </li>
               ))}

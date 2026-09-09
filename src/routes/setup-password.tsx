@@ -1,9 +1,9 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
-import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Eye, EyeOff, KeyRound, ShieldCheck, Sparkles, User } from "lucide-react";
 
-import { getAuthState, setupOwnPassword } from "@/lib/auth.functions";
+import { getAuthState, setupAdminProfile, setupOwnPassword } from "@/lib/auth.functions";
 import {
   getPasswordChecks,
   passwordScore,
@@ -34,12 +34,23 @@ export const Route = createFileRoute("/setup-password")({
 function SetupPasswordPage() {
   const router = useRouter();
   const doSetup = useServerFn(setupOwnPassword);
+  const doAdminSetup = useServerFn(setupAdminProfile);
+  const doState = useServerFn(getAuthState);
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    void doState({})
+      .then((s) => {
+        if (s.authenticated && s.role === "admin") setIsAdmin(true);
+      })
+      .catch(() => {});
+  }, [doState]);
 
   const checks = useMemo(() => getPasswordChecks(password), [password]);
   const score = useMemo(() => passwordScore(password), [password]);
@@ -82,6 +93,28 @@ function SetupPasswordPage() {
 
   const canSubmit = validation.ok && match && !busy;
 
+  const canAdminSubmit = displayName.trim().length >= 2 && !busy;
+
+  async function onAdminSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canAdminSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await doAdminSetup({ data: { displayName: displayName.trim() } });
+      setBusy(false);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      await router.invalidate();
+      await router.navigate({ to: "/home" });
+    } catch {
+      setBusy(false);
+      setError("Errore di rete. Riprova.");
+    }
+  }
+
   const scoreColor =
     score <= 1 ? "bg-red-400" : score === 2 ? "bg-amber-300" : score === 3 ? "bg-lime-300" : "bg-emerald-300";
 
@@ -108,14 +141,76 @@ function SetupPasswordPage() {
             Primo accesso
           </div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Crea la tua password
+            {isAdmin ? "Crea il tuo profilo admin" : "Crea la tua password"}
           </h1>
           <p className="mt-2 text-[14px] leading-relaxed text-sky-100/55">
-            Hai usato un accesso temporaneo. Scegli una password personale: la userai da ora in poi
-            per entrare nell&apos;hub.
+            {isAdmin ? (
+              <>
+                Hai usato la password admin. Scegli il nome profilo: la password di accesso resta
+                quella configurata sul server.
+              </>
+            ) : (
+              <>
+                Hai usato un accesso temporaneo. Scegli una password personale: la userai da ora in
+                poi per entrare nell&apos;hub.
+              </>
+            )}
           </p>
         </div>
 
+        {isAdmin ? (
+          <form
+            onSubmit={onAdminSubmit}
+            className="relative space-y-5 overflow-hidden rounded-2xl border border-white/12 bg-white/[0.06] p-7 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-8"
+          >
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/40 to-transparent"
+              aria-hidden
+            />
+            <div className="space-y-2">
+              <label
+                htmlFor="admin-displayName"
+                className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-sky-100/60"
+              >
+                <User className="h-3.5 w-3.5 text-sky-300" />
+                Nome profilo admin
+              </label>
+              <input
+                id="admin-displayName"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Es. Zema"
+                autoFocus
+                minLength={2}
+                maxLength={40}
+                className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20"
+              />
+            </div>
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-200"
+              >
+                {error}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={!canAdminSubmit}
+              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-400 px-4 py-3.5 text-sm font-semibold tracking-wide text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {busy ? (
+                "Salvataggio…"
+              ) : (
+                <>
+                  Salva profilo ed entra
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
         <form
           onSubmit={onSubmit}
           className="relative space-y-5 overflow-hidden rounded-2xl border border-white/12 bg-white/[0.06] p-7 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-8"
@@ -124,7 +219,6 @@ function SetupPasswordPage() {
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/40 to-transparent"
             aria-hidden
           />
-
           <div className="space-y-2">
             <label
               htmlFor="displayName"
@@ -273,6 +367,7 @@ function SetupPasswordPage() {
             </p>
           </div>
         </form>
+        )}
       </div>
     </main>
   );

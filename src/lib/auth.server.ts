@@ -70,6 +70,8 @@ export type SessionClaims = {
   label?: string;
   userId?: string;
   tempId?: string;
+  /** IP al momento del login (verificato solo se SESSION_BIND_IP=1). */
+  loginIp?: string;
 };
 
 function secret(): Uint8Array {
@@ -204,6 +206,105 @@ export function registerFailure(ip: string): RateLimitStatus {
 
 export function clearFailures(ip: string) {
   attempts.delete(ip);
+}
+
+/**
+ * Flag Secure del cookie di sessione.
+ * Default "1" (solo https). In LAN su http puro imposta COOKIE_SECURE=0,
+ * altrimenti il browser scarta il cookie e il login non resta mai attivo.
+ * Mai usare "0" su istanze esposte a internet.
+ */
+export function isCookieSecure(): boolean {
+  return process.env["COOKIE_SECURE"] !== "0";
+}
+
+/** Sessione legata all'IP di login? Default no (IP mobili ruotano spesso). */
+export function isSessionBoundToIp(): boolean {
+  return process.env["SESSION_BIND_IP"] === "1";
+}
+
+/** Max IP distinti per credenziale (password). */
+export const MAX_IPS_PER_CREDENTIAL = 3;
+/** Finestra di validità dei binding IP (30 giorni, sliding). */
+const IP_BIND_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+type IpBinding = { ips: Map<string, number>; firstSeen: number };
+const credentialIps = new Map<string, IpBinding>();
+
+/**
+ * Vincola ogni password a max 3 IP distinti (dispositivi/reti).
+ * Ritorna ok:false quando un 4° IP distinto prova la stessa password.
+ * L'IP "unknown" non è vincolabile: passa senza contare (evita lock collettivi).
+ */
+export function checkCredentialIp(
+  key: string,
+  ip: string,
+): { ok: boolean; message: string; count: number } {
+  if (ip === "unknown") return { ok: true, message: "", count: 0 };
+  const now = Date.now();
+  let b = credentialIps.get(key);
+  if (!b || now - b.firstSeen > IP_BIND_WINDOW_MS) {
+    b = { ips: new Map(), firstSeen: now };
+    credentialIps.set(key, b);
+  }
+  for (const [seenIp, ts] of b.ips) {
+    if (now - ts > IP_BIND_WINDOW_MS) b.ips.delete(seenIp);
+  }
+  if (b.ips.has(ip)) {
+    b.ips.set(ip, now);
+    return { ok: true, message: "", count: b.ips.size };
+  }
+  if (b.ips.size >= MAX_IPS_PER_CREDENTIAL) {
+    logAction("warn", `Limite 3 IP superato per credenziale "${key}" (bloccato ${ip})`);
+    return {
+      ok: false,
+      message:
+        "Questa password è già usata dal numero massimo di dispositivi (3). Chiedi all'admin di sbloccarla.",
+      count: b.ips.size,
+    };
+  }
+  b.ips.set(ip, now);
+  return { ok: true, message: "", count: b.ips.size };
+}
+
+export function listCredentialIpBindings(): { key: string; count: number; ips: string[] }[] {
+  const now = Date.now();
+  const out: { key: string; count: number; ips: string[] }[] = [];
+  for (const [key, b] of credentialIps) {
+    const ips = [...b.ips.entries()]
+      .filter(([, ts]) => now - ts <= IP_BIND_WINDOW_MS)
+      .map(([seenIp]) => seenIp);
+    if (ips.length > 0) out.push({ key, count: ips.length, ips });
+  }
+  return out.sort((a, b) => b.count - a.count);
+}
+
+export function clearCredentialIps(key?: string): void {
+  if (key) {
+    credentialIps.delete(key);
+    logAction("info", `Binding IP azzerati per "${key}"`);
+  } else {
+    credentialIps.clear();
+    logAction("info", "Tutti i binding IP azzerati");
+  }
+}
+
+/** Profilo admin: anche l'admin crea nome profilo al primo accesso. */
+export type AdminProfile = { label: string; createdAt: number; updatedAt: number };
+let adminProfile: AdminProfile | null = null;
+
+export function getAdminProfile(): AdminProfile | null {
+  return adminProfile;
+}
+
+export function setAdminProfile(label: string): AdminProfile {
+  const clean = label.trim().slice(0, 40) || "Admin";
+  const now = Date.now();
+  adminProfile = adminProfile
+    ? { ...adminProfile, label: clean, updatedAt: now }
+    : { label: clean, createdAt: now, updatedAt: now };
+  logAction("info", `Profilo admin impostato: ${clean}`);
+  return adminProfile;
 }
 
 /**
@@ -556,6 +657,7 @@ export async function createToken(claims: SessionClaims): Promise<string> {
     label: claims.label ?? "",
     userId: claims.userId ?? "",
     tempId: claims.tempId ?? "",
+    loginIp: claims.loginIp ?? "",
   })
     .setProtectedHeader({ alg: "HS256" })
     .setJti(randomBytes(16).toString("hex"))
@@ -607,6 +709,7 @@ export async function readSession(token: string | undefined): Promise<SessionCla
       label: (payload.label as string) || undefined,
       userId: (payload.userId as string) || undefined,
       tempId: (payload.tempId as string) || undefined,
+      loginIp: (payload.loginIp as string) || undefined,
     };
   } catch {
     return null;

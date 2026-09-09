@@ -5,14 +5,20 @@ import { z } from "zod";
 import {
   ALL_PERMISSIONS,
   checkBotSignals,
+  checkCredentialIp,
   checkRateLimit,
+  clearCredentialIps,
   clearFailures,
   consumeTempPassword,
   createTempPassword,
   createToken,
   getActionLog,
+  getAdminProfile,
+  isCookieSecure,
+  isSessionBoundToIp,
   isTempPasswordAlive,
   isValidToken,
+  listCredentialIpBindings,
   listTempPasswords,
   logAction,
   matchPassword,
@@ -23,6 +29,7 @@ import {
   revokeTempPassword,
   revokeToken,
   sessionCookieName,
+  setAdminProfile,
   type Permission,
   type SessionClaims,
 } from "./auth.server";
@@ -53,11 +60,11 @@ const permissionSchema = z.enum(
   ALL_PERMISSIONS as unknown as [Permission, ...Permission[]],
 );
 
-/** Cookie di sessione: HttpOnly + Secure + SameSite=Lax (control center personale). */
+/** Cookie di sessione: HttpOnly + SameSite=Lax (+ Secure su https). */
 function cookieOpts(maxAge = 60 * 60 * 24) {
   return {
     httpOnly: true,
-    secure: true,
+    secure: isCookieSecure(),
     sameSite: "lax" as const,
     path: "/",
     maxAge,
@@ -164,13 +171,39 @@ export const login = createServerFn({ method: "POST" })
 
     clearFailures(ip);
 
+    // Limite 3 IP per password: ogni credenziale si lega ai primi 3 IP che la usano.
+    const credentialKey =
+      match.kind === "admin"
+        ? "admin"
+        : match.kind === "member"
+          ? `member:${match.id}`
+          : `temp:${match.id}`;
+    const ipBind = checkCredentialIp(credentialKey, ip);
+    if (!ipBind.ok) {
+      logAction("warn", `Login rifiutato per limite IP (${credentialKey}) da ${ip}`);
+      return {
+        ok: false as const,
+        message: ipBind.message,
+        blocked: false as const,
+        banned: false as const,
+        retryInSec: 0,
+        banInSec: 0,
+        remaining: null as number | null,
+        mustSetPassword: false as const,
+      };
+    }
+
+    const bindIp = isSessionBoundToIp() && ip !== "unknown" ? ip : undefined;
     let claims: SessionClaims;
     if (match.kind === "admin") {
+      // Anche l'admin crea il proprio profilo (nome) al primo accesso.
+      const profile = getAdminProfile();
       claims = {
         role: "admin",
         permissions: [...ALL_PERMISSIONS],
-        mustSetPassword: false,
-        label: "Admin",
+        mustSetPassword: !profile,
+        label: profile?.label ?? "Admin",
+        loginIp: bindIp,
       };
     } else if (match.kind === "temp") {
       claims = {
@@ -179,6 +212,7 @@ export const login = createServerFn({ method: "POST" })
         mustSetPassword: true,
         label: match.label,
         tempId: match.id,
+        loginIp: bindIp,
       };
     } else {
       claims = {
@@ -187,6 +221,7 @@ export const login = createServerFn({ method: "POST" })
         mustSetPassword: false,
         label: match.label,
         userId: match.id,
+        loginIp: bindIp,
       };
     }
 
@@ -216,7 +251,7 @@ export const logout = createServerFn({ method: "POST" }).handler(async () => {
   deleteCookie(sessionCookieName, {
     httpOnly: true,
     path: "/",
-    secure: true,
+    secure: isCookieSecure(),
     sameSite: "lax",
   });
   logAction("info", "Sessione terminata");
@@ -225,14 +260,22 @@ export const logout = createServerFn({ method: "POST" }).handler(async () => {
 
 export const getAuthState = createServerFn({ method: "GET" }).handler(async () => {
   const session = await readSession(getCookie(sessionCookieName));
-  if (!session) {
-    return {
-      authenticated: false as const,
-      role: null as null,
-      permissions: [] as Permission[],
-      mustSetPassword: false as const,
-      label: null as null,
-    };
+  const unauth = {
+    authenticated: false as const,
+    role: null as null,
+    permissions: [] as Permission[],
+    mustSetPassword: false as const,
+    label: null as null,
+  };
+  if (!session) return unauth;
+  // Protezione extra (SESSION_BIND_IP=1): se l'IP è cambiato dal login,
+  // la sessione non vale più (furto cookie inutilizzabile da altra rete).
+  if (isSessionBoundToIp() && session.loginIp) {
+    const ip = getRequestIP() ?? "unknown";
+    if (ip !== "unknown" && ip !== session.loginIp) {
+      logAction("warn", `Sessione rifiutata per cambio IP (${session.role})`);
+      return unauth;
+    }
   }
   return {
     authenticated: true as const,
@@ -242,6 +285,58 @@ export const getAuthState = createServerFn({ method: "GET" }).handler(async () =
     label: session.label ?? null,
   };
 });
+
+/** Primo accesso admin: crea il profilo (nome). La password resta quella da env. */
+export const setupAdminProfile = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        displayName: z.string().trim().min(2).max(40),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const session = await readSession(getCookie(sessionCookieName));
+    if (!session || session.role !== "admin") {
+      return { ok: false as const, message: "Sessione non valida" };
+    }
+    if (!session.mustSetPassword) {
+      return { ok: false as const, message: "Profilo già creato" };
+    }
+    const profile = setAdminProfile(data.displayName);
+    const claims: SessionClaims = {
+      role: "admin",
+      permissions: [...ALL_PERMISSIONS],
+      mustSetPassword: false,
+      label: profile.label,
+      loginIp: session.loginIp,
+    };
+    setCookie(sessionCookieName, await createToken(claims), cookieOpts());
+    return { ok: true as const, message: `Profilo "${profile.label}" creato. Benvenuto nell'hub.` };
+  });
+
+/** Admin: vedi quali IP usano ogni password (binding max 3). */
+export const getCredentialIpBindings = createServerFn({ method: "GET" }).handler(async () => {
+  const session = await readSession(getCookie(sessionCookieName));
+  if (!session || session.role !== "admin") {
+    return { ok: false as const, items: [] as ReturnType<typeof listCredentialIpBindings> };
+  }
+  return { ok: true as const, items: listCredentialIpBindings() };
+});
+
+/** Admin: sblocca una password (azzera i suoi IP) o tutte. */
+export const clearCredentialIpBindings = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ key: z.string().max(120).optional() }).parse(input ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const session = await readSession(getCookie(sessionCookieName));
+    if (!session || session.role !== "admin") {
+      return { ok: false as const };
+    }
+    clearCredentialIps(data.key);
+    return { ok: true as const };
+  });
 
 export const setupOwnPassword = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -260,6 +355,9 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
     }
     if (!session.mustSetPassword) {
       return { ok: false as const, message: "Password già impostata" };
+    }
+    if (session.role === "admin") {
+      return { ok: false as const, message: "Come admin crea prima il tuo profilo." };
     }
     if (data.password !== data.confirm) {
       return { ok: false as const, message: "Le password non coincidono" };
