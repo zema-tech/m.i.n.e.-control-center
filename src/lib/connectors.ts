@@ -42,11 +42,8 @@ export type DefaultConnectorDef = {
   docsUrl?: string;
   skillsPath?: "/skills" | "/hosts" | "/connectors";
   mcpTools?: string[];
-  /** true se proviene dal catalogo One */
   onePlatform?: boolean;
-  /** true se MCP ufficiale (Composio / reference / GitHub) */
   officialMcp?: boolean;
-  /** remote usabile da browser senza processo locale */
   browserReady?: boolean;
 };
 
@@ -88,7 +85,6 @@ const NATIVE_CATALOG: DefaultConnectorDef[] = [
     skillsPath: "/connectors",
     mcpTools: [...ONE_MCP_TOOL_NAMES],
   },
-  // Composio (primario) + GitHub + reference ufficiali
   ...ALL_OFFICIAL_MCP.map(officialToDef),
   {
     id: "mega",
@@ -242,7 +238,6 @@ function onePlatformToDef(p: OnePlatform): DefaultConnectorDef {
   };
 }
 
-/** Catalogo completo: nativi + ufficiali MCP + piattaforme One. */
 export const DEFAULT_CONNECTOR_CATALOG: DefaultConnectorDef[] = [
   ...NATIVE_CATALOG,
   ...ONE_PLATFORMS.map(onePlatformToDef),
@@ -282,11 +277,12 @@ export function ensureDefaultConnectors(): CustomConnector[] {
     }
     return existing;
   }
-  // Composio prima: gateway MCP primario
   const seedIds = [
     "composio-mcp",
-    "one-mcp",
     "github-mcp",
+    "vercel-mcp",
+    "netlify-mcp",
+    "one-mcp",
     "falix-mcp",
     "mega",
     "gdrive",
