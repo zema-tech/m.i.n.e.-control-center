@@ -1,9 +1,11 @@
 /**
  * Connettori storage / MCP / cloud / One (withoneai) + MCP ufficiali.
+ * Gateway MCP primario: Composio (500–1000+ app).
  */
 
 import {
   ALL_OFFICIAL_MCP,
+  COMPOSIO_MCP_URL,
   type OfficialMcpServer,
 } from "@/lib/official-mcp";
 import {
@@ -42,7 +44,7 @@ export type DefaultConnectorDef = {
   mcpTools?: string[];
   /** true se proviene dal catalogo One */
   onePlatform?: boolean;
-  /** true se MCP ufficiale (reference / GitHub) */
+  /** true se MCP ufficiale (Composio / reference / GitHub) */
   officialMcp?: boolean;
   /** remote usabile da browser senza processo locale */
   browserReady?: boolean;
@@ -86,7 +88,7 @@ const NATIVE_CATALOG: DefaultConnectorDef[] = [
     skillsPath: "/connectors",
     mcpTools: [...ONE_MCP_TOOL_NAMES],
   },
-  // MCP ufficiali (GitHub remote + reference) — prima dei nativi per visibilità
+  // Composio (primario) + GitHub + reference ufficiali
   ...ALL_OFFICIAL_MCP.map(officialToDef),
   {
     id: "mega",
@@ -104,10 +106,10 @@ const NATIVE_CATALOG: DefaultConnectorDef[] = [
     id: "gdrive",
     label: "Google Drive (nativo)",
     kind: "storage",
-    detail: "Google Drive API nativa M.I.N.E — oppure via One MCP",
+    detail: "Google Drive API nativa M.I.N.E — oppure via One MCP / Composio",
     connectMode: "api",
     connectHint:
-      "Usa API key in Competenze oppure collega Google Drive tramite One MCP per OAuth gestito.",
+      "Usa API key in Competenze oppure collega Google Drive tramite Composio MCP o One MCP per OAuth gestito.",
     docsUrl: "https://developers.google.com/drive/api",
     skillsPath: "/skills",
     mcpTools: ["gdrive_status", "gdrive_list", "gdrive_upload_note", "gdrive_create_folder"],
@@ -188,7 +190,7 @@ const NATIVE_CATALOG: DefaultConnectorDef[] = [
     kind: "service",
     detail: "Stato servizi e notifiche via webhook M.I.N.E",
     connectMode: "webhook",
-    connectHint: "Incoming Webhook; oppure Discord via One MCP per bot/API complete.",
+    connectHint: "Incoming Webhook; oppure Discord via Composio MCP / One MCP per bot/API complete.",
     docsUrl: "https://discord.com/developers/docs/resources/webhook",
     skillsPath: "/connectors",
     mcpTools: ["conn_discord_status", "conn_discord_notify"],
@@ -280,7 +282,17 @@ export function ensureDefaultConnectors(): CustomConnector[] {
     }
     return existing;
   }
-  const seedIds = ["one-mcp", "github-mcp", "falix-mcp", "mega", "gdrive", "koyeb", "connector-mcp"];
+  // Composio prima: gateway MCP primario
+  const seedIds = [
+    "composio-mcp",
+    "one-mcp",
+    "github-mcp",
+    "falix-mcp",
+    "mega",
+    "gdrive",
+    "koyeb",
+    "connector-mcp",
+  ];
   const seeded: CustomConnector[] = seedIds
     .map((id, i) => {
       const def = NATIVE_CATALOG.find((d) => d.id === id);
@@ -366,4 +378,10 @@ export function connectModeLabel(mode: ConnectMode): string {
   }
 }
 
-export { ONE_MCP_URL, ONE_DOCS_URL, ONE_CLI_REPO, ALL_OFFICIAL_MCP };
+export {
+  ONE_MCP_URL,
+  ONE_DOCS_URL,
+  ONE_CLI_REPO,
+  ALL_OFFICIAL_MCP,
+  COMPOSIO_MCP_URL,
+};
