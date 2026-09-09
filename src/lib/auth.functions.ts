@@ -7,9 +7,11 @@ import {
   checkBotSignals,
   checkRateLimit,
   clearFailures,
+  consumeTempPassword,
   createTempPassword,
   createToken,
   getActionLog,
+  isTempPasswordAlive,
   isValidToken,
   listTempPasswords,
   logAction,
@@ -19,6 +21,7 @@ import {
   registerFailure,
   registerMemberFromGuest,
   revokeTempPassword,
+  revokeToken,
   sessionCookieName,
   type Permission,
   type SessionClaims,
@@ -73,7 +76,9 @@ export const login = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const ip = getRequestIP({ xForwardedFor: true }) ?? "unknown";
+    // IP dal socket, NON da X-Forwarded-For (header spoofabile dal client:
+    // fidarsi dell'header permetteva di ruotare IP e bypassare lock/ban).
+    const ip = getRequestIP() ?? "unknown";
     const limit = checkRateLimit(ip);
     if (limit.blocked) {
       return {
@@ -205,7 +210,9 @@ export const login = createServerFn({ method: "POST" })
   });
 
 export const logout = createServerFn({ method: "POST" }).handler(async () => {
+  revokeToken(getCookie(sessionCookieName));
   deleteCookie(sessionCookieName, {
+    httpOnly: true,
     path: "/",
     secure: true,
     sameSite: "lax",
@@ -260,6 +267,11 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
     if (!check.ok) {
       return { ok: false as const, message: check.message };
     }
+    // L'invito deve esistere ancora: impedisce di riusare un JWT guest rubato
+    // per creare N membri dopo revoca/scadenza/esaurimento dell'invito.
+    if (!session.tempId || !isTempPasswordAlive(session.tempId)) {
+      return { ok: false as const, message: "Invito scaduto o revocato. Chiedi un nuovo accesso." };
+    }
 
     const label = (data.displayName?.trim() || session.label || "Membro").slice(0, 80);
     let registered: { id: string; label: string };
@@ -273,6 +285,8 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
     } catch (e) {
       return { ok: false as const, message: e instanceof Error ? e.message : "Password non valida" };
     }
+    // Single-use: l'invito si consuma alla prima registrazione.
+    if (session.tempId) consumeTempPassword(session.tempId);
 
     const claims: SessionClaims = {
       role: "member",

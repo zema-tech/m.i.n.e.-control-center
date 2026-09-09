@@ -118,13 +118,15 @@ export async function runOneHand(
           Authorization: `Bearer ${key}`,
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(15_000),
       });
       const text = await res.text();
       if (!res.ok) {
+        console.error(`[one] connections ${res.status}: ${text.slice(0, 300)}`);
         return {
           ok: false,
           tool,
-          output: `One API connections ${res.status}: ${text.slice(0, 400)}. Verifica ONE_API_KEY o usa MCP ${ONE_MCP_URL}`,
+          output: `One API connections ${res.status}. Verifica ONE_API_KEY o usa MCP ${ONE_MCP_URL}`,
         };
       }
       return { ok: true, tool, output: text.slice(0, 8000), raw: safeJson(text) };
@@ -139,13 +141,15 @@ export async function runOneHand(
       const url = `${base}/v1/actions/search?platform=${encodeURIComponent(platform)}&q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
       });
       const text = await res.text();
       if (!res.ok) {
+        console.error(`[one] search ${res.status}: ${text.slice(0, 300)}`);
         return {
           ok: false,
           tool,
-          output: `One search ${res.status}: ${text.slice(0, 400)}. Alternativa CLI: one actions search ${platform} "${query}"`,
+          output: `One search ${res.status}. Alternativa CLI: one actions search ${platform} "${query}"`,
         };
       }
       return { ok: true, tool, output: text.slice(0, 8000), raw: safeJson(text) };
@@ -160,10 +164,12 @@ export async function runOneHand(
       const url = `${base}/v1/actions/${encodeURIComponent(platform)}/${encodeURIComponent(actionId)}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
       });
       const text = await res.text();
       if (!res.ok) {
-        return { ok: false, tool, output: `One knowledge ${res.status}: ${text.slice(0, 400)}` };
+        console.error(`[one] knowledge ${res.status}: ${text.slice(0, 300)}`);
+        return { ok: false, tool, output: `One knowledge ${res.status}` };
       }
       return { ok: true, tool, output: text.slice(0, 8000), raw: safeJson(text) };
     }
@@ -197,13 +203,15 @@ export async function runOneHand(
         connectionKey,
         data: bodyData,
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     const text = await res.text();
     if (!res.ok) {
+      console.error(`[one] execute ${res.status}: ${text.slice(0, 300)}`);
       return {
         ok: false,
         tool,
-        output: `One execute ${res.status}: ${text.slice(0, 500)}`,
+        output: `One execute ${res.status}`,
       };
     }
     return { ok: true, tool, output: text.slice(0, 8000), raw: safeJson(text) };

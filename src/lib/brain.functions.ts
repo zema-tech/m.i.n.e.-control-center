@@ -101,7 +101,12 @@ export const runComposioTool = createServerFn({ method: "POST" })
     z
       .object({
         slug: z.string().min(1).max(120),
-        args: z.record(z.string(), z.unknown()).default({}),
+        args: z
+          .record(z.string().max(64), z.unknown())
+          .default({})
+          .refine((o) => JSON.stringify(o).length < 8000, {
+            message: "args troppo grande (max 8KB).",
+          }),
         approved: z.boolean().default(false),
       })
       .parse(input),

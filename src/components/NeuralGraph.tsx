@@ -121,9 +121,13 @@ export function NeuralGraph({
   const orbitDrag = useRef<{ lx: number; ly: number } | null>(null);
   const sizeRef = useRef({ w: 960, h: 640 });
   const hiddenRef = useRef(hidden);
-  hiddenRef.current = hidden;
   const selectedRef = useRef(selected);
-  selectedRef.current = selected;
+  useEffect(() => {
+    hiddenRef.current = hidden;
+  }, [hidden]);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
 
   useEffect(() => {
     setModel(loadModel());
@@ -211,7 +215,7 @@ export function NeuralGraph({
       }
     }
     linksRef.current = links;
-  }, [nodeKey, nodes]);
+  }, [nodeKey]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -514,7 +518,9 @@ export function NeuralGraph({
     }
     if (!dragNode.current) return;
     // leggero spostamento nel piano della camera
-    const n = simRef.current.find((x) => x.id === dragNode.current!.id);
+    const dragId = dragNode.current?.id;
+    if (!dragId) return;
+    const n = simRef.current.find((x) => x.id === dragId);
     if (!n) return;
     n.x += e.movementX * 0.35;
     n.y += e.movementY * 0.35;
@@ -523,11 +529,19 @@ export function NeuralGraph({
     n.vz = 0;
   }
 
+  const spinTimer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (spinTimer.current !== null) window.clearTimeout(spinTimer.current);
+    };
+  }, []);
+
   function onPointerUp() {
     dragNode.current = null;
     orbitDrag.current = null;
     // riprendi spin dopo un attimo
-    setTimeout(() => {
+    if (spinTimer.current !== null) window.clearTimeout(spinTimer.current);
+    spinTimer.current = window.setTimeout(() => {
       if (!dragNode.current && !orbitDrag.current) autoSpin.current = true;
     }, 1800);
   }

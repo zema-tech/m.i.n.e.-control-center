@@ -308,6 +308,7 @@ Non inventare endpoint API non supportati dal contesto. Se i dati sono limitati,
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         model: chosen,
         temperature: 0.25,
@@ -383,9 +384,18 @@ export async function researchHostProvider(input: {
   const seed = resolveSeed(query);
   const urls = new Set<string>();
   if (seed) seed.urls.forEach((u) => urls.add(u));
-  if (/^https?:\/\//i.test(query)) urls.add(query);
-  else if (query.includes(".") && !query.includes(" ")) {
-    urls.add(`https://${query.replace(/^\/+/, "")}`);
+  // URL da input utente: solo https pubblico, mai rete interna (anti-SSRF).
+  // I seed del catalogo restano trusted.
+  try {
+    if (/^https?:\/\//i.test(query)) {
+      const { assertPublicHttpsUrl } = await import("./ssrf-guard");
+      urls.add(assertPublicHttpsUrl(query, "URL"));
+    } else if (query.includes(".") && !query.includes(" ")) {
+      const { assertPublicHttpsUrl } = await import("./ssrf-guard");
+      urls.add(assertPublicHttpsUrl(`https://${query.replace(/^\/+/, "")}`, "URL"));
+    }
+  } catch {
+    /* URL utente non consentito: si usa solo il seed */
   }
 
   const probes = await Promise.all([...urls].slice(0, 3).map((u) => probeUrl(u)));

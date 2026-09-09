@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { askAssistant } from "@/lib/panel.functions";
 import { mcpCallTool } from "@/lib/mcp.functions";
@@ -37,6 +37,13 @@ export function useJarvisAgent(opts: {
   const [agentMode, setAgentMode] = useState(true);
   const [pendingPlan, setPendingPlan] = useState<JarvisPlan | null>(null);
   const [planChatId, setPlanChatId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const runPendingPlan = useCallback(
     async (plan: JarvisPlan, chatId: string, baseStore: JarvisStore) => {
@@ -49,7 +56,7 @@ export function useJarvisAgent(opts: {
           plan,
           { projectId: opts.activeProjectId, chatId },
           async ({ serverId, name, arguments: args, approved }) => {
-            const res = await mcpCall({
+            const res = (await mcpCall({
               data: {
                 serverId,
                 name,
@@ -57,11 +64,16 @@ export function useJarvisAgent(opts: {
                 approved,
                 bearerToken: pat || undefined,
               },
-            });
-            return {
-              ok: Boolean((res as { ok?: boolean }).ok),
-              text: String((res as { text?: string }).text ?? ""),
-            };
+            })) as unknown;
+            const ok =
+              typeof res === "object" && res !== null && "ok" in res
+                ? Boolean((res as { ok: unknown }).ok)
+                : false;
+            const text =
+              typeof res === "object" && res !== null && "text" in res
+                ? String((res as { text: unknown }).text ?? "")
+                : "";
+            return { ok, text };
           },
         );
         opts.persist(nextStore);
@@ -84,13 +96,14 @@ export function useJarvisAgent(opts: {
         }
         opts.persist(appendMessage(nextStore, chatId, { role: "assistant", content: msg }));
       } catch (e) {
+        if (!mountedRef.current) return;
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
         opts.persist(
           appendMessage(baseStore, chatId, { role: "assistant", content: `Errore piano: ${msg}` }),
         );
       } finally {
-        setBusy(false);
+        if (mountedRef.current) setBusy(false);
       }
     },
     [opts, mcpCall],
@@ -113,7 +126,14 @@ export function useJarvisAgent(opts: {
     setError(null);
     setPendingPlan(null);
 
-    const chat = s.chats.find((c) => c.id === chatId)!;
+    const chat = s.chats.find((c) => c.id === chatId);
+    if (!chat) {
+      if (mountedRef.current) {
+        setError("Chat non trovata.");
+        setBusy(false);
+      }
+      return;
+    }
     const project = s.projects.find((p) => p.id === (chat.projectId || opts.activeProjectId));
     const fileCtx = searchFileContext(s, t, {
       projectId: chat.projectId || opts.activeProjectId,
@@ -145,9 +165,13 @@ export function useJarvisAgent(opts: {
         },
       });
       const reply =
-        (res as { risposta?: string }).risposta ||
-        (res as { message?: string }).message ||
-        "Nessuna risposta.";
+        typeof res === "object" && res !== null && "risposta" in res &&
+        typeof (res as { risposta: unknown }).risposta === "string"
+          ? (res as { risposta: string }).risposta
+          : typeof res === "object" && res !== null && "message" in res &&
+              typeof (res as { message: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Nessuna risposta.";
 
       const plan = useAgent ? parsePlanFromReply(reply) : null;
       if (plan && plan.steps.length > 0) {
@@ -172,11 +196,12 @@ export function useJarvisAgent(opts: {
         opts.persist(appendMessage(s, chatId, { role: "assistant", content: reply }));
       }
     } catch (e) {
+      if (!mountedRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
       opts.persist(appendMessage(s, chatId, { role: "assistant", content: `Errore: ${msg}` }));
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   }
 

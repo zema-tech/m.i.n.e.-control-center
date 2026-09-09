@@ -7,12 +7,54 @@ import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import { isValidToken, logAction, sessionCookieName } from "./auth.server";
+import { assertPublicHttpsUrl } from "./ssrf-guard";
 
 async function requireAdmin() {
   if (!(await isValidToken(getCookie(sessionCookieName)))) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
   }
 }
+
+// Tool di sola lettura: SOLO prefissi verbo noti. Tutto il resto richiede
+// approved:true (fail-closed: "l'IA propone, tu confermi").
+const READ_TOOL_PREFIXES = [
+  "get_",
+  "list_",
+  "fetch_",
+  "search_",
+  "read_",
+  "show_",
+  "describe_",
+];
+
+function isReadOnlyToolName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return READ_TOOL_PREFIXES.some((p) => lower.startsWith(p));
+}
+
+const customUrlSchema = z
+  .string()
+  .url()
+  .max(500)
+  .refine(
+    (u) => {
+      try {
+        assertPublicHttpsUrl(u, "customUrl");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "customUrl non consentito (solo https pubblico)." },
+  )
+  .optional();
+
+const argsSchema = z
+  .record(z.string().max(64), z.unknown())
+  .default({})
+  .refine((o) => JSON.stringify(o).length < 8000, {
+    message: "arguments troppo grande (max 8KB).",
+  });
 
 export const mcpListServers = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();
@@ -34,7 +76,7 @@ export const mcpListTools = createServerFn({ method: "POST" })
       .object({
         serverId: z.string().min(1).max(80).default("github"),
         bearerToken: z.string().max(800).optional(),
-        customUrl: z.string().url().max(500).optional(),
+        customUrl: customUrlSchema,
       })
       .parse(input ?? {}),
   )
@@ -77,22 +119,19 @@ export const mcpCallTool = createServerFn({ method: "POST" })
       .object({
         serverId: z.string().min(1).max(80).default("github"),
         name: z.string().min(1).max(120),
-        arguments: z.record(z.string(), z.unknown()).default({}),
+        arguments: argsSchema,
         bearerToken: z.string().max(800).optional(),
-        customUrl: z.string().url().max(500).optional(),
+        customUrl: customUrlSchema,
         approved: z.boolean().default(false),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
-    const writeHints = ["create", "update", "delete", "merge", "push", "comment", "close", "open", "deploy"];
-    const lower = data.name.toLowerCase();
-    const maybeWrite = writeHints.some((w) => lower.includes(w));
-    if (maybeWrite && !data.approved) {
+    if (!isReadOnlyToolName(data.name) && !data.approved) {
       return {
         ok: false as const,
-        text: `Tool MCP "${data.name}" potrebbe modificare dati: conferma approvazione (approved: true).`,
+        text: `Tool MCP "${data.name}" non in sola lettura: conferma approvazione (approved: true).`,
       };
     }
     try {
@@ -109,9 +148,11 @@ export const mcpCallTool = createServerFn({ method: "POST" })
         customUrl: data.customUrl,
       });
       const res = await client.callTool(data.name, data.arguments);
+      // Nei log solo metadati: il testo è output arbitrario del server remoto
+      // e può contenere segreti/token.
       logAction(
         res.ok ? "info" : "warn",
-        `MCP ${data.serverId} tools/call ${data.name}: ${res.text.slice(0, 80)}`,
+        `MCP ${data.serverId} tools/call ${data.name}: ${res.ok ? "ok" : "errore"} (${res.text.length} char)`,
       );
       return { ok: res.ok, text: res.text.slice(0, 12000) };
     } catch (e) {

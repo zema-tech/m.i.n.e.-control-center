@@ -10,13 +10,30 @@ import {
   type Permission,
   type SessionClaims,
 } from "./auth.server";
+import { assertPublicHttpsUrl } from "./ssrf-guard";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS } from "./groq-models";
+
+const publicHttpsBase = z
+  .string()
+  .max(300)
+  .refine(
+    (u) => {
+      try {
+        assertPublicHttpsUrl(u, "Base URL");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Base URL non consentito (solo https pubblico)." },
+  )
+  .optional();
 
 const credSchema = z
   .object({
     key: z.string().min(1).max(500),
     serverId: z.string().min(1).max(120),
-    base: z.string().max(300).optional(),
+    base: publicHttpsBase,
   })
   .optional();
 
@@ -95,7 +112,8 @@ export const runCommand = createServerFn({ method: "POST" })
       return { ok: true as const, ...(await sendServerCommand(data.command, data.credentials)) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logAction("error", `Comando "${data.command}" fallito: ${message}`);
+      // Il comando può contenere segreti: nei log solo metadati.
+      logAction("error", `Comando da ${data.command.length} char fallito: ${message}`);
       return { ok: false as const, demo: false, output: message };
     }
   });
@@ -128,7 +146,7 @@ export const testAccountConnection = createServerFn({ method: "POST" })
         key: z.string().min(1).max(8000),
         serverId: z.string().max(500).optional(),
         base: z.string().max(500).optional(),
-        provider: z.string().max(40).optional(),
+        provider: z.enum(["falix", "mega", "gdrive"]).optional(),
       })
       .parse(input),
   )

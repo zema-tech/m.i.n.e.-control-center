@@ -143,7 +143,22 @@ export function registerFailure(ip: string): RateLimitStatus {
   entry.count += 1;
   entry.totalFails += 1;
 
-  // Ban: troppi fallimenti nella finestra
+  // Ban: troppi fallimenti nella finestra.
+  // Eccezione: IP sconosciuto — mai ban globale (evita collateral-DoS sul
+  // bucket condiviso "unknown"), solo lock breve.
+  if (ip === "unknown") {
+    const lockMs = Math.min(lockMsForFails(entry.count) || 60_000, 60_000);
+    entry.lockedUntil = now + lockMs;
+    attempts.set(ip, entry);
+    return {
+      blocked: true,
+      banned: false,
+      retryInMin: Math.ceil(lockMs / 60000),
+      retryInSec: Math.ceil(lockMs / 1000),
+      banInSec: 0,
+      remaining: 0,
+    };
+  }
   if (entry.totalFails >= BAN_THRESHOLD) {
     entry.banUntil = now + BAN_MS;
     entry.count = 0;
@@ -369,58 +384,124 @@ export type AuthMatch =
 
 /**
  * Verifica password admin (env), membri registrati e password temporanee.
- * MINE_PASSWORD_HASH deve essere un hash bcrypt ($2a$ / $2b$).
- * In non-produzione è tollerato un confronto plaintext solo se il valore non è bcrypt (legacy).
+ * MINE_PASSWORD_HASH deve essere un hash bcrypt ($2a$ / $2b$): valori in
+ * chiaro sono rifiutati (fail-closed) in qualsiasi ambiente.
+ *
+ * I candidati sono valutati TUTTI (nessun return anticipato) per non esporre
+ * un oracolo temporale su quale password ha matchato. A parità di match
+ * vince admin > member > temp.
  */
 export async function matchPassword(password: string): Promise<AuthMatch> {
+  let adminMatch = false;
   const hash = process.env["MINE_PASSWORD_HASH"];
   if (hash) {
     try {
       if (hash.startsWith("$2")) {
-        if (await bcrypt.compare(password, hash)) return { kind: "admin" };
-      } else if (process.env.NODE_ENV !== "production") {
-        // Legacy plaintext — solo fuori produzione; genera sempre un hash bcrypt in prod.
-        if (password === hash) {
-          console.warn(
-            "[auth] MINE_PASSWORD_HASH è in chiaro. Genera un hash bcrypt e aggiorna l'env.",
-          );
-          return { kind: "admin" };
-        }
+        adminMatch = await bcrypt.compare(password, hash);
+      } else {
+        console.warn(
+          "[auth] MINE_PASSWORD_HASH non è un hash bcrypt: login admin disabilitato. Genera un hash con bcrypt e aggiorna l'env.",
+        );
       }
     } catch {
       /* fall through */
     }
   }
 
+  let member: RegisteredUser | null = null;
   for (const u of registeredUsers.values()) {
-    if (await bcrypt.compare(password, u.hash)) {
-      return {
-        kind: "member",
-        id: u.id,
-        label: u.label,
-        permissions: u.permissions,
-      };
+    try {
+      if (await bcrypt.compare(password, u.hash)) member ??= u;
+    } catch {
+      /* continua con gli altri candidati */
     }
   }
 
   pruneExpired();
+  let temp: TempPassword | null = null;
   for (const tp of tempPasswords.values()) {
     if (tp.expiresAt <= Date.now()) continue;
     if (tp.maxUses !== null && tp.uses >= tp.maxUses) continue;
-    const match = await bcrypt.compare(password, tp.hash);
-    if (match) {
-      tp.uses += 1;
-      logAction("info", `Login con password temporanea "${tp.label}"`);
-      if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(tp.id);
-      return {
-        kind: "temp",
-        id: tp.id,
-        label: tp.label,
-        permissions: tp.permissions ?? DEFAULT_GUEST_PERMISSIONS,
-      };
+    try {
+      if (await bcrypt.compare(password, tp.hash)) temp ??= tp;
+    } catch {
+      /* continua con gli altri candidati */
     }
   }
+
+  if (adminMatch) return { kind: "admin" };
+  if (member) {
+    return {
+      kind: "member",
+      id: member.id,
+      label: member.label,
+      permissions: member.permissions,
+    };
+  }
+  if (temp) {
+    // Uso single-thread: riserva atomica del posto prima di restituire il match.
+    // La catena di lock per id evita doppi usi concorrenti di inviti maxUses:1.
+    const reserved = await reserveTempUse(temp.id);
+    if (!reserved) return null;
+    logAction("info", `Login con password temporanea "${temp.label}"`);
+    return {
+      kind: "temp",
+      id: temp.id,
+      label: temp.label,
+      permissions: temp.permissions ?? DEFAULT_GUEST_PERMISSIONS,
+    };
+  }
   return null;
+}
+
+/** Catena di lock per id: serializza gli usi concorrenti dello stesso invito. */
+const tempLocks = new Map<string, Promise<boolean>>();
+
+function reserveTempUse(id: string): Promise<boolean> {
+  const prev = tempLocks.get(id) ?? Promise.resolve(true);
+  const next = prev.then(() => {
+    const tp = tempPasswords.get(id);
+    if (!tp) return false;
+    if (tp.expiresAt <= Date.now()) {
+      tempPasswords.delete(id);
+      return false;
+    }
+    if (tp.maxUses !== null && tp.uses >= tp.maxUses) {
+      tempPasswords.delete(id);
+      return false;
+    }
+    tp.uses += 1;
+    if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(tp.id);
+    return true;
+  });
+  tempLocks.set(id, next.catch(() => false));
+  next.finally(() => {
+    if (tempLocks.get(id) === next) tempLocks.delete(id);
+  }).catch(() => {});
+  return next;
+}
+
+/** Invito ancora valido (non scaduto/revocato/esaurito)? */
+export function isTempPasswordAlive(id: string): boolean {
+  pruneExpired();
+  const tp = tempPasswords.get(id);
+  if (!tp) return false;
+  if (tp.expiresAt <= Date.now()) {
+    tempPasswords.delete(id);
+    return false;
+  }
+  if (tp.maxUses !== null && tp.uses >= tp.maxUses) {
+    tempPasswords.delete(id);
+    return false;
+  }
+  return true;
+}
+
+/** Consuma definitivamente l'invito dopo la registrazione del membro. */
+export function consumeTempPassword(id: string): void {
+  if (tempPasswords.delete(id)) {
+    logAction("info", `Invito temporaneo consumato: ${id}`);
+  }
 }
 
 export async function verifyPassword(password: string): Promise<boolean> {
@@ -466,15 +547,40 @@ export async function createToken(claims: SessionClaims): Promise<string> {
     tempId: claims.tempId ?? "",
   })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(randomBytes(16).toString("hex"))
     .setIssuedAt()
     .setExpirationTime(TOKEN_TTL)
     .sign(secret());
+}
+
+/** Token revocati (logout): denylist in-memory consultata da readSession. */
+const revokedJtis = new Set<string>();
+
+export function revokeToken(token: string | undefined): void {
+  if (!token) return;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return;
+    const payload = JSON.parse(
+      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+    ) as { jti?: unknown; exp?: unknown };
+    if (typeof payload.jti === "string" && payload.jti) {
+      revokedJtis.add(payload.jti);
+      if (revokedJtis.size > 5000) {
+        const first = revokedJtis.values().next().value;
+        if (first) revokedJtis.delete(first);
+      }
+    }
+  } catch {
+    /* token illeggibile: niente da revocare */
+  }
 }
 
 export async function readSession(token: string | undefined): Promise<SessionClaims | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
+    if (typeof payload.jti === "string" && revokedJtis.has(payload.jti)) return null;
     // Default sicuro: guest, non admin, se il claim manca o è invalido.
     const rawRole = payload.role as string | undefined;
     const role: SessionRole =

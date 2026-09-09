@@ -3,11 +3,10 @@
  */
 
 import {
-  configFromUrl,
   getMcpServer,
-  isValidMcpHttpUrl,
   type McpServerConfig,
 } from "./mcp-servers";
+import { assertPublicHttpsUrl } from "./ssrf-guard";
 
 export type McpToolDef = {
   name: string;
@@ -118,6 +117,7 @@ export class McpHttpClient {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const sid = res.headers.get("mcp-session-id") || res.headers.get("Mcp-Session-Id");
@@ -125,12 +125,13 @@ export class McpHttpClient {
 
     const text = await res.text();
     if (!res.ok) {
-      throw new Error(`MCP HTTP ${res.status}: ${text.slice(0, 400)}`);
+      console.error(`[mcp] ${res.status} su ${this.url}: ${text.slice(0, 300)}`);
+      throw new Error(`MCP HTTP ${res.status}`);
     }
 
     const parsed = parseSseOrJson(text, res.headers.get("content-type"));
     if (!parsed) {
-      throw new Error(`Risposta MCP non JSON: ${text.slice(0, 300)}`);
+      throw new Error("Risposta MCP non JSON.");
     }
     if (parsed.error) {
       throw new Error(`MCP ${parsed.error.code}: ${parsed.error.message}`);
@@ -160,6 +161,7 @@ export class McpHttpClient {
           jsonrpc: "2.0",
           method: "notifications/initialized",
         }),
+        signal: AbortSignal.timeout(10_000),
       });
     } catch {
       /* optional */
@@ -189,20 +191,43 @@ export class McpHttpClient {
   }
 }
 
+/**
+ * Auth esplicita del client (token fornito dall'utente via UI).
+ * Niente header arbitrari "Nome:Valore": solo Bearer opaco + extraHeaders
+ * con nomi validati (niente override di Authorization/Cookie/Host).
+ */
+function clientAuth(
+  opts?: { bearerToken?: string; extraHeaders?: Record<string, string> },
+): Record<string, string> {
+  const auth: Record<string, string> = {};
+  const BLOCKED_HEADERS = new Set([
+    "authorization",
+    "cookie",
+    "host",
+    "content-length",
+    "mcp-session-id",
+  ]);
+  for (const [k, v] of Object.entries(opts?.extraHeaders ?? {})) {
+    const name = k.trim();
+    if (!/^[A-Za-z0-9-]+$/.test(name)) continue;
+    if (BLOCKED_HEADERS.has(name.toLowerCase())) continue;
+    auth[name] = String(v).slice(0, 500);
+  }
+  const token = opts?.bearerToken?.trim() || "";
+  if (token) {
+    auth["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+  }
+  return auth;
+}
+
 function resolveAuth(
   serverId: string,
   opts?: { bearerToken?: string; extraHeaders?: Record<string, string> },
 ): Record<string, string> {
-  const auth: Record<string, string> = { ...(opts?.extraHeaders ?? {}) };
+  const auth: Record<string, string> = { ...clientAuth(opts) };
   const token = opts?.bearerToken?.trim() || "";
 
   if (token) {
-    if (token.includes(":") && !token.startsWith("Bearer")) {
-      const i = token.indexOf(":");
-      auth[token.slice(0, i).trim()] = token.slice(i + 1).trim();
-    } else {
-      auth["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
-    }
     return auth;
   }
 
@@ -238,14 +263,15 @@ export function createMcpClient(
     customUrl?: string;
   },
 ): McpHttpClient {
-  let cfg = getMcpServer(serverId);
-  if (!cfg && opts?.customUrl && isValidMcpHttpUrl(opts.customUrl)) {
-    cfg = configFromUrl(opts.customUrl);
+  // URL custom: solo https pubblico, e MAI con i token preset da env.
+  // Inviare GITHUB/COMPOSIO/VERCEL/NETLIFY key a un host scelto dall'utente
+  // sarebbe exfil di segreti server verso terzi.
+  if (opts?.customUrl) {
+    const url = assertPublicHttpsUrl(opts.customUrl.trim(), "customUrl");
+    return new McpHttpClient({ type: "http", url } as McpServerConfig, clientAuth(opts));
   }
+  const cfg = getMcpServer(serverId);
   if (!cfg) throw new Error(`MCP server sconosciuto: ${serverId}`);
-  if (opts?.customUrl && isValidMcpHttpUrl(opts.customUrl)) {
-    cfg = { ...cfg, url: opts.customUrl.trim() };
-  }
   return new McpHttpClient(cfg, resolveAuth(serverId, opts));
 }
 

@@ -5,7 +5,10 @@
 
 const BASE = "https://backend.composio.dev/api/v3";
 
-const READ_PATTERNS = [
+// Solo prefissi verbo: un match substring (es. "CREATE_X_INFO" che contiene
+// "_INFO") classificava tool di scrittura come read-only e saltava
+// l'approvazione umana. Gli slug ignoti restano write-by-default.
+const READ_PREFIXES = [
   "GET_",
   "LIST_",
   "FETCH_",
@@ -13,8 +16,6 @@ const READ_PATTERNS = [
   "READ_",
   "FIND_",
   "RETRIEVE_",
-  "_INFO",
-  "_STATUS",
 ];
 
 export type ComposioTool = {
@@ -37,7 +38,7 @@ export function composioConfigured(): boolean {
 
 export function isReadOnlyTool(slug: string): boolean {
   const s = slug.toUpperCase();
-  return READ_PATTERNS.some((p) => s.includes(p));
+  return READ_PREFIXES.some((p) => s.startsWith(p));
 }
 
 async function api(path: string, init?: RequestInit): Promise<unknown> {
@@ -48,9 +49,13 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    signal: AbortSignal.timeout(15_000),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`Composio ${res.status}: ${text.slice(0, 250)}`);
+  if (!res.ok) {
+    console.error(`[composio] ${res.status} su ${path}: ${text.slice(0, 300)}`);
+    throw new Error(`Composio ${res.status}`);
+  }
   try {
     return JSON.parse(text);
   } catch {

@@ -1,3 +1,4 @@
+import { assertPublicHttpsUrl } from "./ssrf-guard";
 import { logAction } from "./auth.server";
 
 export type FalixConfig = { key: string; serverId: string; base: string };
@@ -24,11 +25,18 @@ export type FalixCredentials = {
 };
 
 export function getFalixConfig(override?: FalixCredentials | null): FalixConfig | null {
+  const envBase = process.env["FALIX_API_BASE"] || "https://client.falixnodes.net/api/v2";
   if (override?.key && override?.serverId) {
+    // base da input utente: solo https pubblico (anti-SSRF verso metadata/LAN).
+    // La base da env resta configurazione trusted dell'admin.
+    let base = envBase;
+    if (override.base?.trim()) {
+      base = assertPublicHttpsUrl(override.base.trim(), "Base URL");
+    }
     return {
       key: override.key,
       serverId: override.serverId,
-      base: override.base?.trim() || process.env["FALIX_API_BASE"] || "https://client.falixnodes.net/api/v2",
+      base,
     };
   }
   const key = process.env["FALIX_API_KEY"];
@@ -37,7 +45,7 @@ export function getFalixConfig(override?: FalixCredentials | null): FalixConfig 
   return {
     key,
     serverId,
-    base: process.env["FALIX_API_BASE"] ?? "https://client.falixnodes.net/api/v2",
+    base: envBase,
   };
 }
 
@@ -58,7 +66,9 @@ async function falixFetch(
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Falix ${res.status}: ${text.slice(0, 200)}`);
+    // Dettagli upstream solo nei log server: al client torna solo lo status.
+    console.error(`[falix] ${res.status} su ${path}: ${text.slice(0, 300)}`);
+    throw new Error(`Falix ${res.status}`);
   }
   try {
     return JSON.parse(text);
@@ -117,14 +127,15 @@ export async function sendServerCommand(
 ): Promise<{ demo: boolean; output: string }> {
   const cfg = getFalixConfig(override);
   if (!cfg) {
-    logAction("warn", `Comando simulato (chiave Falix mancante): ${command}`);
+    logAction("warn", "Comando simulato (chiave Falix mancante)");
     return { demo: true, output: `[demo] comando "${command}" non inviato: chiave Falix mancante.` };
   }
   await falixFetch(cfg, `/servers/${cfg.serverId}/commands`, {
     method: "POST",
     body: { command },
   });
-  logAction("info", `Comando inviato al server: ${command}`);
+  // Il comando può contenere segreti (es. "login <password>"): nei log solo metadati.
+  logAction("info", `Comando inviato al server (${command.length} char)`);
   return { demo: false, output: `Comando inviato: ${command}` };
 }
 
@@ -160,6 +171,18 @@ export async function sendPowerAction(
     }
   }
   throw new Error(lastError || `Impossibile inviare la richiesta di ${label}.`);
+}
+
+/** Path file Falix sanificato: niente traversal, null byte, o percorsi vuoti. */
+function safeFalixPath(p: string, actionId: string): string {
+  if (p.includes("\0")) throw new Error(`Parametro non consentito per l'azione ${actionId}`);
+  const segments = p.split("/");
+  if (segments.some((s) => s === "..")) {
+    throw new Error(`Path non consentito per l'azione ${actionId}`);
+  }
+  const clean = p.trim().slice(0, 300);
+  if (!clean) throw new Error(`Parametro mancante per l'azione ${actionId}`);
+  return clean;
 }
 
 function num(value: unknown): number | null {
@@ -299,17 +322,17 @@ export async function executeFalixAction(
     return { demo: true, output: `[demo] azione "${id}" non inviata: chiave Falix mancante.` };
   }
 
-  const used = new Set<string>();
   const path = def.path.replace(/\{(\w+)\}/g, (_m, key: string) => {
     if (key === "id") return encodeURIComponent(cfg.serverId);
-    used.add(key);
     const value = params[key];
     if (value === undefined || value === null || value === "") {
       throw new Error(`Parametro mancante per l'azione ${id}: ${key}`);
     }
-    return encodeURIComponent(String(value));
+    return encodeURIComponent(safeFalixPath(String(value), id));
   });
 
+  // Whitelist stretta: solo i campi dichiarati in def.body (niente mass-assignment
+  // di chiavi extra verso l'API Falix).
   let body: Record<string, string | number | boolean> | undefined;
   if (def.method !== "GET") {
     body = {};
@@ -317,9 +340,6 @@ export async function executeFalixAction(
       if (params[key] !== undefined) body[key] = params[key];
     }
     if (id.startsWith("power.")) body["signal"] = id.slice("power.".length);
-    for (const [key, value] of Object.entries(params)) {
-      if (!used.has(key) && body[key] === undefined) body[key] = value;
-    }
   }
 
   const data = await falixFetch(cfg, path, {

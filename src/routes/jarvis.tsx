@@ -18,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { getAuthState } from "@/lib/auth.functions";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
@@ -72,11 +72,25 @@ function JarvisWorkspace() {
   const [input, setInput] = useState("");
   const [model, setModel] = useState<GroqModelId>(DEFAULT_GROQ_MODEL);
   const [search, setSearch] = useState("");
+  // Ricerca differita: il filtro pesante sui messaggi non blocca il keystroke
+  const deferredSearch = useDeferredValue(search);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+
+  // Ferma la dettatura se la pagina viene smontata
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const persist = useCallback(
     (next: JarvisStore) => {
@@ -129,8 +143,8 @@ function JarvisWorkspace() {
   const filteredChats = useMemo(() => {
     let list = store.chats;
     if (activeProjectId) list = list.filter((c) => c.projectId === activeProjectId);
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
+    if (q) {
       list = list.filter(
         (c) =>
           c.title.toLowerCase().includes(q) ||
@@ -140,7 +154,7 @@ function JarvisWorkspace() {
     return [...list].sort(
       (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt,
     );
-  }, [store.chats, activeProjectId, search]);
+  }, [store.chats, activeProjectId, deferredSearch]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
