@@ -26,7 +26,8 @@ const DOMAIN_BY_ID: Record<string, string> = {
   "webhook-generic": "webhook.site",
   "host-research": "falixnodes.net",
   groq: "groq.com",
-  // MCP ufficiali (opzione A)
+  // MCP: Composio (primario) + ufficiali
+  "composio-mcp": "composio.dev",
   "github-mcp": "github.com",
   "mcp-filesystem": "modelcontextprotocol.io",
   "mcp-fetch": "modelcontextprotocol.io",
