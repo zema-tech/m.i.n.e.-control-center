@@ -1,11 +1,9 @@
 /**
  * MCP operativi
- * - Composio (gateway primario, 500–1000+ app) — streamable-http
- * - GitHub MCP ufficiale
+ * - Composio, GitHub, Vercel, Netlify (streamable-http)
  * - Reference servers: github.com/modelcontextprotocol/servers
  *
  * Registry: https://registry.modelcontextprotocol.io
- * Composio MCP: https://docs.composio.dev/docs/mcp
  */
 
 export type OfficialMcpTransport = "stdio" | "streamable-http" | "sse";
@@ -14,34 +12,23 @@ export type OfficialMcpServer = {
   id: string;
   label: string;
   description: string;
-  /** transport principale consigliato */
   transport: OfficialMcpTransport;
-  /** URL remote se disponibile */
   remoteUrl?: string;
-  /** pacchetto npm / comando stdio */
   packageHint?: string;
-  /** install / run one-liner */
   installHint: string;
   docsUrl: string;
-  /** tool noti (hint per l'AI, non lista esaustiva runtime) */
   toolHints: string[];
-  /** true = remoto usabile da browser/Vercel senza processo locale */
   browserReady: boolean;
 };
 
-/** URL pubblico Composio Connect (meta-tools → 1000+ app). */
 export const COMPOSIO_MCP_URL = "https://connect.composio.dev/mcp";
-
 export const COMPOSIO_DOCS_URL = "https://docs.composio.dev/docs/mcp";
-
 export const COMPOSIO_SESSIONS_DOCS =
   "https://docs.composio.dev/docs/sessions-via-mcp";
 
-/**
- * Composio — gateway MCP primario per M.I.N.E / JARVIS.
- * OAuth gestito, meta-tools (search / connect / execute), streamable-http.
- * Per app multi-tenant: session.mcp.url via SDK (composio.create + mcp: true).
- */
+export const VERCEL_MCP_URL = "https://mcp.vercel.com";
+export const NETLIFY_MCP_URL = "https://netlify-mcp.netlify.app/mcp";
+
 export const COMPOSIO_MCP: OfficialMcpServer = {
   id: "composio-mcp",
   label: "Composio MCP",
@@ -49,8 +36,7 @@ export const COMPOSIO_MCP: OfficialMcpServer = {
     "Gateway primario: 500–1000+ app (Gmail, Slack, GitHub, Notion, Discord…). OAuth gestito, meta-tools search/connect/execute.",
   transport: "streamable-http",
   remoteUrl: COMPOSIO_MCP_URL,
-  installHint:
-    `REMOTE: ${COMPOSIO_MCP_URL} (header x-consumer-api-key o sessione SDK). Per utente: composio.create(userId, { mcp: true }) → session.mcp.url + headers. Docs: ${COMPOSIO_SESSIONS_DOCS}`,
+  installHint: `REMOTE: ${COMPOSIO_MCP_URL} (COMPOSIO_API_KEY / x-api-key). Docs: ${COMPOSIO_SESSIONS_DOCS}`,
   docsUrl: COMPOSIO_DOCS_URL,
   toolHints: [
     "COMPOSIO_SEARCH_TOOLS",
@@ -62,7 +48,6 @@ export const COMPOSIO_MCP: OfficialMcpServer = {
   browserReady: true,
 };
 
-/** GitHub MCP ufficiale (remote + local). */
 export const GITHUB_MCP: OfficialMcpServer = {
   id: "github-mcp",
   label: "GitHub MCP",
@@ -72,7 +57,7 @@ export const GITHUB_MCP: OfficialMcpServer = {
   remoteUrl: "https://api.githubcopilot.com/mcp/",
   packageHint: "ghcr.io/github/github-mcp-server",
   installHint:
-    "Remote: collega https://api.githubcopilot.com/mcp/ con Authorization: Bearer <GITHUB_PAT>. Locale: docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN=<token> ghcr.io/github/github-mcp-server",
+    "Remote: https://api.githubcopilot.com/mcp/ + Authorization Bearer <GITHUB_PAT>.",
   docsUrl: "https://github.com/github/github-mcp-server",
   toolHints: [
     "get_me",
@@ -87,7 +72,39 @@ export const GITHUB_MCP: OfficialMcpServer = {
   browserReady: true,
 };
 
-/** Reference servers dal repo modelcontextprotocol/servers. */
+export const VERCEL_MCP: OfficialMcpServer = {
+  id: "vercel-mcp",
+  label: "Vercel MCP",
+  description:
+    "MCP ufficiale Vercel: progetti, deploy, log, docs. OAuth o VERCEL_TOKEN.",
+  transport: "streamable-http",
+  remoteUrl: VERCEL_MCP_URL,
+  installHint: `REMOTE: ${VERCEL_MCP_URL} — OAuth client oppure Bearer VERCEL_TOKEN. Docs: https://vercel.com/docs/agent-resources/vercel-mcp`,
+  docsUrl: "https://vercel.com/docs/agent-resources/vercel-mcp",
+  toolHints: [
+    "search_docs",
+    "list_projects",
+    "list_deployments",
+    "get_deployment",
+    "get_deployment_build_logs",
+  ],
+  browserReady: true,
+};
+
+export const NETLIFY_MCP: OfficialMcpServer = {
+  id: "netlify-mcp",
+  label: "Netlify MCP",
+  description:
+    "MCP ufficiale Netlify: siti, deploy, build. Remote HTTP o CLI @netlify/mcp.",
+  transport: "streamable-http",
+  remoteUrl: NETLIFY_MCP_URL,
+  packageHint: "@netlify/mcp",
+  installHint: `REMOTE: ${NETLIFY_MCP_URL} (OAuth / NETLIFY_AUTH_TOKEN). Locale: npx -y @netlify/mcp`,
+  docsUrl: "https://docs.netlify.com/build/build-with-ai/netlify-mcp-server/",
+  toolHints: ["create_site", "deploy_site", "list_sites", "get_deploy", "netlify_cli"],
+  browserReady: true,
+};
+
 export const REFERENCE_MCP_SERVERS: OfficialMcpServer[] = [
   {
     id: "mcp-filesystem",
@@ -199,10 +216,12 @@ export const REFERENCE_MCP_SERVERS: OfficialMcpServer[] = [
   },
 ];
 
-/** Catalogo: Composio prima (gateway), poi GitHub, poi reference. */
+/** Catalogo: gateway + cloud MCP + reference. */
 export const ALL_OFFICIAL_MCP: OfficialMcpServer[] = [
   COMPOSIO_MCP,
   GITHUB_MCP,
+  VERCEL_MCP,
+  NETLIFY_MCP,
   ...REFERENCE_MCP_SERVERS,
 ];
 
@@ -210,7 +229,6 @@ export function officialMcpById(id: string): OfficialMcpServer | undefined {
   return ALL_OFFICIAL_MCP.find((s) => s.id === id);
 }
 
-/** Riepilogo per system prompt / agent brain. */
 export function officialMcpSummaryForAi(): string {
   const lines = ALL_OFFICIAL_MCP.map((s) => {
     const mode = s.browserReady
@@ -219,10 +237,11 @@ export function officialMcpSummaryForAi(): string {
     return `- ${s.label} [${s.id}] ${mode}: ${s.description} tools≈ ${s.toolHints.slice(0, 5).join(", ")}`;
   });
   return [
-    "MCP: Composio (gateway primario) + GitHub + reference ufficiali:",
+    "MCP HTTP: Composio, GitHub, Vercel, Netlify + custom URL:",
     ...lines,
-    "Priorità: Composio per SaaS multi-app; GitHub MCP per repo/issues; reference stdio solo local/bridge.",
-    `Composio Connect: ${COMPOSIO_MCP_URL}`,
+    `Composio: ${COMPOSIO_MCP_URL}`,
+    `Vercel: ${VERCEL_MCP_URL}`,
+    `Netlify: ${NETLIFY_MCP_URL}`,
     "Registry: https://registry.modelcontextprotocol.io",
   ].join("\n");
 }
