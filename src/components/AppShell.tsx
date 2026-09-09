@@ -14,6 +14,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import { AccountSelector } from "@/components/AccountSelector";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { SectionBackdrop } from "@/components/SectionTheme";
 import {
   Sheet,
@@ -157,6 +158,8 @@ export function AppShell({
   const [agentName, setAgentName] = useState("JARVIS");
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [isAdmin, setIsAdmin] = useState(true);
+  const [userLabel, setUserLabel] = useState<string | null>(null);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   useEffect(() => {
     setAgentName(loadAgentProfile().name || "JARVIS");
@@ -170,6 +173,8 @@ export function AppShell({
         if (state.authenticated) {
           setIsAdmin(state.role === "admin");
           setPermissions(state.permissions ?? []);
+          setUserLabel(state.label ?? null);
+          setUserAvatar(state.avatar ?? null);
         }
       } catch {
         /* ignore */
@@ -265,6 +270,14 @@ export function AppShell({
 
           <div className="flex items-center gap-3">
             <AccountSelector className="md:hidden" />
+            {userLabel ? (
+              <span className="hidden items-center gap-2 rounded-full border border-white/6 bg-white/[0.03] py-1 pl-1 pr-2.5 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <ProfileAvatar icon={userAvatar} label={userLabel} className="h-3 w-3" />
+                </span>
+                {userLabel}
+              </span>
+            ) : null}
             <span className="hidden items-center gap-1.5 rounded-full border border-white/6 bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-40" />

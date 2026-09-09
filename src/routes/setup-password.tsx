@@ -10,6 +10,7 @@ import {
   passwordScoreLabel,
   validateNewPassword,
 } from "@/lib/password-policy";
+import { PROFILE_ICONS } from "@/components/ProfileAvatar";
 
 const LOGIN_BG = "https://files.catbox.moe/1prie3.jpg";
 
@@ -43,6 +44,7 @@ function SetupPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [avatar, setAvatar] = useState("user");
 
   useEffect(() => {
     void doState({})
@@ -101,7 +103,9 @@ function SetupPasswordPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await doAdminSetup({ data: { displayName: displayName.trim() } });
+      const res = await doAdminSetup({
+        data: { displayName: displayName.trim(), avatar },
+      });
       setBusy(false);
       if (!res.ok) {
         setError(res.message);
@@ -186,6 +190,38 @@ function SetupPasswordPage() {
                 maxLength={40}
                 className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20"
               />
+            </div>
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-sky-100/60">
+                Avatar
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {PROFILE_ICONS.map((opt) => {
+                  const selected = avatar === opt.id;
+                  const I = opt.Icon;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      title={opt.label}
+                      onClick={() => setAvatar(opt.id)}
+                      className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition ${
+                        selected
+                          ? "border-sky-300/60 bg-sky-400/15 text-sky-200"
+                          : "border-white/10 text-sky-100/45 hover:border-white/20 hover:text-sky-100/80"
+                      }`}
+                    >
+                      {I ? (
+                        <I className="h-5 w-5" />
+                      ) : (
+                        <span className="text-[11px]">
+                          {(displayName.trim().charAt(0).toUpperCase() || "?")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             {error ? (
               <p

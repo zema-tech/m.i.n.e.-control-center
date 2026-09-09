@@ -20,6 +20,7 @@ import {
   fetchMembers,
   fetchRevokedJtis,
   fetchTemps,
+  pruneAuthTables,
   saveAdminProfile,
   saveBan,
   saveBinding,
@@ -73,6 +74,7 @@ let authHydrating: Promise<void> | null = null;
 async function hydrateAuthState(): Promise<void> {
   try {
     if (!(await storeAvailable())) return;
+    persist(pruneAuthTables(IP_BIND_WINDOW_MS));
     const [members, temps, bindings, bans, profile, jtis] = await Promise.all([
       fetchMembers(),
       fetchTemps(),
@@ -140,6 +142,9 @@ async function hydrateAuthState(): Promise<void> {
     if (profile) {
       adminProfile = {
         label: profile.label,
+        avatar: (VALID_ICONS as string[]).includes(profile.avatar)
+          ? (profile.avatar as TempPasswordIcon)
+          : "none",
         createdAt: profile.createdAt,
         updatedAt: profile.updatedAt,
       };
@@ -191,6 +196,7 @@ export type SessionClaims = {
   permissions: Permission[];
   mustSetPassword: boolean;
   label?: string;
+  avatar?: string;
   userId?: string;
   tempId?: string;
   /** IP al momento del login (verificato solo se SESSION_BIND_IP=1). */
@@ -200,7 +206,48 @@ export type SessionClaims = {
 function secret(): Uint8Array {
   const value = process.env["MINE_JWT_SECRET"];
   if (!value) throw new Error("MINE_JWT_SECRET non configurato");
+  if (value.length < 32) {
+    throw new Error("MINE_JWT_SECRET troppo corto (min 32 caratteri): sessioni disabilitate.");
+  }
   return new TextEncoder().encode(value);
+}
+
+/**
+ * Secchio globale anti-spoof: se l'attaccante ruota X-Forwarded-For, ogni IP
+ * falso ha il suo bucket, ma il volume totale fa scattare questo blocco
+ * breve per tutto il sito. Finestra corta: la perdita al restart è accettabile.
+ */
+const GLOBAL_FAIL_THRESHOLD = 30;
+const GLOBAL_WINDOW_MS = 10 * 60 * 1000;
+const GLOBAL_LOCK_MS = 5 * 60 * 1000;
+let globalFails = 0;
+let globalWindowStart = Date.now();
+let globalLockedUntil = 0;
+
+export function checkGlobalLock(): { blocked: boolean; retryInSec: number } {
+  const now = Date.now();
+  if (now - globalWindowStart > GLOBAL_WINDOW_MS) {
+    globalWindowStart = now;
+    globalFails = 0;
+  }
+  if (globalLockedUntil > now) {
+    return { blocked: true, retryInSec: Math.max(1, Math.ceil((globalLockedUntil - now) / 1000)) };
+  }
+  return { blocked: false, retryInSec: 0 };
+}
+
+export function registerGlobalFailure(): void {
+  const now = Date.now();
+  if (now - globalWindowStart > GLOBAL_WINDOW_MS) {
+    globalWindowStart = now;
+    globalFails = 0;
+  }
+  globalFails += 1;
+  if (globalFails >= GLOBAL_FAIL_THRESHOLD) {
+    globalLockedUntil = now + GLOBAL_LOCK_MS;
+    globalFails = 0;
+    logAction("error", "Blocco globale login 5min per volume anomalo di tentativi");
+  }
 }
 
 export type RateLimitStatus = {
@@ -447,7 +494,12 @@ export async function clearCredentialIps(key?: string): Promise<void> {
 }
 
 /** Profilo admin: anche l'admin crea nome profilo al primo accesso. */
-export type AdminProfile = { label: string; createdAt: number; updatedAt: number };
+export type AdminProfile = {
+  label: string;
+  avatar: TempPasswordIcon;
+  createdAt: number;
+  updatedAt: number;
+};
 let adminProfile: AdminProfile | null = null;
 
 export async function getAdminProfile(): Promise<AdminProfile | null> {
@@ -455,21 +507,23 @@ export async function getAdminProfile(): Promise<AdminProfile | null> {
   return adminProfile;
 }
 
-export async function setAdminProfile(label: string): Promise<AdminProfile> {
+export async function setAdminProfile(label: string, avatar?: string): Promise<AdminProfile> {
   await ensureAuthHydrated();
   const clean = label.trim().slice(0, 40) || "Admin";
+  const icon = normalizeIcon(avatar);
   const now = Date.now();
   adminProfile = adminProfile
-    ? { ...adminProfile, label: clean, updatedAt: now }
-    : { label: clean, createdAt: now, updatedAt: now };
+    ? { ...adminProfile, label: clean, avatar: icon, updatedAt: now }
+    : { label: clean, avatar: icon, createdAt: now, updatedAt: now };
   persist(
     saveAdminProfile({
       label: adminProfile.label,
+      avatar: adminProfile.avatar,
       createdAt: adminProfile.createdAt,
       updatedAt: adminProfile.updatedAt,
     }),
   );
-  logAction("info", `Profilo admin impostato: ${clean}`);
+  logAction("info", `Profilo admin impostato: ${clean} (${icon})`);
   return adminProfile;
 }
 
@@ -882,6 +936,7 @@ export async function createToken(claims: SessionClaims): Promise<string> {
     permissions: claims.permissions,
     mustSetPassword: claims.mustSetPassword,
     label: claims.label ?? "",
+    avatar: claims.avatar ?? "",
     userId: claims.userId ?? "",
     tempId: claims.tempId ?? "",
     loginIp: claims.loginIp ?? "",
@@ -935,6 +990,7 @@ export async function readSession(token: string | undefined): Promise<SessionCla
       permissions,
       mustSetPassword: Boolean(payload.mustSetPassword),
       label: (payload.label as string) || undefined,
+      avatar: (payload.avatar as string) || undefined,
       userId: (payload.userId as string) || undefined,
       tempId: (payload.tempId as string) || undefined,
       loginIp: (payload.loginIp as string) || undefined,

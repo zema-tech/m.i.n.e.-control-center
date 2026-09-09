@@ -36,7 +36,12 @@ export type StoredBan = {
   banUntil: number;
 };
 
-export type StoredAdminProfile = { label: string; createdAt: number; updatedAt: number };
+export type StoredAdminProfile = {
+  label: string;
+  avatar: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -229,7 +234,12 @@ export async function fetchAdminProfile(): Promise<StoredAdminProfile | null> {
       .eq("id", 1)
       .maybeSingle();
     if (error || !data) return null;
-    return { label: data.label, createdAt: data.created_at, updatedAt: data.updated_at };
+    return {
+      label: data.label,
+      avatar: (data as { avatar?: string }).avatar ?? "none",
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
   } catch {
     return null;
   }
@@ -240,6 +250,7 @@ export async function saveAdminProfile(p: StoredAdminProfile): Promise<boolean> 
     const { error } = await (await db()).from("auth_admin_profile").upsert({
       id: 1,
       label: p.label,
+      avatar: p.avatar,
       created_at: p.createdAt,
       updated_at: p.updatedAt,
     });
@@ -273,5 +284,31 @@ export async function saveRevokedJti(jti: string): Promise<boolean> {
     return !error;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Pulizia periodica tabelle auth (chiamata al boot): inviti scaduti, ban
+ * scaduti, binding oltre la finestra, token revocati oltre 48h.
+ */
+export async function pruneAuthTables(bindingWindowMs: number): Promise<void> {
+  try {
+    const admin = await db();
+    const now = Date.now();
+    const results = await Promise.allSettled([
+      admin.from("auth_temp_passwords").delete().lt("expires_at", now),
+      admin
+        .from("auth_ip_bans")
+        .delete()
+        .lt("ban_until", now)
+        .lt("locked_until", now),
+      admin.from("auth_ip_bindings").delete().lt("updated_at", now - bindingWindowMs),
+      admin.from("auth_revoked_tokens").delete().lt("revoked_at", now - 48 * 60 * 60 * 1000),
+    ]);
+    for (const r of results) {
+      if (r.status === "rejected") throw r.reason;
+    }
+  } catch {
+    /* best-effort */
   }
 }

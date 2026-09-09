@@ -6,6 +6,7 @@ import {
   ALL_PERMISSIONS,
   checkBotSignals,
   checkCredentialIp,
+  checkGlobalLock,
   checkRateLimit,
   clearCredentialIps,
   clearFailures,
@@ -25,6 +26,7 @@ import {
   pathAllowed,
   readSession,
   registerFailure,
+  registerGlobalFailure,
   registerMemberFromGuest,
   revokeTempPassword,
   revokeToken,
@@ -61,6 +63,12 @@ const permissionSchema = z.enum(
   ALL_PERMISSIONS as unknown as [Permission, ...Permission[]],
 );
 
+/** Audit best-effort su agent_events (mai bloccante per il login). */
+function audit(summary: string, ok: boolean, detail?: Record<string, unknown>) {
+  void import("./memory.server")
+    .then((m) => m.recordEvent({ kind: "auth", summary, detail, ok }))
+    .catch(() => {});
+}
 /** Cookie di sessione: HttpOnly + SameSite=Lax (+ Secure su https). */
 function cookieOpts(maxAge = 60 * 60 * 24) {
   return {
@@ -86,9 +94,23 @@ export const login = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    // IP dal socket, NON da X-Forwarded-For (header spoofabile dal client:
-    // fidarsi dell'header permetteva di ruotare IP e bypassare lock/ban).
-    const ip = getRequestIP() ?? "unknown";
+    // IP client via header proxy (indispensabile su serverless/Vercel dove il
+    // socket è del load balancer). Lo spoof dell'header è mitigato dal secchio
+    // globale: ruotare IP non evita il blocco per volume.
+    const ip = getRequestIP({ xForwardedFor: true }) ?? "unknown";
+    const global = checkGlobalLock();
+    if (global.blocked) {
+      return {
+        ok: false as const,
+        message: "Troppi tentativi in corso. Riprova tra qualche minuto.",
+        blocked: true as const,
+        banned: false as const,
+        retryInSec: global.retryInSec,
+        banInSec: 0,
+        remaining: 0,
+        mustSetPassword: false as const,
+      };
+    }
     const limit = await checkRateLimit(ip);
     if (limit.blocked) {
       return {
@@ -109,6 +131,7 @@ export const login = createServerFn({ method: "POST" })
     const bot = checkBotSignals({ honeypot: data.honeypot, startedAt: data.startedAt });
     if (!bot.ok) {
       const fail = await registerFailure(ip);
+      registerGlobalFailure();
       logAction("warn", `Blocco anti-bot (${bot.reason}) da ${ip}`);
       return {
         ok: false as const,
@@ -140,7 +163,9 @@ export const login = createServerFn({ method: "POST" })
 
     if (!match) {
       const fail = await registerFailure(ip);
+      registerGlobalFailure();
       logAction("warn", `Tentativo di accesso fallito da ${ip}`);
+      if (fail.banned) audit(`Ban 24h per troppi tentativi da ${ip}`, false);
       if (fail.blocked) {
         return {
           ok: false as const,
@@ -182,6 +207,7 @@ export const login = createServerFn({ method: "POST" })
     const ipBind = await checkCredentialIp(credentialKey, ip);
     if (!ipBind.ok) {
       logAction("warn", `Login rifiutato per limite IP (${credentialKey}) da ${ip}`);
+      audit(`Limite 3 IP superato per ${credentialKey} (bloccato ${ip})`, false);
       return {
         ok: false as const,
         message: ipBind.message,
@@ -204,6 +230,7 @@ export const login = createServerFn({ method: "POST" })
         permissions: [...ALL_PERMISSIONS],
         mustSetPassword: !profile,
         label: profile?.label ?? "Admin",
+        avatar: profile?.avatar ?? "none",
         loginIp: bindIp,
       };
     } else if (match.kind === "temp") {
@@ -231,6 +258,7 @@ export const login = createServerFn({ method: "POST" })
       "info",
       `Accesso riuscito da ${ip} (${claims.role}${claims.mustSetPassword ? ", setup password" : ""})`,
     );
+    audit(`Accesso ${claims.role} da ${ip} (${ipBind.count}/3 IP)`, true);
 
     return {
       ok: true as const,
@@ -267,6 +295,7 @@ export const getAuthState = createServerFn({ method: "GET" }).handler(async () =
     permissions: [] as Permission[],
     mustSetPassword: false as const,
     label: null as null,
+    avatar: null as null,
   };
   if (!session) return unauth;
   // Protezione extra (SESSION_BIND_IP=1): se l'IP è cambiato dal login,
@@ -284,15 +313,22 @@ export const getAuthState = createServerFn({ method: "GET" }).handler(async () =
     permissions: session.permissions,
     mustSetPassword: session.mustSetPassword,
     label: session.label ?? null,
+    avatar: session.avatar ?? null,
   };
 });
 
-/** Primo accesso admin: crea il profilo (nome). La password resta quella da env. */
+/** Primo accesso admin: crea il profilo (nome + avatar). La password resta quella da env. */
 export const setupAdminProfile = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
         displayName: z.string().trim().min(2).max(40),
+        avatar: z
+          .string()
+          .regex(/^[a-z]+$/)
+          .max(20)
+          .optional()
+          .default("none"),
       })
       .parse(input),
   )
@@ -304,12 +340,13 @@ export const setupAdminProfile = createServerFn({ method: "POST" })
     if (!session.mustSetPassword) {
       return { ok: false as const, message: "Profilo già creato" };
     }
-    const profile = await setAdminProfile(data.displayName);
+    const profile = await setAdminProfile(data.displayName, data.avatar);
     const claims: SessionClaims = {
       role: "admin",
       permissions: [...ALL_PERMISSIONS],
       mustSetPassword: false,
       label: profile.label,
+      avatar: profile.avatar,
       loginIp: session.loginIp,
     };
     setCookie(sessionCookieName, await createToken(claims), cookieOpts());
