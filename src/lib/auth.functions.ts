@@ -30,6 +30,7 @@ import {
   revokeToken,
   sessionCookieName,
   setAdminProfile,
+  type CredentialIpBinding,
   type Permission,
   type SessionClaims,
 } from "./auth.server";
@@ -88,7 +89,7 @@ export const login = createServerFn({ method: "POST" })
     // IP dal socket, NON da X-Forwarded-For (header spoofabile dal client:
     // fidarsi dell'header permetteva di ruotare IP e bypassare lock/ban).
     const ip = getRequestIP() ?? "unknown";
-    const limit = checkRateLimit(ip);
+    const limit = await checkRateLimit(ip);
     if (limit.blocked) {
       return {
         ok: false as const,
@@ -107,7 +108,7 @@ export const login = createServerFn({ method: "POST" })
     // Anti-bot silenzioso: conta come fallimento, messaggio generico per non dare indizi
     const bot = checkBotSignals({ honeypot: data.honeypot, startedAt: data.startedAt });
     if (!bot.ok) {
-      const fail = registerFailure(ip);
+      const fail = await registerFailure(ip);
       logAction("warn", `Blocco anti-bot (${bot.reason}) da ${ip}`);
       return {
         ok: false as const,
@@ -138,7 +139,7 @@ export const login = createServerFn({ method: "POST" })
     }
 
     if (!match) {
-      const fail = registerFailure(ip);
+      const fail = await registerFailure(ip);
       logAction("warn", `Tentativo di accesso fallito da ${ip}`);
       if (fail.blocked) {
         return {
@@ -169,7 +170,7 @@ export const login = createServerFn({ method: "POST" })
       };
     }
 
-    clearFailures(ip);
+    await clearFailures(ip);
 
     // Limite 3 IP per password: ogni credenziale si lega ai primi 3 IP che la usano.
     const credentialKey =
@@ -178,7 +179,7 @@ export const login = createServerFn({ method: "POST" })
         : match.kind === "member"
           ? `member:${match.id}`
           : `temp:${match.id}`;
-    const ipBind = checkCredentialIp(credentialKey, ip);
+    const ipBind = await checkCredentialIp(credentialKey, ip);
     if (!ipBind.ok) {
       logAction("warn", `Login rifiutato per limite IP (${credentialKey}) da ${ip}`);
       return {
@@ -197,7 +198,7 @@ export const login = createServerFn({ method: "POST" })
     let claims: SessionClaims;
     if (match.kind === "admin") {
       // Anche l'admin crea il proprio profilo (nome) al primo accesso.
-      const profile = getAdminProfile();
+      const profile = await getAdminProfile();
       claims = {
         role: "admin",
         permissions: [...ALL_PERMISSIONS],
@@ -303,7 +304,7 @@ export const setupAdminProfile = createServerFn({ method: "POST" })
     if (!session.mustSetPassword) {
       return { ok: false as const, message: "Profilo già creato" };
     }
-    const profile = setAdminProfile(data.displayName);
+    const profile = await setAdminProfile(data.displayName);
     const claims: SessionClaims = {
       role: "admin",
       permissions: [...ALL_PERMISSIONS],
@@ -319,9 +320,9 @@ export const setupAdminProfile = createServerFn({ method: "POST" })
 export const getCredentialIpBindings = createServerFn({ method: "GET" }).handler(async () => {
   const session = await readSession(getCookie(sessionCookieName));
   if (!session || session.role !== "admin") {
-    return { ok: false as const, items: [] as ReturnType<typeof listCredentialIpBindings> };
+    return { ok: false as const, items: [] as CredentialIpBinding[] };
   }
-  return { ok: true as const, items: listCredentialIpBindings() };
+  return { ok: true as const, items: await listCredentialIpBindings() };
 });
 
 /** Admin: sblocca una password (azzera i suoi IP) o tutte. */
@@ -334,7 +335,7 @@ export const clearCredentialIpBindings = createServerFn({ method: "POST" })
     if (!session || session.role !== "admin") {
       return { ok: false as const };
     }
-    clearCredentialIps(data.key);
+    await clearCredentialIps(data.key);
     return { ok: true as const };
   });
 
@@ -369,7 +370,7 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
     }
     // L'invito deve esistere ancora: impedisce di riusare un JWT guest rubato
     // per creare N membri dopo revoca/scadenza/esaurimento dell'invito.
-    if (!session.tempId || !isTempPasswordAlive(session.tempId)) {
+    if (!session.tempId || !(await isTempPasswordAlive(session.tempId))) {
       return { ok: false as const, message: "Invito scaduto o revocato. Chiedi un nuovo accesso." };
     }
 
@@ -386,7 +387,7 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
       return { ok: false as const, message: e instanceof Error ? e.message : "Password non valida" };
     }
     // Single-use: l'invito si consuma alla prima registrazione.
-    if (session.tempId) consumeTempPassword(session.tempId);
+    if (session.tempId) await consumeTempPassword(session.tempId);
 
     const claims: SessionClaims = {
       role: "member",
@@ -441,7 +442,7 @@ export const getGuestPasswords = createServerFn({ method: "GET" }).handler(async
   if (!session || session.role !== "admin") {
     return { ok: false as const, items: [] as ReturnType<typeof listTempPasswords> };
   }
-  return { ok: true as const, items: listTempPasswords() };
+  return { ok: true as const, items: await listTempPasswords() };
 });
 
 export const revokeGuestPassword = createServerFn({ method: "POST" })
@@ -451,7 +452,7 @@ export const revokeGuestPassword = createServerFn({ method: "POST" })
     if (!session || session.role !== "admin") {
       return { ok: false as const };
     }
-    return { ok: revokeTempPassword(data.id) };
+    return { ok: await revokeTempPassword(data.id) };
   });
 
 export const getDashboard = createServerFn({ method: "GET" }).handler(async () => {

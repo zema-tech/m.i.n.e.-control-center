@@ -10,6 +10,24 @@ import {
   type Permission,
   type SessionRole,
 } from "./auth.permissions";
+import {
+  deleteBan,
+  deleteBindings,
+  deleteTemp,
+  fetchAdminProfile,
+  fetchBans,
+  fetchBindings,
+  fetchMembers,
+  fetchRevokedJtis,
+  fetchTemps,
+  saveAdminProfile,
+  saveBan,
+  saveBinding,
+  saveMember,
+  saveRevokedJti,
+  saveTemp,
+  storeAvailable,
+} from "./auth.store";
 
 export {
   ALL_PERMISSIONS,
@@ -43,6 +61,111 @@ type Attempt = {
   banUntil: number;
 };
 const attempts = new Map<string, Attempt>();
+
+/**
+ * Idratazione da Supabase (una tantum per processo): ripristina membri,
+ * inviti, ban, binding IP, profilo admin e token revocati dopo un restart.
+ * Senza Supabase configurato resta tutto in memoria (comportamento attuale).
+ */
+let authHydrated = false;
+let authHydrating: Promise<void> | null = null;
+
+async function hydrateAuthState(): Promise<void> {
+  try {
+    if (!(await storeAvailable())) return;
+    const [members, temps, bindings, bans, profile, jtis] = await Promise.all([
+      fetchMembers(),
+      fetchTemps(),
+      fetchBindings(),
+      fetchBans(),
+      fetchAdminProfile(),
+      fetchRevokedJtis(),
+    ]);
+    const now = Date.now();
+    if (members) {
+      for (const m of members) {
+        registeredUsers.set(m.id, {
+          id: m.id,
+          label: m.label,
+          hash: m.hash,
+          permissions: normalizePermissions(m.permissions),
+          createdAt: m.createdAt,
+          fromTempId: m.fromTempId,
+        });
+      }
+    }
+    if (temps) {
+      for (const t of temps) {
+        if (t.expiresAt <= now) continue;
+        if (t.maxUses !== null && t.uses >= t.maxUses) continue;
+        tempPasswords.set(t.id, {
+          id: t.id,
+          label: t.label,
+          icon: (["none", "key", "user", "users", "star", "shield", "coffee", "gamepad", "sparkles", "heart"] as TempPasswordIcon[]).includes(
+            t.icon as TempPasswordIcon,
+          )
+            ? (t.icon as TempPasswordIcon)
+            : "none",
+          hash: t.hash,
+          createdAt: t.createdAt,
+          expiresAt: t.expiresAt,
+          uses: t.uses,
+          maxUses: t.maxUses,
+          permissions: normalizePermissions(t.permissions),
+        });
+      }
+    }
+    if (bindings) {
+      for (const b of bindings) {
+        if (now - b.updatedAt > IP_BIND_WINDOW_MS) continue;
+        let entry = credentialIps.get(b.key);
+        if (!entry) {
+          entry = { ips: new Map(), firstSeen: b.updatedAt };
+          credentialIps.set(b.key, entry);
+        }
+        entry.ips.set(b.ip, b.updatedAt);
+      }
+    }
+    if (bans) {
+      for (const b of bans) {
+        attempts.set(b.ip, {
+          count: b.count,
+          lockedUntil: b.lockedUntil,
+          firstSeen: b.firstSeen,
+          totalFails: b.totalFails,
+          banUntil: b.banUntil,
+        });
+      }
+    }
+    if (profile) {
+      adminProfile = {
+        label: profile.label,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      };
+    }
+    if (jtis) {
+      for (const jti of jtis) revokedJtis.add(jti);
+    }
+  } catch {
+    /* fallback in memoria */
+  }
+}
+
+function ensureAuthHydrated(): Promise<void> {
+  if (authHydrated) return Promise.resolve();
+  if (!authHydrating) {
+    authHydrating = hydrateAuthState().finally(() => {
+      authHydrated = true;
+    });
+  }
+  return authHydrating;
+}
+
+/** Scrittura best-effort su Supabase: mai un throw verso il chiamante. */
+function persist(p: Promise<unknown>): void {
+  void p.catch(() => {});
+}
 
 export type ActionLog = {
   ts: string;
@@ -97,7 +220,8 @@ function lockMsForFails(count: number): number {
   return ms;
 }
 
-export function checkRateLimit(ip: string): RateLimitStatus {
+export async function checkRateLimit(ip: string): Promise<RateLimitStatus> {
+  await ensureAuthHydrated();
   const now = Date.now();
   const entry = attempts.get(ip);
   if (entry) {
@@ -127,7 +251,24 @@ export function checkRateLimit(ip: string): RateLimitStatus {
   return { blocked: false, banned: false, retryInMin: 0, retryInSec: 0, banInSec: 0, remaining: 3 };
 }
 
-export function registerFailure(ip: string): RateLimitStatus {
+function persistBan(ip: string): void {
+  if (ip === "unknown") return;
+  const e = attempts.get(ip);
+  if (!e) return;
+  persist(
+    saveBan({
+      ip,
+      count: e.count,
+      lockedUntil: e.lockedUntil,
+      firstSeen: e.firstSeen,
+      totalFails: e.totalFails,
+      banUntil: e.banUntil,
+    }),
+  );
+}
+
+export async function registerFailure(ip: string): Promise<RateLimitStatus> {
+  await ensureAuthHydrated();
   const now = Date.now();
   const entry = attempts.get(ip) ?? {
     count: 0,
@@ -166,6 +307,7 @@ export function registerFailure(ip: string): RateLimitStatus {
     entry.count = 0;
     entry.lockedUntil = 0;
     attempts.set(ip, entry);
+    persistBan(ip);
     logAction("error", `IP bannato 24h per troppi tentativi: ${ip}`);
     return {
       blocked: true,
@@ -181,6 +323,7 @@ export function registerFailure(ip: string): RateLimitStatus {
   if (lockMs > 0) {
     entry.lockedUntil = now + lockMs;
     attempts.set(ip, entry);
+    persistBan(ip);
     logAction("warn", `Lock login ${Math.round(lockMs / 1000)}s per ${ip} (${entry.count} errori)`);
     return {
       blocked: true,
@@ -192,6 +335,7 @@ export function registerFailure(ip: string): RateLimitStatus {
     };
   }
   attempts.set(ip, entry);
+  persistBan(ip);
   const nextStep = LOCK_STEPS.find((s) => s.fails > entry.count);
   const remaining = nextStep ? nextStep.fails - entry.count : 1;
   return {
@@ -204,8 +348,10 @@ export function registerFailure(ip: string): RateLimitStatus {
   };
 }
 
-export function clearFailures(ip: string) {
+export async function clearFailures(ip: string) {
+  await ensureAuthHydrated();
   attempts.delete(ip);
+  if (ip !== "unknown") persist(deleteBan(ip));
 }
 
 /**
@@ -236,10 +382,11 @@ const credentialIps = new Map<string, IpBinding>();
  * Ritorna ok:false quando un 4° IP distinto prova la stessa password.
  * L'IP "unknown" non è vincolabile: passa senza contare (evita lock collettivi).
  */
-export function checkCredentialIp(
+export async function checkCredentialIp(
   key: string,
   ip: string,
-): { ok: boolean; message: string; count: number } {
+): Promise<{ ok: boolean; message: string; count: number }> {
+  await ensureAuthHydrated();
   if (ip === "unknown") return { ok: true, message: "", count: 0 };
   const now = Date.now();
   let b = credentialIps.get(key);
@@ -248,10 +395,14 @@ export function checkCredentialIp(
     credentialIps.set(key, b);
   }
   for (const [seenIp, ts] of b.ips) {
-    if (now - ts > IP_BIND_WINDOW_MS) b.ips.delete(seenIp);
+    if (now - ts > IP_BIND_WINDOW_MS) {
+      b.ips.delete(seenIp);
+      persist(deleteBindings(key));
+    }
   }
   if (b.ips.has(ip)) {
     b.ips.set(ip, now);
+    persist(saveBinding(key, ip, now));
     return { ok: true, message: "", count: b.ips.size };
   }
   if (b.ips.size >= MAX_IPS_PER_CREDENTIAL) {
@@ -264,12 +415,16 @@ export function checkCredentialIp(
     };
   }
   b.ips.set(ip, now);
+  persist(saveBinding(key, ip, now));
   return { ok: true, message: "", count: b.ips.size };
 }
 
-export function listCredentialIpBindings(): { key: string; count: number; ips: string[] }[] {
+export type CredentialIpBinding = { key: string; count: number; ips: string[] };
+
+export async function listCredentialIpBindings(): Promise<CredentialIpBinding[]> {
+  await ensureAuthHydrated();
   const now = Date.now();
-  const out: { key: string; count: number; ips: string[] }[] = [];
+  const out: CredentialIpBinding[] = [];
   for (const [key, b] of credentialIps) {
     const ips = [...b.ips.entries()]
       .filter(([, ts]) => now - ts <= IP_BIND_WINDOW_MS)
@@ -279,7 +434,8 @@ export function listCredentialIpBindings(): { key: string; count: number; ips: s
   return out.sort((a, b) => b.count - a.count);
 }
 
-export function clearCredentialIps(key?: string): void {
+export async function clearCredentialIps(key?: string): Promise<void> {
+  await ensureAuthHydrated();
   if (key) {
     credentialIps.delete(key);
     logAction("info", `Binding IP azzerati per "${key}"`);
@@ -287,22 +443,32 @@ export function clearCredentialIps(key?: string): void {
     credentialIps.clear();
     logAction("info", "Tutti i binding IP azzerati");
   }
+  persist(deleteBindings(key));
 }
 
 /** Profilo admin: anche l'admin crea nome profilo al primo accesso. */
 export type AdminProfile = { label: string; createdAt: number; updatedAt: number };
 let adminProfile: AdminProfile | null = null;
 
-export function getAdminProfile(): AdminProfile | null {
+export async function getAdminProfile(): Promise<AdminProfile | null> {
+  await ensureAuthHydrated();
   return adminProfile;
 }
 
-export function setAdminProfile(label: string): AdminProfile {
+export async function setAdminProfile(label: string): Promise<AdminProfile> {
+  await ensureAuthHydrated();
   const clean = label.trim().slice(0, 40) || "Admin";
   const now = Date.now();
   adminProfile = adminProfile
     ? { ...adminProfile, label: clean, updatedAt: now }
     : { label: clean, createdAt: now, updatedAt: now };
+  persist(
+    saveAdminProfile({
+      label: adminProfile.label,
+      createdAt: adminProfile.createdAt,
+      updatedAt: adminProfile.updatedAt,
+    }),
+  );
   logAction("info", `Profilo admin impostato: ${clean}`);
   return adminProfile;
 }
@@ -367,10 +533,17 @@ const tempPasswords = new Map<string, TempPassword>();
 
 function pruneExpired() {
   const now = Date.now();
+  const removed: string[] = [];
   for (const [id, tp] of tempPasswords) {
-    if (tp.expiresAt <= now) tempPasswords.delete(id);
-    else if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(id);
+    if (tp.expiresAt <= now) {
+      tempPasswords.delete(id);
+      removed.push(id);
+    } else if (tp.maxUses !== null && tp.uses >= tp.maxUses) {
+      tempPasswords.delete(id);
+      removed.push(id);
+    }
   }
+  for (const id of removed) persist(deleteTemp(id));
 }
 
 const VALID_ICONS: TempPasswordIcon[] = [
@@ -417,7 +590,7 @@ export async function createTempPassword(opts: {
   const maxUses = opts.maxUses ?? null;
   const icon = normalizeIcon(opts.icon);
   const permissions = normalizePermissions(opts.permissions);
-  tempPasswords.set(id, {
+  const row: TempPassword = {
     id,
     label: opts.label.trim() || "Ospite",
     icon,
@@ -427,7 +600,21 @@ export async function createTempPassword(opts: {
     uses: 0,
     maxUses,
     permissions,
-  });
+  };
+  tempPasswords.set(id, row);
+  persist(
+    saveTemp({
+      id: row.id,
+      label: row.label,
+      icon: row.icon,
+      hash: row.hash,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      uses: row.uses,
+      maxUses: row.maxUses,
+      permissions: row.permissions,
+    }),
+  );
   logAction(
     "info",
     `Password temporanea creata: ${opts.label.trim() || "Ospite"} (${icon}, ${permissions.length} permessi)`,
@@ -443,17 +630,20 @@ export async function createTempPassword(opts: {
   };
 }
 
-export function listTempPasswords(): Array<{
-  id: string;
-  label: string;
-  icon: TempPasswordIcon;
-  createdAt: number;
-  expiresAt: number;
-  uses: number;
-  maxUses: number | null;
-  expired: boolean;
-  permissions: Permission[];
-}> {
+export async function listTempPasswords(): Promise<
+  Array<{
+    id: string;
+    label: string;
+    icon: TempPasswordIcon;
+    createdAt: number;
+    expiresAt: number;
+    uses: number;
+    maxUses: number | null;
+    expired: boolean;
+    permissions: Permission[];
+  }>
+> {
+  await ensureAuthHydrated();
   pruneExpired();
   const now = Date.now();
   return Array.from(tempPasswords.values())
@@ -471,9 +661,13 @@ export function listTempPasswords(): Array<{
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export function revokeTempPassword(id: string): boolean {
+export async function revokeTempPassword(id: string): Promise<boolean> {
+  await ensureAuthHydrated();
   const ok = tempPasswords.delete(id);
-  if (ok) logAction("info", `Password temporanea revocata: ${id}`);
+  if (ok) {
+    persist(deleteTemp(id));
+    logAction("info", `Password temporanea revocata: ${id}`);
+  }
   return ok;
 }
 
@@ -504,6 +698,7 @@ export type AuthMatch =
  * vince admin > member > temp.
  */
 export async function matchPassword(password: string): Promise<AuthMatch> {
+  await ensureAuthHydrated();
   let adminMatch = false;
   const hash = process.env["MINE_PASSWORD_HASH"];
   if (hash) {
@@ -576,14 +771,32 @@ function reserveTempUse(id: string): Promise<boolean> {
     if (!tp) return false;
     if (tp.expiresAt <= Date.now()) {
       tempPasswords.delete(id);
+      persist(deleteTemp(id));
       return false;
     }
     if (tp.maxUses !== null && tp.uses >= tp.maxUses) {
       tempPasswords.delete(id);
+      persist(deleteTemp(id));
       return false;
     }
     tp.uses += 1;
-    if (tp.maxUses !== null && tp.uses >= tp.maxUses) tempPasswords.delete(tp.id);
+    persist(
+      saveTemp({
+        id: tp.id,
+        label: tp.label,
+        icon: tp.icon,
+        hash: tp.hash,
+        createdAt: tp.createdAt,
+        expiresAt: tp.expiresAt,
+        uses: tp.uses,
+        maxUses: tp.maxUses,
+        permissions: tp.permissions,
+      }),
+    );
+    if (tp.maxUses !== null && tp.uses >= tp.maxUses) {
+      tempPasswords.delete(tp.id);
+      persist(deleteTemp(tp.id));
+    }
     return true;
   });
   tempLocks.set(id, next.catch(() => false));
@@ -594,7 +807,8 @@ function reserveTempUse(id: string): Promise<boolean> {
 }
 
 /** Invito ancora valido (non scaduto/revocato/esaurito)? */
-export function isTempPasswordAlive(id: string): boolean {
+export async function isTempPasswordAlive(id: string): Promise<boolean> {
+  await ensureAuthHydrated();
   pruneExpired();
   const tp = tempPasswords.get(id);
   if (!tp) return false;
@@ -610,8 +824,10 @@ export function isTempPasswordAlive(id: string): boolean {
 }
 
 /** Consuma definitivamente l'invito dopo la registrazione del membro. */
-export function consumeTempPassword(id: string): void {
+export async function consumeTempPassword(id: string): Promise<void> {
+  await ensureAuthHydrated();
   if (tempPasswords.delete(id)) {
+    persist(deleteTemp(id));
     logAction("info", `Invito temporaneo consumato: ${id}`);
   }
 }
@@ -637,14 +853,25 @@ export async function registerMemberFromGuest(opts: {
   const id = randomBytes(8).toString("hex");
   const hash = await bcrypt.hash(opts.password, BCRYPT_COST);
   const permissions = normalizePermissions(opts.permissions).filter((p) => p !== "access");
+  const createdAt = Date.now();
   registeredUsers.set(id, {
     id,
     label: opts.label.trim() || "Membro",
     hash,
     permissions,
-    createdAt: Date.now(),
+    createdAt,
     fromTempId: opts.fromTempId,
   });
+  persist(
+    saveMember({
+      id,
+      label: opts.label.trim() || "Membro",
+      hash,
+      permissions,
+      createdAt,
+      fromTempId: opts.fromTempId,
+    }),
+  );
   logAction("info", `Membro registrato: ${opts.label.trim() || "Membro"}`);
   return { id, label: opts.label.trim() || "Membro" };
 }
@@ -679,6 +906,7 @@ export function revokeToken(token: string | undefined): void {
     ) as { jti?: unknown; exp?: unknown };
     if (typeof payload.jti === "string" && payload.jti) {
       revokedJtis.add(payload.jti);
+      persist(saveRevokedJti(payload.jti));
       if (revokedJtis.size > 5000) {
         const first = revokedJtis.values().next().value;
         if (first) revokedJtis.delete(first);

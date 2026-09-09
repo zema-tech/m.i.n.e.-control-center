@@ -55,6 +55,20 @@ npm run dev
 
 Variabili d’ambiente e password di login: vedi configurazione auth / `.env` (non committare secret).
 
+### Variabili d'ambiente
+
+| Nome | Obbligatoria | Effetto |
+|------|--------------|---------|
+| `MINE_JWT_SECRET` | sì | Firma sessioni (min 32 char random) |
+| `MINE_PASSWORD_HASH` | sì | Hash bcrypt admin (`$2a$…`, mai in chiaro) |
+| `GROQ_API_KEY` | per IA | Chat/agenti via Groq |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | per persistenza | Auth (membri, inviti, ban, binding IP, profilo admin) e memoria su DB; senza, tutto resta in memoria e si azzera al restart |
+| `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` | no | Client Supabase (fallback offline se assenti) |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | no | Alias frontend delle chiavi sopra |
+| `COOKIE_SECURE=0` | solo LAN http | Permette il cookie su `http://` locale (mai su internet) |
+| `SESSION_BIND_IP=1` | no | Invalida la sessione al cambio IP (protezione furto cookie) |
+| `FALIX_API_KEY` / `FALIX_SERVER_ID` | per Minecraft | Stato live via API Falix (fallback demo + query pubblica `MC_SERVER_ADDRESS`) |
+
 ### Lovable
 
 Progetto collegato a [Lovable](https://lovable.dev/projects/a08747ed-d009-4084-8e55-286cd368f219). I commit su `main` si sincronizzano con l’editor.

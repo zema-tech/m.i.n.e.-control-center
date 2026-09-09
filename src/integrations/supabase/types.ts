@@ -83,6 +83,153 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_members: {
+        Row: {
+          id: string
+          label: string
+          hash: string
+          permissions: string[]
+          created_at: number
+          from_temp_id: string | null
+        }
+        Insert: {
+          id: string
+          label: string
+          hash: string
+          permissions?: string[]
+          created_at: number
+          from_temp_id?: string | null
+        }
+        Update: {
+          id?: string
+          label?: string
+          hash?: string
+          permissions?: string[]
+          created_at?: number
+          from_temp_id?: string | null
+        }
+        Relationships: []
+      }
+      auth_temp_passwords: {
+        Row: {
+          id: string
+          label: string
+          icon: string
+          hash: string
+          created_at: number
+          expires_at: number
+          uses: number
+          max_uses: number | null
+          permissions: string[]
+        }
+        Insert: {
+          id: string
+          label: string
+          icon?: string
+          hash: string
+          created_at: number
+          expires_at: number
+          uses?: number
+          max_uses?: number | null
+          permissions?: string[]
+        }
+        Update: {
+          id?: string
+          label?: string
+          icon?: string
+          hash?: string
+          created_at?: number
+          expires_at?: number
+          uses?: number
+          max_uses?: number | null
+          permissions?: string[]
+        }
+        Relationships: []
+      }
+      auth_ip_bindings: {
+        Row: {
+          credential_key: string
+          ip: string
+          updated_at: number
+        }
+        Insert: {
+          credential_key: string
+          ip: string
+          updated_at: number
+        }
+        Update: {
+          credential_key?: string
+          ip?: string
+          updated_at?: number
+        }
+        Relationships: []
+      }
+      auth_ip_bans: {
+        Row: {
+          ip: string
+          count: number
+          locked_until: number
+          first_seen: number
+          total_fails: number
+          ban_until: number
+          updated_at: number
+        }
+        Insert: {
+          ip: string
+          count?: number
+          locked_until?: number
+          first_seen: number
+          total_fails?: number
+          ban_until?: number
+          updated_at: number
+        }
+        Update: {
+          ip?: string
+          count?: number
+          locked_until?: number
+          first_seen?: number
+          total_fails?: number
+          ban_until?: number
+          updated_at?: number
+        }
+        Relationships: []
+      }
+      auth_admin_profile: {
+        Row: {
+          id: number
+          label: string
+          created_at: number
+          updated_at: number
+        }
+        Insert: {
+          id: number
+          label: string
+          created_at: number
+          updated_at: number
+        }
+        Update: {
+          id?: number
+          label?: string
+          created_at?: number
+          updated_at?: number
+        }
+        Relationships: []
+      }
+      auth_revoked_tokens: {
+        Row: {
+          jti: string
+          revoked_at: number
+        }
+        Insert: {
+          jti: string
+          revoked_at: number
+        }
+        Update: {
+          jti?: string
+          revoked_at?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
