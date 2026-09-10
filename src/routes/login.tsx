@@ -164,14 +164,14 @@ function LoginPage() {
         aria-hidden
       />
 
-      <div className="relative z-10 w-full max-w-[420px] animate-fade-in-up">
+      <div className="relative z-10 w-full max-w-[440px] animate-fade-in-up">
         <div className="mb-9 text-center">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-100/80 backdrop-blur-xl">
             <Sparkles className="h-3.5 w-3.5 text-sky-300" />
-            Omnicore Hub
+            Omnicore Hub · Product Bold
           </div>
-          <h1 className="font-display text-5xl font-bold tracking-tight text-white drop-shadow-[0_0_40px_rgba(56,189,248,0.25)] sm:text-6xl">
-            <span className="bg-gradient-to-br from-white via-sky-100 to-sky-300/90 bg-clip-text text-transparent">
+          <h1 className="text-hero hero-clip text-white drop-shadow-[0_0_40px_rgba(56,189,248,0.25)]">
+            <span className="bg-gradient-to-br from-white via-sky-100 to-sky-300/90 bg-clip-text text-transparent gradient-pan">
               Omnicore
             </span>
           </h1>
@@ -186,7 +186,7 @@ function LoginPage() {
         <form
           ref={formRef}
           onSubmit={onSubmit}
-          className={`relative space-y-6 overflow-hidden rounded-2xl border border-white/12 bg-white/[0.06] p-7 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:p-8 ${
+          className={`glass-strong grain relative space-y-6 overflow-hidden rounded-3xl p-7 sm:p-8 ${
             shake ? "animate-form-shake" : ""
           }`}
         >

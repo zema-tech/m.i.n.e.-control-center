@@ -56,9 +56,9 @@ function NavLink({
     <Link
       to={to}
       onClick={onNavigate}
-      className={`btn-matrix group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium tracking-wide ${
+      className={`btn-matrix group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-medium tracking-wide ${
         active
-          ? "nav-item-active"
+          ? "nav-item-active shadow-[0_0_20px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
           : "border border-transparent text-muted-foreground hover:bg-white/[0.04] hover:text-foreground"
       }`}
     >
@@ -132,11 +132,12 @@ function SideNav({
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
     <Link to="/home" className="group block">
-      <span className="logo-gradient font-display text-[1.3rem] font-bold tracking-tight transition-opacity group-hover:opacity-90">
+      <span className="logo-gradient gradient-pan font-display text-[1.35rem] font-extrabold tracking-tight transition-opacity group-hover:opacity-90">
         {agentName}
       </span>
-      <span className="mt-0.5 block text-[11px] font-medium tracking-wide text-muted-foreground">
-        Omnicore
+      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
+        <span className="inline-block h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+        Omnicore · Control Center
       </span>
     </Link>
   );

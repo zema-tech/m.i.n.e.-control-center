@@ -135,8 +135,8 @@ function DesignStudio() {
               <Palette className="h-3.5 w-3.5" />
               Laboratorio estetico
             </p>
-            <h2 className="mt-3 font-display text-4xl font-bold tracking-tight sm:text-5xl">
-              <span className="bg-gradient-to-r from-violet-200 via-fuchsia-300 to-amber-200 bg-clip-text text-transparent">
+            <h2 className="text-hero mt-3">
+              <span className="bg-gradient-to-r from-violet-200 via-fuchsia-300 to-amber-200 bg-clip-text text-transparent gradient-pan">
                 A.R.T Design System
               </span>
             </h2>
