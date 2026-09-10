@@ -5,6 +5,15 @@ export type JarvisMsg = {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  /**
+   * Meta di ragionamento stile Grok/Claude (mostrata come collapsible).
+   * VibeSec: solo metadati (fase/provider/modello/ok/ms) — mai contenuto
+   * grezzo dei tool né secret (già strippati lato server).
+   */
+  meta?: {
+    mode?: string;
+    steps?: { fase: string; provider: string; model: string; ok: boolean; ms: number }[];
+  };
 };
 
 export type JarvisFile = {
@@ -206,6 +215,7 @@ export function appendMessage(
     role: msg.role,
     content: msg.content,
     createdAt: msg.createdAt || Date.now(),
+    ...(msg.meta ? { meta: msg.meta } : {}),
   };
   return {
     ...store,

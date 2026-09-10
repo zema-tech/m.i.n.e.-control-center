@@ -3,11 +3,10 @@ import {
   Activity,
   Brain,
   Cable,
-  Check,
-  Copy,
   Download,
   Eraser,
   FolderPlus,
+  History,
   Home,
   ListChecks,
   Menu,
@@ -17,6 +16,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Puzzle,
   Search,
   Send,
   ShieldCheck,
@@ -26,8 +26,17 @@ import {
 } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
+import { CustomMcpPanel } from "@/components/CustomMcpPanel";
+import { JarvisMessage } from "@/components/JarvisMessage";
 import { getAuthState } from "@/lib/auth.functions";
+import { getActiveSkills } from "@/lib/agent-skills";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
+import {
+  addJarvisMemory,
+  loadJarvisMemories,
+  removeJarvisMemory,
+  stopJarvisSpeech,
+} from "@/lib/jarvis-plus";
 import {
   addTextFile,
   createChat,
@@ -76,7 +85,7 @@ const QUICK_PROMPTS = [
   "Riassumi i file del progetto in 5 punti",
   "Cerca nei file: fattura e prepara un CSV",
   "Crea un file piano-settimana.md con 3 priorità",
-  "Profilo GitHub autenticato via MCP",
+  "/aiuto",
 ];
 
 const ALLOWED_EXT = [
@@ -138,9 +147,10 @@ function JarvisWorkspace() {
   const deferredSearch = useDeferredValue(search);
   const [listening, setListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pat, setPat] = useState("");
   const [patSaved, setPatSaved] = useState(false);
+  const [memInput, setMemInput] = useState("");
+  const [memTick, setMemTick] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
@@ -153,6 +163,7 @@ function JarvisWorkspace() {
         /* ignore */
       }
       recognitionRef.current = null;
+      stopJarvisSpeech();
     };
   }, []);
 
@@ -171,6 +182,7 @@ function JarvisWorkspace() {
     setActiveChatId,
     activeProjectId,
     model,
+    accountKey,
   });
   const { busy, error, setError } = agent;
 
@@ -227,6 +239,23 @@ function JarvisWorkspace() {
     [store.chats],
   );
 
+  const memories = useMemo(
+    () => loadJarvisMemories(accountKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [accountKey, agent.memBump, memTick],
+  );
+  const skills = useMemo(
+    () => getActiveSkills(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [panel, agent.memBump],
+  );
+
+  function onAddMemory() {
+    if (!memInput.trim()) return;
+    if (addJarvisMemory(accountKey, memInput)) setMemInput("");
+    setMemTick((n) => n + 1);
+  }
+
   const recentActivity = useMemo(() => {
     const all = store.chats.flatMap((c) =>
       c.messages.slice(-3).map((m) => ({ chat: c.title, ...m })),
@@ -271,16 +300,6 @@ function JarvisWorkspace() {
     const next = deleteProject(store, p.id);
     persist(next);
     if (activeProjectId === p.id) setActiveProjectId(null);
-  }
-
-  function onCopy(id: string, text: string) {
-    void navigator.clipboard?.writeText(text).then(
-      () => {
-        setCopiedId(id);
-        window.setTimeout(() => setCopiedId(null), 1400);
-      },
-      () => setError("Copia non riuscita."),
-    );
   }
 
   function onExportChat() {
@@ -692,57 +711,177 @@ function JarvisWorkspace() {
                 conferma umana.
               </p>
             </div>
-          </div>
-        ) : panel === "connectors" ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-            <div className="hermes-card mx-auto max-w-2xl p-5 sm:p-7">
-              <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
-                <Cable className="h-4 w-4 text-sky-200" /> GitHub MCP via PAT
+
+            {/* Ricordi locali stile Claude memory */}
+            <div className="hermes-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
+              <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
+                <History className="h-4 w-4 text-sky-200" /> Ricordi · {memories.length}/50
               </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-slate-300/80">
-                Il token resta nel tuo browser (localStorage), non viaggia nei log e non entra nel
-                prompt. Incollalo una volta, poi resta mascherato.
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-400">
+                Fatti e preferenze che Jarvis riusa in ogni chat (solo questo browser). Anche via{" "}
+                <span className="font-mono text-sky-200">/memorizza</span>.
               </p>
-              <div className="mt-4 flex gap-2">
+              <div className="mt-3 flex gap-2">
                 <input
-                  type="password"
-                  value={pat}
-                  onChange={(e) => setPat(e.target.value.slice(0, 200))}
-                  onFocus={() => {
-                    // Il valore mascherato non è editabile: si riparte da vuoto.
-                    if (patSaved) setPat("");
+                  value={memInput}
+                  onChange={(e) => setMemInput(e.target.value.slice(0, 300))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      onAddMemory();
+                    }
                   }}
-                  placeholder={patSaved ? "•••••••• (salvato)" : "ghp_…"}
+                  placeholder="es. preferisco risposte brevi…"
+                  maxLength={300}
                   autoComplete="off"
-                  spellCheck={false}
-                  maxLength={200}
-                  className="min-w-0 flex-1 rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2.5 font-mono text-[13px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
+                  className="min-w-0 flex-1 rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2 text-[13px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
                 />
                 <button
                   type="button"
-                  onClick={savePat}
-                  className="rounded-xl bg-gradient-to-b from-sky-200 to-sky-400 px-4 py-2 text-[13px] font-semibold text-black"
+                  onClick={onAddMemory}
+                  disabled={!memInput.trim()}
+                  className="rounded-xl bg-gradient-to-b from-sky-200 to-sky-400 px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-40"
                 >
-                  Salva
+                  <Plus className="h-4 w-4" />
                 </button>
-                {patSaved ? (
+              </div>
+              {memories.length > 0 ? (
+                <ul className="mt-3 space-y-1.5">
+                  {memories.map((m) => (
+                    <li
+                      key={m.id}
+                      className="group flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12.5px] text-slate-200"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{m.text}</span>
+                      <button
+                        type="button"
+                        aria-label={`Dimentica ${m.text}`}
+                        onClick={() => {
+                          removeJarvisMemory(accountKey, m.id);
+                          setMemTick((n) => n + 1);
+                        }}
+                        className="shrink-0 rounded p-1 text-slate-500 opacity-0 hover:text-red-300 group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+
+            {/* Skill stile Claude Agent Skills */}
+            <div className="hermes-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
+              <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
+                <Puzzle className="h-4 w-4 text-sky-200" /> Skill · {skills.length} attive
+              </p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-400">
+                Procedure riusabili (stile Claude SKILL.md). “Usa” la arma per la prossima risposta,
+                oppure <span className="font-mono text-sky-200">/skill &lt;nome&gt;</span> in chat.
+              </p>
+              {skills.length > 0 ? (
+                <ul className="mt-3 space-y-1.5">
+                  {skills.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-[12px] text-sky-100">{s.name}</p>
+                        <p className="truncate text-[11.5px] text-slate-400">{s.description}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (agent.applySkill(s.name)) {
+                            setPanel("chat");
+                            setSidebarOpen(false);
+                          }
+                        }}
+                        className={`shrink-0 rounded-xl px-3 py-1.5 text-[12px] font-semibold ${
+                          agent.activeSkill?.name === s.name.toLowerCase()
+                            ? "bg-emerald-300/25 text-emerald-100"
+                            : "bg-sky-300/20 text-white hover:bg-sky-300/30"
+                        }`}
+                      >
+                        {agent.activeSkill?.name === s.name.toLowerCase() ? "Attiva ✓" : "Usa"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-[12.5px] text-slate-500">
+                  Nessuna skill attiva — creane da Competenze o chiedi a Jarvis di proporne una.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : panel === "connectors" ? (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+            <div className="mx-auto max-w-2xl space-y-4">
+              <div className="hermes-card p-5 sm:p-7">
+                <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
+                  <Cable className="h-4 w-4 text-sky-200" /> GitHub MCP via PAT
+                </p>
+                <p className="mt-2 text-[13px] leading-relaxed text-slate-300/80">
+                  Il token resta nel tuo browser (localStorage), non viaggia nei log e non entra nel
+                  prompt. Incollalo una volta, poi resta mascherato.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <input
+                    type="password"
+                    value={pat}
+                    onChange={(e) => setPat(e.target.value.slice(0, 200))}
+                    onFocus={() => {
+                      // Il valore mascherato non è editabile: si riparte da vuoto.
+                      if (patSaved) setPat("");
+                    }}
+                    placeholder={patSaved ? "•••••••• (salvato)" : "ghp_…"}
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={200}
+                    className="min-w-0 flex-1 rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2.5 font-mono text-[13px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
+                  />
                   <button
                     type="button"
-                    onClick={() => {
-                      saveGithubPat("");
-                      setPat("");
-                      setPatSaved(false);
-                    }}
-                    className="rounded-xl border border-red-300/25 px-3 py-2 text-[13px] text-red-200"
+                    onClick={savePat}
+                    className="rounded-xl bg-gradient-to-b from-sky-200 to-sky-400 px-4 py-2 text-[13px] font-semibold text-black"
                   >
-                    Rimuovi
+                    Salva
                   </button>
-                ) : null}
+                  {patSaved ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveGithubPat("");
+                        setPat("");
+                        setPatSaved(false);
+                      }}
+                      className="rounded-xl border border-red-300/25 px-3 py-2 text-[13px] text-red-200"
+                    >
+                      Rimuovi
+                    </button>
+                  ) : null}
+                </div>
+                <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-200/80" />
+                  VibeSec: segreto mai hardcodato, mai nei log, revocabile in un tap.
+                </p>
               </div>
-              <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-200/80" />
-                VibeSec: segreto mai hardcodato, mai nei log, revocabile in un tap.
-              </p>
+              {/* Plugin MCP custom stile Claude Connectors */}
+              <div className="hermes-card p-5 sm:p-7">
+                <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
+                  <Cable className="h-4 w-4 text-sky-200" /> Plugin MCP custom
+                </p>
+                <p className="mt-2 text-[13px] leading-relaxed text-slate-300/80">
+                  Collega server MCP streamable-http: in modalità agente li uso via{" "}
+                  <span className="font-mono text-sky-200">mcp_call server=&lt;id&gt;</span> sempre
+                  con conferma. Solo https pubblici; auth solo con il tuo token.
+                </p>
+                <div className="mt-4 [&_section]:!animate-none [&_.panel-spacious]:!border-sky-100/10 [&_.panel-spacious]:!bg-transparent [&_.panel-spacious]:!p-0 [&_.panel-spacious]:!shadow-none">
+                  <CustomMcpPanel />
+                </div>
+              </div>
             </div>
           </div>
         ) : panel === "activity" ? (
@@ -791,39 +930,15 @@ function JarvisWorkspace() {
                     </div>
                   </div>
                 ) : null}
-                {(activeChat?.messages ?? []).map((m) => (
-                  <div
+                {(activeChat?.messages ?? []).map((m, idx, arr) => (
+                  <JarvisMessage
                     key={m.id}
-                    className={`group flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed whitespace-pre-wrap ${
-                        m.role === "user"
-                          ? "bg-sky-300/85 text-black"
-                          : "border border-sky-100/10 bg-black/55 text-slate-100 backdrop-blur-md"
-                      }`}
-                    >
-                      {/* VibeSec: testo puro, React fa escape — mai HTML grezzo */}
-                      {m.content}
-                      <span className="mt-1.5 flex items-center gap-2 opacity-70">
-                        <span className="font-mono text-[10px]">{formatTime(m.createdAt)}</span>
-                        {m.role === "assistant" ? (
-                          <button
-                            type="button"
-                            aria-label="Copia risposta"
-                            onClick={() => onCopy(m.id, m.content)}
-                            className="rounded p-0.5 opacity-0 transition group-hover:opacity-100 hover:bg-white/10"
-                          >
-                            {copiedId === m.id ? (
-                              <Check className="h-3 w-3" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </button>
-                        ) : null}
-                      </span>
-                    </div>
-                  </div>
+                    msg={m}
+                    time={formatTime(m.createdAt)}
+                    isLastAssistant={m.role === "assistant" && idx === arr.length - 1}
+                    canRegenerate={!busy}
+                    onRegenerate={() => void agent.regenerate()}
+                  />
                 ))}
                 {busy ? (
                   <div className="flex justify-start">
@@ -882,6 +997,25 @@ function JarvisWorkspace() {
 
             <div className="border-t border-sky-100/10 bg-black/50 px-3 py-3 backdrop-blur-xl sm:px-6">
               <div className="mx-auto max-w-3xl rounded-2xl border border-sky-100/15 bg-black/45 p-2">
+                {agent.activeSkill ? (
+                  <div className="flex items-center gap-2 px-2 pb-1.5 pt-1">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100">
+                      <Puzzle className="h-3 w-3" />
+                      Skill: {agent.activeSkill.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => agent.clearSkill()}
+                      aria-label="Disattiva skill"
+                      className="rounded-full p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                    <span className="hidden text-[11px] text-slate-500 sm:inline">
+                      Guida la prossima risposta
+                    </span>
+                  </div>
+                ) : null}
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value.slice(0, 8000))}
@@ -893,7 +1027,7 @@ function JarvisWorkspace() {
                   }}
                   rows={2}
                   maxLength={8000}
-                  placeholder="Scrivi o detta… (Agente: piano + tool file/CSV)"
+                  placeholder="Scrivi, detta o usa /aiuto… (Agente: piano + tool file/CSV)"
                   aria-label="Messaggio per Jarvis"
                   className="w-full resize-none bg-transparent px-2 py-2 text-[14px] text-white outline-none placeholder:text-sky-100/30"
                 />
