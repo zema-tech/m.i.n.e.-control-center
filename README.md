@@ -31,7 +31,7 @@ J.A.R.V.I.S resta il cervello centrale (carattere, memoria, regole, mani). Gli a
 - **A.R.T** — studio design (palette, componenti)
 - Auth locale (password + JWT), API key in settings (mai hardcodate)
 
-Stack: React · TanStack Start · Tailwind · backend Node (Nitro). Deploy tipico: Lovable / Vercel.
+Stack: React · TanStack Start · Tailwind · backend Node (Nitro). Deploy tipico: Vercel / self-host.
 
 ---
 
@@ -71,9 +71,9 @@ Variabili d’ambiente e password di login: vedi configurazione auth / `.env` (n
 | `SESSION_BIND_IP=1` | no | Invalida la sessione al cambio IP (protezione furto cookie) |
 | `FALIX_API_KEY` / `FALIX_SERVER_ID` | per Minecraft | Stato live via API Falix (fallback demo + query pubblica `MC_SERVER_ADDRESS`) |
 
-### Lovable
+### Deploy
 
-Progetto collegato a [Lovable](https://lovable.dev/projects/a08747ed-d009-4084-8e55-286cd368f219). I commit su `main` si sincronizzano con l’editor.
+I commit su `main` sono la source of truth — build con `npm run build`, deploy su Vercel o self-host.
 
 ---
 

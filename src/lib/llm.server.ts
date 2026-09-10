@@ -85,7 +85,7 @@ export async function callModel(
       "Content-Type": "application/json",
     };
     if (provider === "openrouter") {
-      headers["HTTP-Referer"] = "https://mine.lovable.app";
+      headers["HTTP-Referer"] = "https://github.com/zema-tech/m.i.n.e.-control-center";
       headers["X-Title"] = "M.I.N.E Panel";
     }
 

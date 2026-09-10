@@ -1,5 +1,5 @@
 /**
- * Memoria persistente dell'agente (Lovable Cloud).
+ * Memoria persistente dell'agente (Supabase).
  * Accesso solo lato server: il pannello è protetto da password + sessione.
  */
 

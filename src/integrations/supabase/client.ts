@@ -1,7 +1,6 @@
-// Client Supabase — opzionale in produzione (Vercel senza Lovable Cloud).
+// Client Supabase — opzionale in produzione (env assenti = modalità offline).
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
-import { brokeredPreviewStorage } from "./previewAuthStorage";
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
@@ -69,7 +68,7 @@ function createSupabaseClient(): SupabaseClient<Database> {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
-      storage: brokeredPreviewStorage(),
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
     },

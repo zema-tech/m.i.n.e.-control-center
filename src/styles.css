@@ -669,25 +669,6 @@ html[data-section="code"] {
   }
 }
 
-/* Hide Lovable badge */
-#lovable-badge,
-#lovable-badge-cta,
-#lovable-badge-close,
-#lovable-badge-text,
-#lovable-badge-divider,
-aside[aria-label="Edit with Lovable"],
-aside[id*="lovable"],
-[data-lovable-badge],
-a[href*="lovable.dev/projects"][id*="lovable"] {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  opacity: 0 !important;
-  width: 0 !important;
-  height: 0 !important;
-  overflow: hidden !important;
-}
-
 /*
  * Omnicore Product Bold + ScrollCraft layer
  * Fluid type · scroll reveals · parallax · cinematic hero
