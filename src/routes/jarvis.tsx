@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { CustomMcpPanel } from "@/components/CustomMcpPanel";
 import { JarvisMessage } from "@/components/JarvisMessage";
@@ -424,7 +425,7 @@ function JarvisWorkspace() {
         </Link>
         <span className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-sky-200" />
-          <span className="font-hermes text-[17px] tracking-[0.18em] text-white">JARVIS</span>
+          <span className="font-hermes jx-title-glow text-[17px] tracking-[0.18em]">JARVIS</span>
         </span>
         <button
           type="button"
@@ -486,7 +487,7 @@ function JarvisWorkspace() {
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
+      <div className="jx-scroll flex-1 overflow-y-auto px-2 pb-3">
         <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-100/40">
           Progetti
         </p>
@@ -531,7 +532,7 @@ function JarvisWorkspace() {
           filteredChats.map((c) => (
             <div
               key={c.id}
-              className={`group mb-0.5 flex items-center gap-0.5 rounded-lg ${activeChatId === c.id ? "bg-sky-300/20" : "hover:bg-white/[0.03]"}`}
+              className={`group mb-0.5 flex items-center gap-0.5 rounded-lg border border-transparent ${activeChatId === c.id ? "jx-side-active" : "hover:bg-white/[0.03]"}`}
             >
               <button
                 type="button"
@@ -685,14 +686,14 @@ function JarvisWorkspace() {
         </header>
 
         {panel === "neural" ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          <div key="neural" className="jx-scroll jx-panel flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="mx-auto grid max-w-3xl gap-3 sm:grid-cols-3">
               {[
                 { v: String(store.projects.length), l: "Progetti" },
                 { v: String(store.chats.length), l: "Chat" },
                 { v: String(store.files.length), l: "File contesto" },
               ].map((s) => (
-                <div key={s.l} className="hermes-card p-5 text-center">
+                <div key={s.l} className="hermes-card jx-card p-5 text-center">
                   <p className="font-hermes text-4xl italic text-white">{s.v}</p>
                   <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-sky-100/60">
                     {s.l}
@@ -700,7 +701,7 @@ function JarvisWorkspace() {
                 </div>
               ))}
             </div>
-            <div className="hermes-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
+            <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
               <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
                 <Brain className="h-4 w-4 text-sky-200" /> Come ragiona Jarvis qui
               </p>
@@ -713,7 +714,7 @@ function JarvisWorkspace() {
             </div>
 
             {/* Ricordi locali stile Claude memory */}
-            <div className="hermes-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
+            <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
               <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
                 <History className="h-4 w-4 text-sky-200" /> Ricordi · {memories.length}/50
               </p>
@@ -771,7 +772,7 @@ function JarvisWorkspace() {
             </div>
 
             {/* Skill stile Claude Agent Skills */}
-            <div className="hermes-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
+            <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
               <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
                 <Puzzle className="h-4 w-4 text-sky-200" /> Skill · {skills.length} attive
               </p>
@@ -817,9 +818,9 @@ function JarvisWorkspace() {
             </div>
           </div>
         ) : panel === "connectors" ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          <div key="connectors" className="jx-scroll jx-panel flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="mx-auto max-w-2xl space-y-4">
-              <div className="hermes-card p-5 sm:p-7">
+              <div className="hermes-card jx-card p-5 sm:p-7">
                 <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
                   <Cable className="h-4 w-4 text-sky-200" /> GitHub MCP via PAT
                 </p>
@@ -869,7 +870,7 @@ function JarvisWorkspace() {
                 </p>
               </div>
               {/* Plugin MCP custom stile Claude Connectors */}
-              <div className="hermes-card p-5 sm:p-7">
+              <div className="hermes-card jx-card p-5 sm:p-7">
                 <p className="flex items-center gap-2 text-[15px] font-semibold text-white">
                   <Cable className="h-4 w-4 text-sky-200" /> Plugin MCP custom
                 </p>
@@ -885,7 +886,7 @@ function JarvisWorkspace() {
             </div>
           </div>
         ) : panel === "activity" ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+          <div key="activity" className="jx-scroll jx-panel flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="mx-auto max-w-3xl space-y-2">
               {recentActivity.length === 0 ? (
                 <p className="hermes-card p-6 text-center text-[13px] text-slate-300/70">
@@ -893,7 +894,7 @@ function JarvisWorkspace() {
                 </p>
               ) : (
                 recentActivity.map((m) => (
-                  <div key={m.id} className="hermes-card p-4">
+                  <div key={m.id} className="hermes-card jx-card p-4">
                     <p className="font-mono text-[11px] tracking-wide text-sky-200/70">
                       {m.chat} · {m.role} · {formatTime(m.createdAt)}
                     </p>
@@ -905,24 +906,26 @@ function JarvisWorkspace() {
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
-              <div className="mx-auto max-w-3xl space-y-3">
+            <div className="jx-scroll flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+              <div className="mx-auto max-w-3xl space-y-3" key={activeChatId ?? "empty"}>
                 {isEmpty ? (
-                  <div className="hermes-card p-6 text-center sm:p-8">
+                  <div className="hermes-card jx-panel p-6 text-center sm:p-8">
                     <p className="hermes-badge mx-auto">
                       <span className="dot" />
                       Hermes Agent
                     </p>
                     <p className="font-hermes mt-4 text-[30px] italic leading-tight text-white">
-                      “Dimmi il compito. Penso io ai passi.”
+                      “Dimmi il compito.{" "}
+                      <span className="hermes-gradient-text">Penso io ai passi.</span>”
                     </p>
                     <div className="mt-5 grid gap-2 text-left sm:grid-cols-2">
-                      {QUICK_PROMPTS.map((q) => (
+                      {QUICK_PROMPTS.map((q, i) => (
                         <button
                           key={q}
                           type="button"
                           onClick={() => setInput(q)}
-                          className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-[13px] text-slate-200 transition hover:border-sky-200/40 hover:bg-white/[0.05]"
+                          style={{ "--jx-i": i } as CSSProperties}
+                          className="jx-card jx-stagger rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left text-[13px] text-slate-200"
                         >
                           {q}
                         </button>
@@ -962,7 +965,7 @@ function JarvisWorkspace() {
             </div>
 
             {agent.pendingPlan && agent.planChatId ? (
-              <div className="border-t border-sky-200/15 bg-sky-400/10 px-3 py-3 backdrop-blur sm:px-6">
+              <div className="jx-plan border-t border-sky-200/15 px-3 py-3 backdrop-blur sm:px-6">
                 <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2">
                   <ListChecks className="h-4 w-4 text-sky-200" />
                   <span className="text-[13px] font-medium text-white">
@@ -996,7 +999,7 @@ function JarvisWorkspace() {
             ) : null}
 
             <div className="border-t border-sky-100/10 bg-black/50 px-3 py-3 backdrop-blur-xl sm:px-6">
-              <div className="mx-auto max-w-3xl rounded-2xl border border-sky-100/15 bg-black/45 p-2">
+              <div className="jx-input mx-auto max-w-3xl rounded-2xl border border-sky-100/15 bg-black/45 p-2">
                 {agent.activeSkill ? (
                   <div className="flex items-center gap-2 px-2 pb-1.5 pt-1">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100">
@@ -1080,7 +1083,7 @@ function JarvisWorkspace() {
                     type="button"
                     disabled={busy || !input.trim()}
                     onClick={() => void onSend()}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-b from-sky-100 to-sky-300 px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-40"
+                    className="jx-send inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-semibold text-black disabled:opacity-40"
                   >
                     <Send className="h-3.5 w-3.5" /> Invia
                   </button>

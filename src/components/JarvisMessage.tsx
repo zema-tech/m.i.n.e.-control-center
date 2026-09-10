@@ -147,12 +147,10 @@ export function JarvisMessage({
   }
 
   return (
-    <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+    <div className={`jx-rise flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[92%] rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed ${
-          msg.role === "user"
-            ? "bg-sky-300/85 text-black"
-            : "border border-sky-100/10 bg-black/55 text-slate-100 backdrop-blur-md"
+          msg.role === "user" ? "jx-bubble-user" : "jx-bubble-ai"
         }`}
       >
         {msg.role === "assistant" && blocks ? (
