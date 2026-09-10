@@ -6,26 +6,45 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
-import { isValidToken, logAction, sessionCookieName } from "./auth.server";
+import { logAction, readSession, sessionCookieName } from "./auth.server";
 import { assertPublicHttpsUrl } from "./ssrf-guard";
 
-async function requireAdmin() {
-  if (!(await isValidToken(getCookie(sessionCookieName)))) {
+/**
+ * VibeSec least-privilege, chiamata DIRETTA dagli handler (unico lettore del
+ * cookie in questo modulo). Con token client basta una sessione valida (mai
+ * secret env); senza token su server preset il fallback userebbe le chiavi
+ * env → solo admin.
+ */
+async function assertMcpCaller(opts?: {
+  adminOnly?: boolean;
+  serverId?: string;
+  bearerToken?: string;
+}) {
+  const session = await readSession(getCookie(sessionCookieName));
+  if (!session) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
   }
+  if (session.mustSetPassword) {
+    throw new Error("Completa il setup della password prima di continuare.");
+  }
+  if (session.role !== "admin") {
+    if (opts?.adminOnly) {
+      throw new Error("Solo l'amministratore può eseguire questa operazione.");
+    }
+    if (
+      opts?.serverId &&
+      ["github", "composio", "vercel", "netlify"].includes(opts.serverId) &&
+      !(opts.bearerToken || "").trim()
+    ) {
+      throw new Error("Solo l'amministratore può usare le chiavi server. Aggiungi il tuo token.");
+    }
+  }
+  return session;
 }
 
 // Tool di sola lettura: SOLO prefissi verbo noti. Tutto il resto richiede
 // approved:true (fail-closed: "l'IA propone, tu confermi").
-const READ_TOOL_PREFIXES = [
-  "get_",
-  "list_",
-  "fetch_",
-  "search_",
-  "read_",
-  "show_",
-  "describe_",
-];
+const READ_TOOL_PREFIXES = ["get_", "list_", "fetch_", "search_", "read_", "show_", "describe_"];
 
 function isReadOnlyToolName(name: string): boolean {
   const lower = name.toLowerCase();
@@ -57,16 +76,17 @@ const argsSchema = z
   });
 
 export const mcpListServers = createServerFn({ method: "GET" }).handler(async () => {
-  await requireAdmin();
+  await assertMcpCaller();
   const { listHttpMcpServers, DEFAULT_MCP_SERVERS } = await import("./mcp-servers");
   const { mcpAuthConfigured } = await import("./mcp-http.server");
   const http = listHttpMcpServers();
   return {
     servers: DEFAULT_MCP_SERVERS.servers,
     http,
-    authHints: Object.fromEntries(
-      http.map((s) => [s.id, mcpAuthConfigured(s.id)]),
-    ) as Record<string, boolean>,
+    authHints: Object.fromEntries(http.map((s) => [s.id, mcpAuthConfigured(s.id)])) as Record<
+      string,
+      boolean
+    >,
   };
 });
 
@@ -81,7 +101,7 @@ export const mcpListTools = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await assertMcpCaller({ serverId: data.serverId, bearerToken: data.bearerToken });
     try {
       const { createMcpClient, mcpAuthConfigured } = await import("./mcp-http.server");
       const needsAuth = ["github", "composio", "vercel", "netlify"].includes(data.serverId);
@@ -127,7 +147,7 @@ export const mcpCallTool = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await assertMcpCaller({ serverId: data.serverId, bearerToken: data.bearerToken });
     if (!isReadOnlyToolName(data.name) && !data.approved) {
       return {
         ok: false as const,

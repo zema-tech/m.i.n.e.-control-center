@@ -68,14 +68,30 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null;
   }
 
+  // VibeSec: id/chiavi/colori finiscono in <style> grezzo → allowlist stretta.
+  // Chiavi: [a-z0-9_-]; colori: niente < > & " ' ` \n (breakout CSS/HTML).
+  const safeId = /^[A-Za-z0-9_-]+$/.test(id) ? id : "chart";
+  const safeEntries = colorConfig.filter(
+    ([key, itemConfig]) =>
+      /^[A-Za-z0-9_-]+$/.test(key) &&
+      (itemConfig.color === undefined || /^[^<>&"'`\n]+$/.test(itemConfig.color)) &&
+      Object.values(itemConfig.theme ?? {}).every(
+        (c) => typeof c === "string" && /^[^<>&"'`\n]+$/.test(c),
+      ),
+  );
+
+  if (!safeEntries.length) {
+    return null;
+  }
+
   return (
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
             ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
+${prefix} [data-chart=${safeId}] {
+${safeEntries
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
     return color ? `  --color-${key}: ${color};` : null;

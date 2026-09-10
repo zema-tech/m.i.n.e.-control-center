@@ -18,6 +18,21 @@ export function isBlockedHostname(hostname: string): boolean {
   return false;
 }
 
+/**
+ * Riconosce letterali IP numerici non decimali-puntati (bypass del regex):
+ * decimali puri (2130706433), esadecimali (0x7f000001, 0x7f.0.0.1),
+ * ottali (0177.0.0.1) e forme corte (127.1). Fail-closed: mai host pubblici.
+ */
+function isNumericIpLiteral(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (!h || h.includes(":") || /[g-z]/.test(h)) return false;
+  if (!/^[0-9a-fx.]+$/.test(h)) return false;
+  if (/^0x[0-9a-f]+$/.test(h) || /^\d+$/.test(h)) return true;
+  const parts = h.split(".");
+  if (parts.length < 2 || parts.length > 4) return false;
+  return parts.every((p) => /^(0x[0-9a-f]+|0[0-7]*|\d+)$/.test(p));
+}
+
 /** Lancia se l'URL non è https pubblico. Ritorna l'URL normalizzato. */
 export function assertPublicHttpsUrl(raw: string, label = "URL"): string {
   const value = raw.trim();
@@ -30,7 +45,14 @@ export function assertPublicHttpsUrl(raw: string, label = "URL"): string {
   if (u.protocol !== "https:") {
     throw new Error(`${label} non consentito (solo https pubblico).`);
   }
-  if (isBlockedHostname(u.hostname)) {
+  // VibeSec: userinfo e porte non standard non hanno uso legittimo qui.
+  if (u.username || u.password) {
+    throw new Error(`${label} non consentito (userinfo).`);
+  }
+  if (u.port && u.port !== "443") {
+    throw new Error(`${label} non consentito (porta).`);
+  }
+  if (isBlockedHostname(u.hostname) || isNumericIpLiteral(u.hostname)) {
     throw new Error(`${label} non consentito (host interno).`);
   }
   return u.toString();

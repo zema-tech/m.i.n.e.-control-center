@@ -217,7 +217,7 @@ function LoginPage() {
               J.A.R.V.I.S · M.I.N.E · P.R.O.M.P.T · A.R.T — dietro questa porta.
             </p>
 
-            <form onSubmit={onSubmit} className="mt-8" noValidate={false}>
+            <form onSubmit={onSubmit} className="mt-8">
               <label
                 htmlFor="password"
                 className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-100/70"
@@ -238,6 +238,15 @@ function LoginPage() {
                   maxLength={200}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    try {
+                      setCapsOn(
+                        (e as unknown as KeyboardEvent).getModifierState?.("CapsLock") ?? false,
+                      );
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
                   onKeyUp={(e) => {
                     try {
                       setCapsOn(

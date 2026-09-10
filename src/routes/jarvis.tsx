@@ -708,6 +708,10 @@ function JarvisWorkspace() {
                   type="password"
                   value={pat}
                   onChange={(e) => setPat(e.target.value.slice(0, 200))}
+                  onFocus={() => {
+                    // Il valore mascherato non è editabile: si riparte da vuoto.
+                    if (patSaved) setPat("");
+                  }}
                   placeholder={patSaved ? "•••••••• (salvato)" : "ghp_…"}
                   autoComplete="off"
                   spellCheck={false}

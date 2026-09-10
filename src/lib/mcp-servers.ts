@@ -67,11 +67,28 @@ export function listHttpMcpServers(): { id: string; url: string; label?: string 
     .map(([id, c]) => ({ id, url: c.url!, label: c.label }));
 }
 
-/** Valida URL MCP http(s) */
+/** Valida URL MCP http(s). VibeSec: https + host pubblico di default;
+ * http solo per loopback locale (dev). Mai host interni in chiaro. */
 export function isValidMcpHttpUrl(url: string): boolean {
   try {
     const u = new URL(url.trim());
-    return u.protocol === "https:" || u.protocol === "http:";
+    const host = u.hostname.toLowerCase();
+    const loopback =
+      host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+    if (u.protocol === "http:") return loopback;
+    if (u.protocol !== "https:") return false;
+    if (loopback) return true;
+    if (u.username || u.password) return false;
+    // Stesse regole della guardia SSRF (no import: modulo condiviso client).
+    if (
+      /^(0\.0\.0\.0|169\.254\.\d+\.\d+|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)$/.test(
+        host,
+      )
+    )
+      return false;
+    if (/\.(local|internal|lan|home|corp|intranet)$/.test(host)) return false;
+    if (!host.includes(".")) return false;
+    return true;
   } catch {
     return false;
   }

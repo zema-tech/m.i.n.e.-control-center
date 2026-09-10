@@ -103,9 +103,20 @@ async function hydrateAuthState(): Promise<void> {
         tempPasswords.set(t.id, {
           id: t.id,
           label: t.label,
-          icon: (["none", "key", "user", "users", "star", "shield", "coffee", "gamepad", "sparkles", "heart"] as TempPasswordIcon[]).includes(
-            t.icon as TempPasswordIcon,
-          )
+          icon: (
+            [
+              "none",
+              "key",
+              "user",
+              "users",
+              "star",
+              "shield",
+              "coffee",
+              "gamepad",
+              "sparkles",
+              "heart",
+            ] as TempPasswordIcon[]
+          ).includes(t.icon as TempPasswordIcon)
             ? (t.icon as TempPasswordIcon)
             : "none",
           hash: t.hash,
@@ -150,7 +161,10 @@ async function hydrateAuthState(): Promise<void> {
       };
     }
     if (jtis) {
-      for (const jti of jtis) revokedJtis.add(jti);
+      // Senza exp nota si assume freschezza massima (fail-closed: resta negato
+      // fino a scadenza TTL, poi la potatura lo rimuove).
+      const fallbackExp = Date.now() + 24 * 60 * 60 * 1000;
+      for (const jti of jtis) revokedJtis.set(jti, fallbackExp);
     }
   } catch {
     /* fallback in memoria */
@@ -866,10 +880,15 @@ function reserveTempUse(id: string): Promise<boolean> {
     }
     return true;
   });
-  tempLocks.set(id, next.catch(() => false));
-  next.finally(() => {
-    if (tempLocks.get(id) === next) tempLocks.delete(id);
-  }).catch(() => {});
+  tempLocks.set(
+    id,
+    next.catch(() => false),
+  );
+  next
+    .finally(() => {
+      if (tempLocks.get(id) === next) tempLocks.delete(id);
+    })
+    .catch(() => {});
   return next;
 }
 
@@ -962,7 +981,20 @@ export async function createToken(claims: SessionClaims): Promise<string> {
 }
 
 /** Token revocati (logout): denylist in-memory consultata da readSession. */
-const revokedJtis = new Set<string>();
+const revokedJtis = new Map<string, number>();
+
+/** Potatura best-effort dei jti scaduti (evita eviction di token ancora validi). */
+function pruneRevokedJtis(now = Date.now()): void {
+  if (revokedJtis.size <= 1000) return;
+  for (const [jti, exp] of revokedJtis) {
+    if (exp > 0 && exp <= now) revokedJtis.delete(jti);
+  }
+  while (revokedJtis.size > 5000) {
+    const first = revokedJtis.keys().next().value;
+    if (!first) break;
+    revokedJtis.delete(first);
+  }
+}
 
 export function revokeToken(token: string | undefined): void {
   if (!token) return;
@@ -973,12 +1005,13 @@ export function revokeToken(token: string | undefined): void {
       Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
     ) as { jti?: unknown; exp?: unknown };
     if (typeof payload.jti === "string" && payload.jti) {
-      revokedJtis.add(payload.jti);
+      const expMs =
+        typeof payload.exp === "number" && Number.isFinite(payload.exp)
+          ? payload.exp * 1000
+          : Date.now() + 24 * 60 * 60 * 1000;
+      revokedJtis.set(payload.jti, expMs);
       persist(saveRevokedJti(payload.jti));
-      if (revokedJtis.size > 5000) {
-        const first = revokedJtis.values().next().value;
-        if (first) revokedJtis.delete(first);
-      }
+      pruneRevokedJtis();
     }
   } catch {
     /* token illeggibile: niente da revocare */
@@ -988,7 +1021,8 @@ export function revokeToken(token: string | undefined): void {
 export async function readSession(token: string | undefined): Promise<SessionClaims | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    // VibeSec: pinning esplicito dell'algoritmo di firma (mai dal token).
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (typeof payload.jti === "string" && revokedJtis.has(payload.jti)) return null;
     // Default sicuro: guest, non admin, se il claim manca o è invalido.
     const rawRole = payload.role as string | undefined;

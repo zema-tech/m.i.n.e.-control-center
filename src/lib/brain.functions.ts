@@ -2,11 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
-import { isValidToken, sessionCookieName } from "./auth.server";
+import { readSession, sessionCookieName } from "./auth.server";
 
 async function requireAdmin() {
-  if (!(await isValidToken(getCookie(sessionCookieName)))) {
+  const session = await readSession(getCookie(sessionCookieName));
+  if (!session) {
     throw new Error("Sessione scaduta: effettua di nuovo il login.");
+  }
+  // VibeSec: memoria/eventi/Composio sono admin-only anche lato server
+  // (la route /memory accetta qualunque sessione valida: il gate è qui).
+  if (session.role !== "admin") {
+    throw new Error("Solo l'amministratore può eseguire questa operazione.");
   }
 }
 
@@ -27,7 +33,11 @@ export const getMemories = createServerFn({ method: "GET" }).handler(async () =>
   try {
     return { ok: true as const, rows: await listMemories(120) };
   } catch (error) {
-    return { ok: false as const, rows: [], message: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false as const,
+      rows: [],
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 });
 
@@ -66,7 +76,11 @@ export const getAgentEvents = createServerFn({ method: "GET" }).handler(async ()
   try {
     return { ok: true as const, rows: await listEvents(100) };
   } catch (error) {
-    return { ok: false as const, rows: [], message: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false as const,
+      rows: [],
+      message: error instanceof Error ? error.message : String(error),
+    };
   }
 });
 
@@ -78,13 +92,15 @@ export const getComposioTools = createServerFn({ method: "POST" })
     await requireAdmin();
     const { listToolkits, listTools, composioConfigured } = await import("./composio.server");
     if (!composioConfigured()) {
-      return { ok: false as const, toolkits: [], tools: [], message: "COMPOSIO_API_KEY non configurata." };
+      return {
+        ok: false as const,
+        toolkits: [],
+        tools: [],
+        message: "COMPOSIO_API_KEY non configurata.",
+      };
     }
     try {
-      const [toolkits, tools] = await Promise.all([
-        listToolkits(),
-        listTools(data.toolkit),
-      ]);
+      const [toolkits, tools] = await Promise.all([listToolkits(), listTools(data.toolkit)]);
       return { ok: true as const, toolkits, tools };
     } catch (error) {
       return {
@@ -126,7 +142,11 @@ export const runComposioTool = createServerFn({ method: "POST" })
       return res;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await recordEvent({ kind: "composio", summary: `${data.slug} errore: ${message}`, ok: false });
+      await recordEvent({
+        kind: "composio",
+        summary: `${data.slug} errore: ${message}`,
+        ok: false,
+      });
       return { ok: false, output: message };
     }
   });

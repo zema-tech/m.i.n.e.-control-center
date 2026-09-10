@@ -52,10 +52,9 @@ export const PROVIDERS: {
 ];
 
 export const SWARM_MODELS: SwarmModel[] = [
-  // --- Groq ---
+  // --- Groq (solo ID attivi: i vecchi mixtral/gemma2 sono dismessi) ---
   { provider: "groq", id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", tier: "smart" },
-  { provider: "groq", id: "gemma2-9b-it", label: "Gemma 2 9B", tier: "fast" },
-  { provider: "groq", id: "mixtral-8x7b-32768", label: "Mixtral 8x7B", tier: "fast" },
+  { provider: "groq", id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", tier: "fast" },
   // --- OpenRouter (free) ---
   {
     provider: "openrouter",
@@ -113,10 +112,22 @@ export const SWARM_MODELS: SwarmModel[] = [
 export type SwarmMode = "rapido" | "swarm" | "deep" | "auto";
 
 export const SWARM_MODES: { id: SwarmMode; label: string; hint: string }[] = [
-  { id: "auto", label: "Auto", hint: "Decide da sé: veloce per cose semplici, swarm per task complessi." },
+  {
+    id: "auto",
+    label: "Auto",
+    hint: "Decide da sé: veloce per cose semplici, swarm per task complessi.",
+  },
   { id: "rapido", label: "Rapido", hint: "Un solo modello veloce. Risposta immediata." },
-  { id: "swarm", label: "Swarm", hint: "Più modelli veloci fanno brainstorming, un modello forte sintetizza." },
-  { id: "deep", label: "Deep", hint: "Brainstorming + critica incrociata + sintesi finale (stile Hermes)." },
+  {
+    id: "swarm",
+    label: "Swarm",
+    hint: "Più modelli veloci fanno brainstorming, un modello forte sintetizza.",
+  },
+  {
+    id: "deep",
+    label: "Deep",
+    hint: "Brainstorming + critica incrociata + sintesi finale (stile Hermes).",
+  },
 ];
 
 export function modelsByTier(tier: ModelTier): SwarmModel[] {

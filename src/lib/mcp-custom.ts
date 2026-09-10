@@ -73,12 +73,25 @@ export function customToConfig(s: CustomMcpServer): McpServerConfig {
       // "Authorization: Bearer x" oppure solo token
       if (s.authHeader.includes(":")) {
         const i = s.authHeader.indexOf(":");
-        headers[s.authHeader.slice(0, i).trim()] = s.authHeader.slice(i + 1).trim();
+        const name = s.authHeader.slice(0, i).trim();
+        // VibeSec: niente override di header di trasporto/sessione (mirror
+        // del blocklist server in mcp-http.server.ts).
+        if (
+          /^[A-Za-z0-9-]+$/.test(name) &&
+          !["authorization", "cookie", "host", "content-length", "mcp-session-id"].includes(
+            name.toLowerCase(),
+          )
+        ) {
+          headers[name] = s.authHeader
+            .slice(i + 1)
+            .trim()
+            .slice(0, 500);
+        }
       } else {
-        headers["Authorization"] = s.authHeader;
+        headers["Authorization"] = s.authHeader.slice(0, 500);
       }
     } else {
-      headers["Authorization"] = `Bearer ${s.authHeader}`;
+      headers["Authorization"] = `Bearer ${s.authHeader.slice(0, 500)}`;
     }
   }
   return {

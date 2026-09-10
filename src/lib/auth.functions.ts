@@ -61,9 +61,7 @@ const tempIconSchema = z.enum([
   "heart",
 ]);
 
-const permissionSchema = z.enum(
-  ALL_PERMISSIONS as unknown as [Permission, ...Permission[]],
-);
+const permissionSchema = z.enum(ALL_PERMISSIONS as unknown as [Permission, ...Permission[]]);
 
 /** Audit best-effort su agent_events (mai bloccante per il login). */
 function audit(summary: string, ok: boolean, detail?: Record<string, unknown>) {
@@ -131,8 +129,7 @@ export const login = createServerFn({ method: "POST" })
     // fallimento contato); token invalido = probabile bot (conta come fallimento).
     const captcha = await verifyTurnstileToken(data.turnstileToken, ip);
     if (!captcha.ok) {
-      const tokenMissing =
-        !data.turnstileToken.trim() && isTurnstileConfigured();
+      const tokenMissing = !data.turnstileToken.trim() && isTurnstileConfigured();
       if (!tokenMissing) {
         const fail = await registerFailure(ip);
         registerGlobalFailure();
@@ -441,7 +438,10 @@ export const setupOwnPassword = createServerFn({ method: "POST" })
         fromTempId: session.tempId,
       });
     } catch (e) {
-      return { ok: false as const, message: e instanceof Error ? e.message : "Password non valida" };
+      return {
+        ok: false as const,
+        message: e instanceof Error ? e.message : "Password non valida",
+      };
     }
     // Single-use: l'invito si consuma alla prima registrazione.
     if (session.tempId) await consumeTempPassword(session.tempId);
@@ -462,7 +462,7 @@ export const createGuestPassword = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        label: z.string().max(80).default("Ospite"),
+        label: z.string().trim().min(1).max(80).default("Ospite"),
         durationHours: z.union([z.literal(1), z.literal(6), z.literal(24), z.literal(168)]),
         maxUses: z.number().int().min(1).max(100).nullable().optional(),
         icon: tempIconSchema.default("none"),
@@ -565,7 +565,29 @@ export const getDashboardForAccount = createServerFn({ method: "POST" })
 
 /** Controllo path lato server (solo dentro handler / loader server) */
 export const checkPathAccess = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ pathname: z.string().max(200) }).parse(input))
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        // VibeSec: normalizza prima del match (//, %2f, trailing slash, null byte).
+        pathname: z
+          .string()
+          .min(1)
+          .max(200)
+          .transform((p) => {
+            let v = p.replace(/\0/g, "").trim();
+            try {
+              v = decodeURIComponent(v);
+            } catch {
+              /* tiene l'originale */
+            }
+            v = v.replace(/\/+/g, "/");
+            if (v.length > 1) v = v.replace(/\/$/, "");
+            if (!v.startsWith("/")) v = `/${v}`;
+            return v;
+          }),
+      })
+      .parse(input),
+  )
   .handler(async ({ data }) => {
     const session = await readSession(getCookie(sessionCookieName));
     if (!session) return { ok: false as const, reason: "auth" as const };

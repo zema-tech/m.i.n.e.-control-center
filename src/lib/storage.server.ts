@@ -68,22 +68,38 @@ export function registerUploadNote(
     };
   }
 
-  const filename = (params.filename ?? "").trim().slice(0, 120);
+  // VibeSec: filename sanificato (niente path/null/CRLF) + cap sui campi liberi.
+  const filename = (params.filename ?? "")
+    .split(/[/\\]/)
+    .pop()
+    ?.replace(/\0/g, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\.\.+/g, ".")
+    .trim()
+    .slice(0, 120);
   if (!filename) {
     return { ok: false, jobId: "", output: "Serve un nome file (filename)." };
   }
+  const folderId = (params.folderId ?? "")
+    .replace(/[\r\n\0]/g, "")
+    .trim()
+    .slice(0, 200);
+  const sourcePath = (params.sourcePath ?? "")
+    .replace(/[\r\n\0]/g, "")
+    .trim()
+    .slice(0, 300);
 
   const jobId = `job:${Date.now().toString(36)}`;
   const dest =
     creds.provider === "mega"
       ? `MEGA${creds.baseUrl ? ` folder=${creds.baseUrl}` : ""}`
-      : `Drive${params.folderId || creds.serverId ? ` folder=${params.folderId || creds.serverId}` : ""}`;
+      : `Drive${folderId || creds.serverId ? ` folder=${folderId || creds.serverId}` : ""}`;
 
   const output = [
     `Job backup registrato [${jobId}]`,
     `→ destinazione: ${dest}`,
     `→ file: ${filename}`,
-    params.sourcePath ? `→ sorgente server: ${params.sourcePath}` : "→ sorgente: da definire in conferma",
+    sourcePath ? `→ sorgente server: ${sourcePath}` : "→ sorgente: da definire in conferma",
     "Stato: in attesa (human-in-the-loop). Esecuzione upload nativa in arrivo con SDK.",
   ].join("\n");
 

@@ -213,12 +213,23 @@ export function appendMessage(
       if (c.id !== chatId) return c;
       const messages = [...c.messages, full];
       const title =
-        c.title === "Nuova chat" && full.role === "user"
-          ? full.content.slice(0, 48)
-          : c.title;
+        c.title === "Nuova chat" && full.role === "user" ? full.content.slice(0, 48) : c.title;
       return { ...c, messages, title, updatedAt: Date.now() };
     }),
   };
+}
+
+/** VibeSec: sanificazione centrale dei nomi file (UI + tool agente). */
+export function sanitizeJarvisFileName(raw: string): string {
+  const base = String(raw ?? "")
+    .split(/[/\\]/)
+    .pop()
+    ?.replace(/\0/g, "")
+    .replace(/\.\.+/g, ".")
+    .trim();
+  const safe = base?.replace(/[^a-zA-Z0-9._\-àèéìòù ]/g, "_").slice(0, 120) || "file.txt";
+  // Niente dotfile nascosti né nomi che finiscono col punto
+  return safe.replace(/^\.+/, "_").replace(/\.+$/, "") || "file.txt";
 }
 
 export function addTextFile(
@@ -233,7 +244,7 @@ export function addTextFile(
 ): { store: JarvisStore; file: JarvisFile } {
   const file: JarvisFile = {
     id: newId("file"),
-    name: opts.name,
+    name: sanitizeJarvisFileName(opts.name),
     mime: opts.mime || "text/plain",
     size: opts.text.length,
     text: opts.text.slice(0, 500_000),

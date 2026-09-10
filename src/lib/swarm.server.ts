@@ -51,7 +51,10 @@ const COMPLEX_HINTS = [
 const CRITICAL_HINTS = ["elimina", "delete", "billing", "pagament", "reinstall", "wipe", "reset"];
 
 /** Classificazione euristica della complessità. */
-export function classifyComplexity(question: string, logContext: string): Exclude<SwarmMode, "auto"> {
+export function classifyComplexity(
+  question: string,
+  logContext: string,
+): Exclude<SwarmMode, "auto"> {
   const q = question.toLowerCase();
   const hits = COMPLEX_HINTS.filter((h) => q.includes(h)).length;
   const risky = CRITICAL_HINTS.some((h) => q.includes(h));
@@ -92,7 +95,14 @@ async function run(
       maxTokens,
       temperature: fase === "sintesi" ? 0.18 : 0.5,
     });
-    return { fase, provider: model.provider, model: model.id, ok: true, contenuto, ms: Date.now() - started };
+    return {
+      fase,
+      provider: model.provider,
+      model: model.id,
+      ok: true,
+      contenuto,
+      ms: Date.now() - started,
+    };
   } catch (error) {
     return {
       fase,
@@ -119,6 +129,8 @@ export async function askSwarm(input: {
   mode?: SwarmMode;
   brainContext?: string;
   memoryContext?: string;
+  /** Modello preferito dall'UI (allowlist: deve esistere nel pool). */
+  preferredModel?: string;
 }): Promise<SwarmResult> {
   const providers = availableProviders();
   if (providers.length === 0) {
@@ -149,8 +161,17 @@ export async function askSwarm(input: {
   const smart = pick("smart", 2);
   const fast = pick("fast", 3);
 
+  // Il selettore modello di Jarvis non è più ignorato: se il preferito è nel
+  // pool disponibile, guida rapido e ordine di sintesi (fallback invariato).
+  const prefer = (pool: SwarmModel[]) => {
+    if (!input.preferredModel) return pool;
+    const hit = pool.find((m) => m.id === input.preferredModel);
+    return hit ? [hit, ...pool.filter((m) => m !== hit)] : pool;
+  };
+
   if (mode === "rapido") {
-    const single = fast[0] ?? smart[0];
+    const ordered = prefer(fast.length ? fast : smart);
+    const single = ordered[0] ?? smart[0];
     if (!single) throw new Error("Nessun modello disponibile per i provider configurati.");
     const step = await run(
       "sintesi",
@@ -218,7 +239,7 @@ export async function askSwarm(input: {
     if (step.ok) critique = step.contenuto;
   }
 
-  const synthPool = [...smart, ...fast];
+  const synthPool = prefer([...smart, ...fast]);
   let final: SwarmStep | null = null;
   for (const m of synthPool) {
     const step = await run(
@@ -256,8 +277,10 @@ export async function askSwarm(input: {
 
   if (!final) {
     throw new Error(
-      steps.filter((s) => !s.ok).map((s) => `${s.provider}: ${s.contenuto}`).join(" | ") ||
-        "Sintesi IA non disponibile.",
+      steps
+        .filter((s) => !s.ok)
+        .map((s) => `${s.provider}: ${s.contenuto}`)
+        .join(" | ") || "Sintesi IA non disponibile.",
     );
   }
 

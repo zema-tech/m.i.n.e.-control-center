@@ -77,7 +77,8 @@ const SEED: Record<
     apiAvailable: false,
     mcpHint: "Nessuna API ufficiale stabile. Non automatizzare login web.",
     baseUrl: "",
-    blurb: "Aternos: hosting gratuito con code di avvio. Ideale solo come profilo/indirizzo, non per controllo API.",
+    blurb:
+      "Aternos: hosting gratuito con code di avvio. Ideale solo come profilo/indirizzo, non per controllo API.",
     pricing: "Gratuito con limiti.",
     risk: "Automazione account viola spesso ToS; evita scraping login.",
     fields: ["address", "notes"],
@@ -192,20 +193,43 @@ function resolveSeed(query: string): (typeof SEED)[string] | null {
   return null;
 }
 
-async function probeUrl(url: string, timeoutMs = 4500): Promise<{ url: string; ok: boolean; snippet: string }> {
+async function probeUrl(
+  url: string,
+  timeoutMs = 4500,
+): Promise<{ url: string; ok: boolean; snippet: string }> {
+  // VibeSec: redirect manuali con rivalidazione a ogni hop (max 3).
+  // Un 302 verso http://169.254.169.254 o 127.0.0.1 non viene mai seguito.
+  let current = url;
+  let res: Response | null = null;
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "M.I.N.E-HostResearch/1.0",
-        Accept: "text/html,application/json,text/plain",
-      },
-      signal: ctrl.signal,
-      redirect: "follow",
-    });
-    clearTimeout(t);
+    const { assertPublicHttpsUrl } = await import("./ssrf-guard");
+    for (let hop = 0; hop <= 3; hop++) {
+      assertPublicHttpsUrl(current, "Probe URL");
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        res = await fetch(current, {
+          method: "GET",
+          headers: {
+            "User-Agent": "M.I.N.E-HostResearch/1.0",
+            Accept: "text/html,application/json,text/plain",
+          },
+          signal: ctrl.signal,
+          redirect: "manual",
+        });
+      } finally {
+        clearTimeout(t);
+      }
+      if (res.status < 300 || res.status >= 400 || hop === 3) break;
+      const loc = res.headers.get("location");
+      if (!loc) break;
+      try {
+        current = new URL(loc, current).toString();
+      } catch {
+        break;
+      }
+    }
+    if (!res) throw new Error("probe fallita");
     const text = await res.text();
     const clean = text
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -325,7 +349,8 @@ Non inventare endpoint API non supportati dal contesto. Se i dati sono limitati,
     };
     const content = payload.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(content) as Partial<HostResearchReport>;
-    const label = typeof parsed.label === "string" && parsed.label.trim() ? parsed.label.trim() : local.label;
+    const label =
+      typeof parsed.label === "string" && parsed.label.trim() ? parsed.label.trim() : local.label;
     const summary =
       typeof parsed.summary === "string" && parsed.summary.trim()
         ? parsed.summary.trim()

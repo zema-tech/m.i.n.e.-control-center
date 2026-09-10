@@ -41,7 +41,14 @@ const storageCredSchema = z.object({
   provider: z.enum(["mega", "gdrive"]),
   apiKey: z.string().min(1).max(8000),
   serverId: z.string().max(500).optional(),
-  baseUrl: z.string().max(500).optional(),
+  // VibeSec: baseUrl finisce in output/log → niente scheme pericolosi o CRLF.
+  baseUrl: z
+    .string()
+    .max(500)
+    .refine((v) => !/^(javascript|data|vbscript|file):/i.test(v.trim()) && !/[\r\n\0]/.test(v), {
+      message: "baseUrl non consentito.",
+    })
+    .optional(),
 });
 
 /**
@@ -145,7 +152,15 @@ export const testAccountConnection = createServerFn({ method: "POST" })
       .object({
         key: z.string().min(1).max(8000),
         serverId: z.string().max(500).optional(),
-        base: z.string().max(500).optional(),
+        // VibeSec: base usata per fetch → niente scheme pericolosi o CRLF.
+        base: z
+          .string()
+          .max(500)
+          .refine(
+            (v) => !/^(javascript|data|vbscript|file):/i.test(v.trim()) && !/[\r\n\0]/.test(v),
+            { message: "Base non consentita." },
+          )
+          .optional(),
         provider: z.enum(["falix", "mega", "gdrive"]).optional(),
       })
       .parse(input),
@@ -290,6 +305,7 @@ export const askAssistant = createServerFn({ method: "POST" })
         mode: data.swarmMode ?? "auto",
         brainContext: data.brainContext,
         memoryContext: memory,
+        preferredModel: data.model,
       });
 
       const usati = reply.steps
@@ -387,9 +403,7 @@ export const runOneHand = createServerFn({ method: "POST" })
           "get_one_action_knowledge",
           "execute_one_action",
         ]),
-        params: z
-          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-          .default({}),
+        params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
         approved: z.boolean().default(false),
       })
       .parse(input),
@@ -407,9 +421,7 @@ export const runFalixAction = createServerFn({ method: "POST" })
     z
       .object({
         id: z.string().min(1).max(80),
-        params: z
-          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-          .default({}),
+        params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
         approved: z.boolean().default(false),
         credentials: credSchema,
       })
@@ -455,9 +467,7 @@ export const runStorageAction = createServerFn({ method: "POST" })
           "gdrive_upload_note",
           "gdrive_create_folder",
         ]),
-        params: z
-          .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-          .default({}),
+        params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
         approved: z.boolean().default(false),
         storage: storageCredSchema,
       })
@@ -492,8 +502,7 @@ export const runStorageAction = createServerFn({ method: "POST" })
     if (data.tool === "mega_list" || data.tool === "gdrive_list") {
       const res = storageStatus(creds);
       if (!res.configured) return { ok: false, output: res.message };
-      const folder =
-        String(data.params.folder ?? data.params.folderId ?? creds.serverId ?? "root");
+      const folder = String(data.params.folder ?? data.params.folderId ?? creds.serverId ?? "root");
       return {
         ok: true,
         output: `${creds.provider.toUpperCase()} list (simulato): cartella "${folder}". Collega SDK per elenco live. Stato: ${res.message}`,

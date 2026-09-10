@@ -26,6 +26,8 @@ export type FalixCredentials = {
 
 export function getFalixConfig(override?: FalixCredentials | null): FalixConfig | null {
   const envBase = process.env["FALIX_API_BASE"] || "https://client.falixnodes.net/api/v2";
+  // VibeSec: Server ID solo in path URL → charset stretto (niente / ? # &).
+  const sidOk = (s: string) => /^[A-Za-z0-9._~-]{1,120}$/.test(s);
   if (override?.key && override?.serverId) {
     // base da input utente: solo https pubblico (anti-SSRF verso metadata/LAN).
     // La base da env resta configurazione trusted dell'admin.
@@ -33,18 +35,24 @@ export function getFalixConfig(override?: FalixCredentials | null): FalixConfig 
     if (override.base?.trim()) {
       base = assertPublicHttpsUrl(override.base.trim(), "Base URL");
     }
+    if (!sidOk(override.serverId.trim())) {
+      throw new Error("Server ID non valido.");
+    }
     return {
       key: override.key,
-      serverId: override.serverId,
+      serverId: override.serverId.trim(),
       base,
     };
   }
   const key = process.env["FALIX_API_KEY"];
   const serverId = process.env["FALIX_SERVER_ID"];
   if (!key || !serverId) return null;
+  if (!sidOk(serverId.trim())) {
+    throw new Error("FALIX_SERVER_ID non valido.");
+  }
   return {
     key,
-    serverId,
+    serverId: serverId.trim(),
     base: envBase,
   };
 }
@@ -128,7 +136,10 @@ export async function sendServerCommand(
   const cfg = getFalixConfig(override);
   if (!cfg) {
     logAction("warn", "Comando simulato (chiave Falix mancante)");
-    return { demo: true, output: `[demo] comando "${command}" non inviato: chiave Falix mancante.` };
+    return {
+      demo: true,
+      output: `[demo] comando "${command}" non inviato: chiave Falix mancante.`,
+    };
   }
   await falixFetch(cfg, `/servers/${cfg.serverId}/commands`, {
     method: "POST",
@@ -173,11 +184,23 @@ export async function sendPowerAction(
   throw new Error(lastError || `Impossibile inviare la richiesta di ${label}.`);
 }
 
-/** Path file Falix sanificato: niente traversal, null byte, o percorsi vuoti. */
+/** Path file Falix sanificato: niente traversal (anche encoded), null byte, o percorsi vuoti. */
 function safeFalixPath(p: string, actionId: string): string {
   if (p.includes("\0")) throw new Error(`Parametro non consentito per l'azione ${actionId}`);
-  const segments = p.split("/");
-  if (segments.some((s) => s === "..")) {
+  // VibeSec: decodifica prima di validare (blocca %2e%2e, %2f, doppi encoding).
+  let decoded = p;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  const normalized = decoded.replace(/\\/g, "/");
+  const segments = normalized.split("/");
+  if (segments.some((s) => s === ".." || s === ".")) {
     throw new Error(`Path non consentito per l'azione ${actionId}`);
   }
   const clean = p.trim().slice(0, 300);
@@ -192,8 +215,7 @@ function num(value: unknown): number | null {
 async function playersFromFalix(cfg: FalixConfig) {
   try {
     const data = (await falixFetch(cfg, `/servers/${cfg.serverId}/players`)) as
-      | Record<string, unknown>
-      | unknown[];
+      Record<string, unknown> | unknown[];
     const raw = (Array.isArray(data) ? { list: data } : data) as Record<string, unknown>;
     const list = (raw["list"] ?? raw["players"] ?? raw["online_players"] ?? []) as unknown[];
     const names = Array.isArray(list)
@@ -266,7 +288,10 @@ async function statusFromMcStatus(address: string): Promise<LiveStatus> {
     players: {
       online: num(data.players?.online),
       max: num(data.players?.max),
-      names: (data.players?.list ?? []).map((p) => p.name_clean ?? "").filter(Boolean).slice(0, 20),
+      names: (data.players?.list ?? [])
+        .map((p) => p.name_clean ?? "")
+        .filter(Boolean)
+        .slice(0, 20),
     },
     ram: { used: null, total: null },
     cpu: null,
@@ -276,9 +301,7 @@ async function statusFromMcStatus(address: string): Promise<LiveStatus> {
   };
 }
 
-export async function fetchLiveStatus(
-  override?: FalixCredentials | null,
-): Promise<LiveStatus> {
+export async function fetchLiveStatus(override?: FalixCredentials | null): Promise<LiveStatus> {
   const cfg = getFalixConfig(override);
   const address = process.env["MC_SERVER_ADDRESS"];
   const problems: string[] = [];
@@ -287,7 +310,9 @@ export async function fetchLiveStatus(
     try {
       return await statusFromFalix(cfg);
     } catch (error) {
-      problems.push(`API Falix non raggiungibile (${error instanceof Error ? error.message : "errore"})`);
+      problems.push(
+        `API Falix non raggiungibile (${error instanceof Error ? error.message : "errore"})`,
+      );
     }
   } else {
     problems.push("chiave Falix mancante (env o account)");
@@ -298,7 +323,9 @@ export async function fetchLiveStatus(
       const live = await statusFromMcStatus(address);
       return { ...live, note: `${problems.join("; ")}. ${live.note ?? ""}`.trim() };
     } catch (error) {
-      problems.push(`query pubblica fallita (${error instanceof Error ? error.message : "errore"})`);
+      problems.push(
+        `query pubblica fallita (${error instanceof Error ? error.message : "errore"})`,
+      );
     }
   } else {
     problems.push("indirizzo pubblico del server non configurato (MC_SERVER_ADDRESS)");
