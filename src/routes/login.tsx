@@ -1,17 +1,15 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { getAuthState, getTurnstileSiteKey, login } from "@/lib/auth.functions";
 
-const LOGIN_BG = "https://files.catbox.moe/1prie3.jpg";
-
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Accedi — Omnicore Hub" },
+      { title: "Accedi — Omnicore" },
       {
         name: "description",
         content: "Accesso al Control Center Omnicore · J.A.R.V.I.S e agenti specializzati.",
@@ -128,82 +126,61 @@ function LoginPage() {
   const locked = lockSec > 0;
   const banned = banSec > 0;
   const blocked = locked || banned;
+  const submitDisabled =
+    busy || password.length === 0 || blocked || Boolean(siteKey && !captchaToken);
+
+  const statusText = busy
+    ? "Verifica…"
+    : banned
+      ? `IP bannato — riprova tra ${formatCountdown(banSec)}`
+      : locked
+        ? `Accesso in pausa — riprova tra ${formatCountdown(lockSec)}`
+        : siteKey && !captchaToken
+          ? "Completa la verifica umana per entrare"
+          : "Premi Invio per entrare nell'hub";
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
+    <div className="grok-page relative flex min-h-screen flex-col overflow-x-clip">
       <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <img
-          src={LOGIN_BG}
-          alt=""
-          className="h-full w-full scale-105 object-cover object-[center_20%]"
-          decoding="async"
-          onError={(e) => {
-            // Fallback se catbox è down: nascondi bg esterno, resta il gradiente.
-            e.currentTarget.style.display = "none";
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#020617]/85 via-[#0a1628]/72 to-[#020617]/90" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_40%,rgba(56,189,248,0.18),transparent_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_20%_80%,rgba(99,102,241,0.12),transparent_50%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.04] mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E)",
-          }}
-        />
+        <div className="grok-glow-top absolute inset-x-0 top-0 h-[480px]" />
+        <div className="grok-grid-bg absolute inset-x-0 top-0 h-[620px]" />
       </div>
 
-      <div
-        className="pointer-events-none absolute -left-20 top-1/4 h-80 w-80 rounded-full bg-sky-400/15 blur-[110px] animate-aurora"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -right-10 bottom-1/5 h-72 w-72 rounded-full bg-indigo-500/20 blur-[100px] animate-aurora"
-        style={{ animationDelay: "-5s" }}
-        aria-hidden
-      />
-
-      <div className="relative z-10 w-full max-w-[440px] animate-fade-in-up">
-        <div className="mb-9 text-center">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-100/80 backdrop-blur-xl">
-            <Sparkles className="h-3.5 w-3.5 text-sky-300" />
-            Omnicore Hub · Product Bold
-          </div>
-          <h1 className="text-hero hero-clip text-white drop-shadow-[0_0_40px_rgba(56,189,248,0.25)]">
-            <span className="bg-gradient-to-br from-white via-sky-100 to-sky-300/90 bg-clip-text text-transparent gradient-pan">
-              Omnicore
-            </span>
-          </h1>
-          <p className="mt-3 text-[14px] leading-relaxed text-sky-100/55">
-            Control Center · un nucleo, cinque agenti
-          </p>
-          <p className="mt-1 text-[12px] tracking-wide text-sky-100/40">
-            J.A.R.V.I.S · E.D.I.T · M.I.N.E · P.R.O.M.P.T · A.R.T
+      <header className="grok-nav">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-[13px] font-medium text-neutral-400 transition hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Omnicore
+          </Link>
+          <p className="font-mono text-[11px] tracking-[0.18em] text-neutral-600">
+            ACCESSO PRIVATO
           </p>
         </div>
+      </header>
 
-        <form
-          ref={formRef}
-          onSubmit={onSubmit}
-          className={`glass-strong grain relative space-y-6 overflow-hidden rounded-3xl p-7 sm:p-8 ${
-            shake ? "animate-form-shake" : ""
-          }`}
-        >
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/40 to-transparent"
-            aria-hidden
-          />
+      <main className="relative flex flex-1 items-center justify-center px-5 py-16">
+        <div className="w-full max-w-[480px] text-center">
+          <p className="grok-badge">
+            <span className="dot" />
+            Control Center
+          </p>
+          <h1 className="mt-6 font-display text-5xl font-bold tracking-tight text-white sm:text-6xl">
+            Accedi.
+          </h1>
+          <p className="mt-4 text-[15px] leading-relaxed text-neutral-400">
+            Un nucleo, cinque agenti: J.A.R.V.I.S · M.I.N.E · P.R.O.M.P.T · A.R.T
+          </p>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="password"
-              className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-sky-100/60"
-            >
-              <Lock className="h-3.5 w-3.5 text-sky-300" />
-              Password
-            </label>
-            <div className="relative">
+          <form
+            ref={formRef}
+            onSubmit={onSubmit}
+            className={shake ? "animate-form-shake" : undefined}
+          >
+            <div className="grok-bar mx-auto mt-10 flex items-center gap-3 p-2.5 pl-5">
+              <Lock className="h-4 w-4 shrink-0 text-neutral-500" />
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -211,93 +188,99 @@ function LoginPage() {
                 autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Inserisci la password"
+                placeholder="Inserisci la password…"
                 disabled={blocked || busy}
-                className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 pr-12 font-mono text-[15px] text-white outline-none transition placeholder:text-white/25 focus:border-sky-400/50 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-50"
+                className="grok-input flex-1 font-mono text-[15px] disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-sky-100/45 transition hover:bg-white/5 hover:text-sky-100/80"
+                className="rounded-full p-2 text-neutral-500 transition hover:bg-white/5 hover:text-white"
                 aria-label={showPassword ? "Nascondi password" : "Mostra password"}
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
+              <button
+                type="submit"
+                disabled={submitDisabled}
+                aria-label="Entra nell'hub"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
-          </div>
 
-          {siteKey ? (
-            <Turnstile
-              siteKey={siteKey}
-              onToken={setCaptchaToken}
-              onExpire={() => setCaptchaToken("")}
-              handleRef={captchaRef}
-            />
-          ) : null}
+            {siteKey ? (
+              <div className="mt-5 flex justify-center">
+                <Turnstile
+                  siteKey={siteKey}
+                  onToken={setCaptchaToken}
+                  onExpire={() => setCaptchaToken("")}
+                  handleRef={captchaRef}
+                />
+              </div>
+            ) : null}
 
-          {error || blocked ? (
-            <div
-              role="alert"
-              className={`rounded-xl border px-3.5 py-2.5 text-sm ${
-                banned
-                  ? "border-red-500/40 bg-red-600/15 text-red-100"
-                  : "border-red-400/25 bg-red-500/10 text-red-200"
-              }`}
-            >
-              {banned ? (
-                <>
-                  ⛔ IP bannato per troppi tentativi. Riprova tra{" "}
-                  <span className="font-mono font-semibold tabular-nums">
-                    {formatCountdown(banSec)}
+            <p className="mt-4 min-h-5 text-[13px] text-neutral-500" role="status">
+              {statusText}
+            </p>
+
+            {error || blocked ? (
+              <div
+                role="alert"
+                className={`mx-auto mt-2 max-w-[440px] rounded-2xl border px-4 py-3 text-left text-sm leading-relaxed ${
+                  banned
+                    ? "border-red-500/40 bg-red-950/60 text-red-100"
+                    : "border-red-400/25 bg-red-950/40 text-red-200"
+                }`}
+              >
+                {banned ? (
+                  <>
+                    IP bannato per troppi tentativi. Riprova tra{" "}
+                    <span className="font-mono font-semibold tabular-nums">
+                      {formatCountdown(banSec)}
+                    </span>
+                  </>
+                ) : locked ? (
+                  <>
+                    Accesso in pausa. Riprova tra{" "}
+                    <span className="font-mono font-semibold tabular-nums">
+                      {formatCountdown(lockSec)}
+                    </span>
+                  </>
+                ) : (
+                  error
+                )}
+                {!blocked && remaining !== null && remaining <= 2 && remaining > 0 ? (
+                  <span className="mt-1 block text-[12px] opacity-80">
+                    Attenzione: {remaining} tentativi rimasti prima del blocco.
                   </span>
-                </>
-              ) : locked ? (
-                <>
-                  Accesso in pausa. Riprova tra{" "}
-                  <span className="font-mono font-semibold tabular-nums text-red-100">
-                    {formatCountdown(lockSec)}
-                  </span>
-                </>
-              ) : (
-                error
-              )}
-              {!blocked && remaining !== null && remaining <= 2 && remaining > 0 ? (
-                <span className="mt-1 block text-[12px] opacity-80">
-                  Attenzione: {remaining} tentativi rimasti prima del blocco.
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+                ) : null}
+              </div>
+            ) : null}
+          </form>
 
-          <button
-            type="submit"
-            disabled={busy || password.length === 0 || blocked || Boolean(siteKey && !captchaToken)}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-400 px-4 py-3.5 text-sm font-semibold tracking-wide text-slate-950 shadow-[0_8px_32px_rgba(56,189,248,0.35)] transition hover:shadow-[0_12px_40px_rgba(56,189,248,0.45)] disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {busy ? (
-              "Verifica…"
-            ) : banned ? (
-              `Bannato ${formatCountdown(banSec)}`
-            ) : locked ? (
-              `Attendi ${formatCountdown(lockSec)}`
-            ) : (
-              <>
-                Entra nell&apos;hub
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </>
-            )}
-          </button>
-
-          <div className="flex items-start gap-2 rounded-xl border border-white/6 bg-white/[0.03] px-3 py-2.5">
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300/70" />
-            <p className="text-[11px] leading-relaxed text-white/40">
+          <div className="mx-auto mt-8 flex max-w-[440px] items-start gap-2.5 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/70" />
+            <p className="text-[12px] leading-relaxed text-neutral-500">
               Password admin, personale o temporanea. Con un invito temporaneo ti chiederemo di
               creare la tua password al primo ingresso.
             </p>
           </div>
-        </form>
-      </div>
-    </main>
+        </div>
+      </main>
+
+      <footer className="border-t border-white/[0.07]">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-5">
+          <p className="font-mono text-[11px] tracking-[0.18em] text-neutral-600">
+            OMNICORE © 2026
+          </p>
+          <Link to="/" className="text-[13px] font-medium text-neutral-400 hover:text-white">
+            ← Presentazione
+          </Link>
+        </div>
+      </footer>
+    </div>
   );
 }

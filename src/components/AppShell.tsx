@@ -16,13 +16,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AccountSelector } from "@/components/AccountSelector";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { SectionBackdrop } from "@/components/SectionTheme";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { loadAgentProfile } from "@/lib/agent-profile";
 import { getAuthState, logout } from "@/lib/auth.functions";
 import type { Permission } from "@/lib/auth.permissions";
@@ -132,11 +126,11 @@ function SideNav({
 function BrandBlock({ agentName }: { agentName: string }) {
   return (
     <Link to="/home" className="group block">
-      <span className="logo-gradient gradient-pan font-display text-[1.35rem] font-extrabold tracking-tight transition-opacity group-hover:opacity-90">
+      <span className="font-display text-[1.35rem] font-bold tracking-tight text-white transition-opacity group-hover:opacity-85">
         {agentName}
       </span>
       <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground">
-        <span className="inline-block h-1 w-1 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+        <span className="inline-block h-1 w-1 rounded-full bg-sky-400 shadow-[0_0_8px_var(--color-grok-accent)]" />
         Omnicore · Control Center
       </span>
     </Link>

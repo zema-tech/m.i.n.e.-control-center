@@ -853,3 +853,227 @@ html[data-section="code"] {
     .parallax-slow, .parallax-bg { transform: none !important; }
   }
 }
+
+/*
+ * Omnicore — Grok layer (landing pubblica + login + hub)
+ * Nero puro · bianco · bordi sottili · un solo accento azzurro.
+ * Tipografia Sora + Manrope già caricate, nessun font extra.
+ */
+
+@theme inline {
+  --color-grok-bg: #000000;
+  --color-grok-surface: #0a0a0a;
+  --color-grok-surface-2: #101010;
+  --color-grok-border: oklch(1 0 0 / 0.08);
+  --color-grok-text: #f5f5f5;
+  --color-grok-muted: #a1a1a1;
+  --color-grok-accent: #38bdf8;
+}
+
+@utility grok-page {
+  background: #000;
+  color: #f5f5f5;
+  min-height: 100dvh;
+}
+
+@utility grok-surface {
+  background: #0a0a0a;
+  border: 1px solid oklch(1 0 0 / 0.08);
+  border-radius: 20px;
+}
+
+@utility grok-hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.75rem, 7vw, 5.25rem);
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  line-height: 1.02;
+  color: #fafafa;
+  text-wrap: balance;
+}
+
+@utility grok-sub {
+  font-size: clamp(1rem, 1.8vw, 1.2rem);
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: #a1a1a1;
+  text-wrap: balance;
+}
+
+@layer components {
+  .grok-nav {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: color-mix(in oklab, black 72%, transparent);
+    backdrop-filter: blur(18px) saturate(1.1);
+    border-bottom: 1px solid oklch(1 0 0 / 0.07);
+  }
+
+  .grok-grid-bg {
+    background-image:
+      linear-gradient(oklch(1 0 0 / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(1 0 0 / 0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 75% 60% at 50% 32%, black, transparent 75%);
+  }
+
+  .grok-glow-top {
+    background:
+      radial-gradient(ellipse 55% 38% at 50% 0%, oklch(0.62 0.12 230 / 0.16), transparent 65%),
+      radial-gradient(ellipse 30% 22% at 50% 0%, oklch(1 0 0 / 0.05), transparent 70%);
+  }
+
+  .grok-bar {
+    background: #0d0d0d;
+    border: 1px solid oklch(1 0 0 / 0.1);
+    border-radius: 24px;
+    box-shadow:
+      0 1px 0 oklch(1 0 0 / 0.05) inset,
+      0 24px 64px oklch(0 0 0 / 0.55),
+      0 0 0 1px transparent;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .grok-bar:focus-within {
+    border-color: color-mix(in oklab, #38bdf8 45%, transparent);
+    box-shadow:
+      0 1px 0 oklch(1 0 0 / 0.05) inset,
+      0 24px 64px oklch(0 0 0 / 0.55),
+      0 0 0 3px color-mix(in oklab, #38bdf8 14%, transparent);
+  }
+
+  .grok-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid oklch(1 0 0 / 0.09);
+    background: oklch(1 0 0 / 0.03);
+    color: #d4d4d4;
+    border-radius: 999px;
+    padding: 0.5rem 0.95rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+  a.grok-chip:hover, button.grok-chip:hover {
+    border-color: color-mix(in oklab, #38bdf8 40%, transparent);
+    background: oklch(1 0 0 / 0.05);
+    transform: translateY(-1px);
+  }
+
+  .grok-card {
+    background: #0a0a0a;
+    border: 1px solid oklch(1 0 0 / 0.08);
+    border-radius: 20px;
+    transition:
+      border-color 220ms ease,
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 220ms ease,
+      background 220ms ease;
+  }
+  a.grok-card:hover, .grok-card-hover:hover {
+    border-color: oklch(1 0 0 / 0.16);
+    transform: translateY(-3px);
+    box-shadow: 0 20px 48px oklch(0 0 0 / 0.5);
+    background: #0d0d0d;
+  }
+
+  .grok-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 14px;
+    border: 1px solid oklch(1 0 0 / 0.09);
+    background: oklch(1 0 0 / 0.04);
+    color: #e5e5e5;
+  }
+  a.grok-card:hover .grok-icon {
+    border-color: color-mix(in oklab, #38bdf8 35%, transparent);
+    color: #7dd3fc;
+  }
+
+  .btn-grok-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: #fafafa;
+    color: #09090b;
+    font-weight: 600;
+    font-size: 0.9rem;
+    letter-spacing: -0.01em;
+    border-radius: 999px;
+    padding: 0.8rem 1.6rem;
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background 180ms ease, box-shadow 180ms ease;
+    box-shadow: 0 8px 28px oklch(1 0 0 / 0.08);
+  }
+  .btn-grok-primary:hover {
+    background: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 12px 36px oklch(1 0 0 / 0.12);
+  }
+  .btn-grok-primary:active { transform: scale(0.98); }
+  .btn-grok-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+  .btn-grok-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid oklch(1 0 0 / 0.12);
+    background: oklch(1 0 0 / 0.03);
+    color: #f5f5f5;
+    font-weight: 550;
+    font-size: 0.9rem;
+    letter-spacing: -0.01em;
+    border-radius: 999px;
+    padding: 0.8rem 1.6rem;
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+  .btn-grok-ghost:hover {
+    border-color: oklch(1 0 0 / 0.22);
+    background: oklch(1 0 0 / 0.06);
+    transform: translateY(-1px);
+  }
+
+  .grok-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid oklch(1 0 0 / 0.1);
+    background: oklch(1 0 0 / 0.03);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #d4d4d4;
+  }
+  .grok-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #38bdf8;
+    box-shadow: 0 0 10px #38bdf8;
+  }
+
+  .grok-input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: #fafafa;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+  }
+  .grok-input::placeholder { color: #525252; }
+
+  .grok-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.1), transparent);
+  }
+}

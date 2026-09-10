@@ -1,13 +1,13 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { ArrowRight, ArrowUpRight, Boxes, Cpu, Layers, Zap } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Code2, Network, Palette, Sparkles } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Reveal, Stagger } from "@/components/ScrollReveal";
-import { useCountUp, useParallax, useReveal } from "@/hooks/use-reveal";
+import { useCountUp, useReveal } from "@/hooks/use-reveal";
 import { getAuthState } from "@/lib/auth.functions";
 import { loadAgentProfile } from "@/lib/agent-profile";
-import { SECTIONS } from "@/lib/section-themes";
+import { SECTIONS, type SectionId } from "@/lib/section-themes";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
@@ -30,18 +30,23 @@ export const Route = createFileRoute("/home")({
   component: HomeHub,
 });
 
-const MARQUEE = ["J.A.R.V.I.S", "M.I.N.E", "P.R.O.M.P.T", "A.R.T", "E.D.I.T", "OMNICORE"];
+const SECTION_ICON: Record<SectionId, typeof Sparkles> = {
+  jarvis: Sparkles,
+  mine: Network,
+  design: Palette,
+  code: Code2,
+};
 
 function StatCount({ target, suffix, label }: { target: number; suffix: string; label: string }) {
   const { ref, visible } = useReveal<HTMLDivElement>();
   const v = useCountUp(target, visible);
   return (
-    <div ref={ref} className={`reveal ${visible ? "is-visible" : ""}`}>
-      <p className="font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+    <div ref={ref} className={`reveal ${visible ? "is-visible" : ""} text-center`}>
+      <p className="font-display text-3xl font-bold tracking-tight text-white">
         {v}
-        <span className="logo-gradient">{suffix}</span>
+        <span className="text-sky-300">{suffix}</span>
       </p>
-      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-500">
         {label}
       </p>
     </div>
@@ -50,159 +55,133 @@ function StatCount({ target, suffix, label }: { target: number; suffix: string; 
 
 function HomeHub() {
   const [name, setName] = useState("JARVIS");
-  const heroParallax = useParallax<HTMLDivElement>(0.1);
 
   useEffect(() => {
     setName(loadAgentProfile().name || "JARVIS");
   }, []);
 
-  const cards = SECTIONS;
-
   return (
     <AppShell title="Hub" subtitle="Scegli il contesto">
-      <div className="relative mx-auto max-w-6xl space-y-16 px-4 pb-16 sm:px-6">
-        {/* HERO scrollcraft — full viewport, clip reveal, parallax bg */}
-        <section className="relative overflow-hidden rounded-3xl border border-white/[0.07] bg-gradient-to-b from-white/[0.04] to-transparent">
-          <div className="hero-grid pointer-events-none absolute inset-0" aria-hidden />
-          <div
-            ref={heroParallax}
-            className="parallax-bg pointer-events-none absolute inset-0"
-            aria-hidden
-          >
-            <div className="absolute -top-24 left-1/4 h-72 w-72 rounded-full bg-primary/20 blur-[110px]" />
-            <div className="absolute bottom-0 right-10 h-56 w-56 rounded-full bg-violet-500/15 blur-[100px]" />
-          </div>
-
-          <div className="relative px-6 py-14 sm:px-12 sm:py-20">
-            <Reveal variant="clip">
-              <p className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                <Zap className="h-3 w-3" />
-                Omnicore · Control Center
-              </p>
-            </Reveal>
-            <h2 className="text-hero hero-clip mt-5 max-w-3xl text-foreground">
-              <span className="logo-gradient gradient-pan">{name}</span>
-              <br />
-              un nucleo,
-              <br />
-              cinque agenti.
+      <div className="relative mx-auto max-w-5xl space-y-14 px-5 pb-16 pt-10 sm:pt-14">
+        {/* HERO Grok: centrato, barra comando, quick chips */}
+        <section className="text-center">
+          <Reveal variant="clip">
+            <p className="grok-badge">
+              <span className="dot" />
+              Hub · {name}
+            </p>
+          </Reveal>
+          <Reveal delay={90}>
+            <h2 className="mx-auto mt-6 max-w-2xl font-display text-4xl font-bold tracking-tight text-white sm:text-6xl">
+              Dove operiamo oggi?
             </h2>
-            <Reveal delay={150}>
-              <p className="text-lead mt-5 max-w-xl">
-                Orchestra JARVIS, M.I.N.E, P.R.O.M.P.T e A.R.T da un unico hub scuro e cinematico.
-                L&apos;IA propone, tu confermi.
-              </p>
-            </Reveal>
-            <Reveal delay={250}>
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Link
-                  to="/jarvis"
-                  className="btn-primary group inline-flex items-center gap-2 px-5 py-3 text-sm"
-                >
-                  Apri JARVIS
-                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-                </Link>
-                <Link
-                  to="/mine"
-                  className="btn-matrix inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-foreground hover:border-primary/40"
-                >
-                  <Boxes className="h-4 w-4 text-primary" />
-                  Vai a M.I.N.E
-                </Link>
-                <span className="ml-1 hidden items-center gap-3 sm:flex">
-                  <span className="scroll-hint" aria-hidden>
-                    <span />
-                  </span>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    Scorri
-                  </span>
-                </span>
-              </div>
-            </Reveal>
-
-            {/* stats con count-up on scroll */}
-            <div className="mt-12 grid grid-cols-2 gap-6 border-t border-white/[0.06] pt-8 sm:grid-cols-4">
-              <StatCount target={5} suffix="" label="Agenti" />
-              <StatCount target={12} suffix="+" label="Integrazioni" />
-              <StatCount target={99} suffix="%" label="Dark-first" />
-              <StatCount target={24} suffix="/7" label="Operativo" />
+          </Reveal>
+          <Reveal delay={170}>
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-neutral-400">
+              Un nucleo, cinque agenti. Scegli un mondo: ognuno ha strumenti e contesto propri.
+              L&apos;IA propone, tu confermi.
+            </p>
+          </Reveal>
+          <Reveal delay={250}>
+            <Link
+              to="/jarvis"
+              className="grok-bar group mx-auto mt-9 flex max-w-xl items-center gap-3 p-2.5 pl-5 text-left no-underline"
+            >
+              <Sparkles className="h-4 w-4 shrink-0 text-neutral-500 transition group-hover:text-sky-300" />
+              <span className="flex-1 truncate text-[15px] text-neutral-500">Chiedi a {name}…</span>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-black transition group-hover:bg-sky-300">
+                <ArrowRight className="h-4 w-4" />
+              </span>
+            </Link>
+          </Reveal>
+          <Reveal delay={310}>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              <Link to="/mine" className="grok-chip">
+                <Network className="h-3.5 w-3.5" />
+                Vai a M.I.N.E
+              </Link>
+              <Link to="/code" className="grok-chip">
+                <Code2 className="h-3.5 w-3.5" />
+                Apri P.R.O.M.P.T
+              </Link>
+              <Link to="/design" className="grok-chip">
+                <Palette className="h-3.5 w-3.5" />
+                Studio A.R.T
+              </Link>
             </div>
-          </div>
+          </Reveal>
 
-          {/* marquee brand */}
-          <div className="marquee relative border-t border-white/[0.06] py-3">
-            <div className="marquee-track font-display text-[12px] font-bold uppercase tracking-[0.3em] text-muted-foreground/70">
-              {[...MARQUEE, ...MARQUEE].map((m, i) => (
-                <span key={i} className="flex items-center gap-10">
-                  {m} <Cpu className="h-3 w-3 text-primary/60" />
-                </span>
-              ))}
-            </div>
+          <div className="mx-auto mt-12 grid max-w-2xl grid-cols-2 gap-y-8 border-y border-white/[0.07] py-7 sm:grid-cols-4">
+            <StatCount target={5} suffix="" label="Agenti" />
+            <StatCount target={12} suffix="+" label="Integrazioni" />
+            <StatCount target={99} suffix="%" label="Dark-first" />
+            <StatCount target={24} suffix="/7" label="Operativo" />
           </div>
         </section>
 
-        {/* MONDI — stagger reveal + shine */}
+        {/* MONDI */}
         <section>
           <Reveal>
             <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-section flex items-center gap-2 text-primary">
-                  <Layers className="h-3.5 w-3.5" /> I mondi
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300/90">
+                  I mondi
                 </p>
-                <h3 className="mt-2 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+                <h3 className="mt-2 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
                   Scegli dove operare
                 </h3>
               </div>
-              <p className="max-w-sm text-caption">
-                Ogni sezione ha tema, orb e accento propri. Stesso nucleo, quattro personalità.
+              <p className="max-w-sm text-[13px] leading-relaxed text-neutral-500">
+                Stesso nucleo, quattro personalità. E.D.I.T per social e content è in arrivo.
               </p>
             </div>
           </Reveal>
 
-          <Stagger className="grid gap-4 sm:grid-cols-2">
-            {cards.map((s, i) => (
-              <Link
-                key={s.id}
-                to={s.href}
-                style={{ "--stagger-i": i } as CSSProperties}
-                className={`section-card section-card-${s.id} card-shine group no-underline`}
-              >
-                <div className="section-card-glow" />
-                <div className="relative z-[1] flex h-full min-h-[220px] flex-col p-6 sm:p-7">
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
-                        {s.tagline}
-                      </p>
-                      <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-white sm:text-2xl">
-                        {s.title}
-                      </h3>
-                    </div>
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-white transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                      <ArrowUpRight className="h-4 w-4" />
+          <Stagger className="grid gap-3 sm:grid-cols-2">
+            {SECTIONS.map((s, i) => {
+              const Icon = SECTION_ICON[s.id];
+              return (
+                <Link
+                  key={s.id}
+                  to={s.href}
+                  style={{ "--stagger-i": i } as CSSProperties}
+                  className="grok-card group block p-6 no-underline sm:p-7"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="grok-icon">
+                      <Icon className="h-4.5 w-4.5" />
                     </span>
+                    <ArrowUpRight className="h-4 w-4 text-neutral-600 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-white" />
                   </div>
-                  <p className="flex-1 text-[13px] leading-relaxed text-white/60">
+                  <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    {s.tagline}
+                  </p>
+                  <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-white">
+                    {s.title}
+                  </h3>
+                  <p className="mt-2 text-[14px] leading-relaxed text-neutral-400">
                     {s.description}
                   </p>
-                  <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">
-                    {s.colors}
-                  </p>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </Stagger>
         </section>
 
-        {/* HOW — timeline scroll-driven */}
-        <section className="glass-strong grain relative overflow-hidden rounded-3xl p-6 sm:p-10">
+        {/* COME FUNZIONA */}
+        <section className="grok-surface p-6 sm:p-9">
           <Reveal>
-            <p className="text-section text-primary">Come funziona</p>
-            <h3 className="mt-2 max-w-lg font-display text-2xl font-bold tracking-tight sm:text-3xl">
-              Proposta → conferma → esecuzione. Mai azioni critiche senza di te.
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-300/90">
+              Come funziona
+            </p>
+            <h3 className="mt-2 max-w-lg font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Proposta → conferma → esecuzione.
             </h3>
+            <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-neutral-400">
+              Mai azioni critiche senza di te. Tutto resta ispezionabile e reversibile.
+            </p>
           </Reveal>
-          <Stagger className="mt-8 grid gap-4 md:grid-cols-3">
+          <Stagger className="mt-7 grid gap-3 md:grid-cols-3">
             {[
               {
                 n: "01",
@@ -212,22 +191,26 @@ function HomeHub() {
               {
                 n: "02",
                 t: "Conferma il piano",
-                d: "Ogni azione write mostra step, diff e rischi prima del via.",
+                d: "Ogni azione write mostra step e rischi prima del via.",
               },
               {
                 n: "03",
                 t: "Monitora e itera",
-                d: "Log, memoria e connettori restano ispezionabili e reversibili.",
+                d: "Log, memoria e connettori restano tracciati e reversibili.",
               },
             ].map((s, i) => (
               <div
                 key={s.n}
                 style={{ "--stagger-i": i } as CSSProperties}
-                className="card-interactive rounded-2xl border border-white/[0.07] bg-black/30 p-5"
+                className="rounded-2xl border border-white/[0.07] bg-black/40 p-5"
               >
-                <p className="logo-gradient font-display text-4xl font-extrabold">{s.n}</p>
-                <p className="mt-3 font-semibold">{s.t}</p>
-                <p className="mt-1.5 text-caption">{s.d}</p>
+                <p className="font-display text-sm font-bold tracking-[0.2em] text-neutral-600">
+                  {s.n}
+                </p>
+                <p className="mt-3 font-display text-[16px] font-bold tracking-tight text-white">
+                  {s.t}
+                </p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-neutral-400">{s.d}</p>
               </div>
             ))}
           </Stagger>
