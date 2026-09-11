@@ -1555,6 +1555,17 @@ html[data-section="code"] {
   }
 }
 
+@keyframes jx-node-ping {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
 @keyframes jx-shine-pan {
   0% {
     background-position: 0% 50%;
@@ -1720,7 +1731,12 @@ html[data-section="code"] {
     background: color-mix(in oklab, #7dd3fc 45%, transparent);
   }
 
-  /* Barra piano in attesa: bordo gradiente */
+  /* Ping dei nodi freschi nel grafo neurale (SVG, GPU-only) */
+  .jx-node-ping {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: jx-node-ping 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
   .jx-plan {
     background:
       linear-gradient(rgba(2, 6, 23, 0.72), rgba(2, 6, 23, 0.72)) padding-box,
@@ -1740,6 +1756,7 @@ html[data-section="code"] {
     .jx-panel,
     .jx-stagger,
     .jx-title-glow,
+    .jx-node-ping,
     .jx-side-active::before {
       animation: none !important;
     }

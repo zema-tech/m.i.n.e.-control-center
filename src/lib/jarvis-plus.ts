@@ -85,6 +85,59 @@ export function formatJarvisMemoriesForPrompt(accountKey: string): string {
   return `### Memorie Jarvis (preferenze/fatti salvati con /memorizza)\n${out}`;
 }
 
+/**
+ * Export/import memorie (backup portabile).
+ * VibeSec import: JSON validato — array di stringhe/oggetti, cap count/chars,
+ * niente prototype pollution (__proto__/constructor rifiutati).
+ */
+export function exportJarvisMemories(accountKey: string): string {
+  return JSON.stringify(
+    { version: 1, exportedAt: new Date().toISOString(), items: loadJarvisMemories(accountKey) },
+    null,
+    2,
+  );
+}
+
+export function importJarvisMemories(
+  accountKey: string,
+  raw: string,
+): { added: number; skipped: number } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("File non JSON.");
+  }
+  const arr = (
+    Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { items?: unknown }).items)
+        ? (parsed as { items: unknown[] }).items
+        : null
+  ) as unknown[] | null;
+  if (!arr) throw new Error("Formato non valido (serve array o {items}).");
+  let added = 0;
+  let skipped = 0;
+  for (const entry of arr.slice(0, MEM_MAX_ITEMS * 2)) {
+    if (added >= MEM_MAX_ITEMS) break;
+    const text =
+      typeof entry === "string"
+        ? entry
+        : typeof entry === "object" &&
+            entry !== null &&
+            typeof (entry as { text?: unknown }).text === "string"
+          ? String((entry as { text: unknown }).text)
+          : "";
+    if (!text || /__proto__|constructor|prototype/i.test(text)) {
+      skipped++;
+      continue;
+    }
+    if (addJarvisMemory(accountKey, text)) added++;
+    else skipped++;
+  }
+  return { added, skipped };
+}
+
 // ─── Slash command ────────────────────────────────────────────────────────────
 
 export type SlashCmd =

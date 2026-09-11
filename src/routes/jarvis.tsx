@@ -1,10 +1,12 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Activity,
   Brain,
   Cable,
   Download,
   Eraser,
+  FlaskConical,
   FolderPlus,
   History,
   Home,
@@ -12,6 +14,7 @@ import {
   Menu,
   Mic,
   MicOff,
+  Network,
   Paperclip,
   Pin,
   PinOff,
@@ -22,6 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -29,15 +33,26 @@ import type { CSSProperties } from "react";
 
 import { CustomMcpPanel } from "@/components/CustomMcpPanel";
 import { JarvisMessage } from "@/components/JarvisMessage";
+import { KnowledgeGraph, type GraphEdge, type GraphNode } from "@/components/KnowledgeGraph";
+import { NeuralNet } from "@/components/NeuralNet";
 import { getAuthState } from "@/lib/auth.functions";
-import { getActiveSkills } from "@/lib/agent-skills";
+import {
+  loadAgentSkills,
+  proposeOrCreateSkill,
+  removeSkill,
+  setSkillStatus,
+} from "@/lib/agent-skills";
 import { DEFAULT_GROQ_MODEL, GROQ_MODELS, type GroqModelId } from "@/lib/groq-models";
 import {
   addJarvisMemory,
+  exportJarvisMemories,
+  importJarvisMemories,
   loadJarvisMemories,
   removeJarvisMemory,
   stopJarvisSpeech,
 } from "@/lib/jarvis-plus";
+import { loadCustomMcpServers } from "@/lib/mcp-custom";
+import { mcpListTools } from "@/lib/mcp.functions";
 import {
   addTextFile,
   createChat,
@@ -152,6 +167,18 @@ function JarvisWorkspace() {
   const [patSaved, setPatSaved] = useState(false);
   const [memInput, setMemInput] = useState("");
   const [memTick, setMemTick] = useState(0);
+  const [memQuery, setMemQuery] = useState("");
+  const [skillTick, setSkillTick] = useState(0);
+  const [skillForm, setSkillForm] = useState({ name: "", desc: "", body: "", activate: false });
+  const [showSkillForm, setShowSkillForm] = useState(false);
+  const [toolsBusy, setToolsBusy] = useState(false);
+  const [toolsResult, setToolsResult] = useState<{
+    ok: boolean;
+    message: string;
+    names: string[];
+  } | null>(null);
+  const memFileRef = useRef<HTMLInputElement>(null);
+  const doListTools = useServerFn(mcpListTools);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
@@ -246,10 +273,144 @@ function JarvisWorkspace() {
     [accountKey, agent.memBump, memTick],
   );
   const skills = useMemo(
-    () => getActiveSkills(),
+    () => loadAgentSkills(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [panel, agent.memBump],
+    [panel, agent.memBump, skillTick],
   );
+
+  /** Grafo neurale vivo: nodi reali + fili di relazione. */
+  const graph = useMemo(() => {
+    const freshAfter = Date.now() - 10 * 60 * 1000;
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    for (const p of store.projects.slice(0, 6)) {
+      nodes.push({
+        id: `prj:${p.id}`,
+        kind: "project",
+        label: p.name,
+        fresh: p.updatedAt > freshAfter,
+      });
+    }
+    const chats = [...store.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8);
+    for (const c of chats) {
+      nodes.push({
+        id: `chat:${c.id}`,
+        kind: "chat",
+        label: c.title,
+        fresh: c.updatedAt > freshAfter,
+      });
+      if (c.projectId && store.projects.some((p) => p.id === c.projectId)) {
+        edges.push({ from: `chat:${c.id}`, to: `prj:${c.projectId}`, strong: true });
+      }
+    }
+    for (const f of store.files.slice(0, 8)) {
+      nodes.push({
+        id: `file:${f.id}`,
+        kind: "file",
+        label: f.name,
+        fresh: f.createdAt > freshAfter,
+      });
+      if (f.projectId && store.projects.some((p) => p.id === f.projectId)) {
+        edges.push({ from: `file:${f.id}`, to: `prj:${f.projectId}` });
+      } else if (f.chatId && chats.some((c) => c.id === f.chatId)) {
+        edges.push({ from: `file:${f.id}`, to: `chat:${f.chatId}` });
+      }
+    }
+    for (const m of memories.slice(0, 12)) {
+      nodes.push({
+        id: `mem:${m.id}`,
+        kind: "memory",
+        label: m.text,
+        fresh: m.createdAt > freshAfter,
+      });
+    }
+    for (const s of skills.filter((s) => s.status === "active").slice(0, 8)) {
+      nodes.push({ id: `skill:${s.id}`, kind: "skill", label: s.name });
+    }
+    for (const c of loadCustomMcpServers().slice(0, 6)) {
+      nodes.push({ id: `mcp:${c.id}`, kind: "mcp", label: c.label });
+    }
+    return { nodes, edges };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, memories, skills, panel, agent.memBump]);
+
+  function onGraphSelect(n: GraphNode) {
+    const [prefix, rest] = [n.id.slice(0, n.id.indexOf(":")), n.id.slice(n.id.indexOf(":") + 1)];
+    if (prefix === "chat") {
+      setActiveChatId(rest);
+      setPanel("chat");
+      setSidebarOpen(false);
+    } else if (prefix === "prj") {
+      setActiveProjectId(rest);
+      setPanel("chat");
+      setSidebarOpen(false);
+    } else if (prefix === "skill") {
+      const skill = skills.find((s) => s.id === rest);
+      if (skill && agent.applySkill(skill.name)) {
+        setPanel("chat");
+        setSidebarOpen(false);
+      }
+    } else if (prefix === "mem") {
+      const mem = memories.find((m) => m.id === rest);
+      setInput(mem ? `Partendo da questo ricordo (“${mem.text}”), ` : "");
+      setPanel("chat");
+      setSidebarOpen(false);
+    } else if (prefix === "mcp") {
+      setPanel("connectors");
+    }
+  }
+
+  async function onTestGithubTools() {
+    const token = loadGithubPat();
+    if (!token) {
+      setToolsResult({ ok: false, message: "Salva prima il PAT GitHub.", names: [] });
+      return;
+    }
+    setToolsBusy(true);
+    setToolsResult(null);
+    try {
+      const res = await doListTools({ data: { serverId: "github", bearerToken: token } });
+      setToolsResult({
+        ok: res.ok,
+        message: res.message,
+        names: (res.tools ?? []).slice(0, 24).map((t: { name: string }) => t.name),
+      });
+    } catch (e) {
+      setToolsResult({ ok: false, message: e instanceof Error ? e.message : String(e), names: [] });
+    } finally {
+      setToolsBusy(false);
+    }
+  }
+
+  function onExportMemories() {
+    try {
+      const blob = new Blob([exportJarvisMemories(accountKey)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `jarvis-memorie-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Export memorie fallito.");
+    }
+  }
+
+  async function onImportMemories(file: File) {
+    if (file.size > 512 * 1024) {
+      setError("File memorie oltre 512 KB.");
+      return;
+    }
+    try {
+      const text = await file.text();
+      const { added, skipped } = importJarvisMemories(accountKey, text);
+      setMemTick((n) => n + 1);
+      setError(null);
+      if (added === 0 && skipped > 0) setError(`Nessun ricordo importato (${skipped} scartati).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import fallito.");
+    }
+  }
 
   function onAddMemory() {
     if (!memInput.trim()) return;
@@ -687,6 +848,95 @@ function JarvisWorkspace() {
 
         {panel === "neural" ? (
           <div key="neural" className="jx-scroll jx-panel flex-1 overflow-y-auto p-4 sm:p-8">
+            {/* Hero: rete neurale viva */}
+            <div className="hermes-card relative mx-auto max-w-3xl overflow-hidden p-6 sm:p-8">
+              <NeuralNet
+                active={panel === "neural"}
+                className="pointer-events-none absolute inset-0 h-full w-full opacity-70"
+              />
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30"
+                aria-hidden
+              />
+              <div className="relative">
+                <p className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.24em] text-sky-200/80">
+                  <Network className="h-3.5 w-3.5" />
+                  SISTEMA NEURALE · HNA
+                </p>
+                <h2 className="font-hermes mt-3 text-[34px] leading-tight text-white sm:text-[40px]">
+                  La rete di <span className="hermes-gradient-text italic">Jarvis.</span>
+                </h2>
+                <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-slate-300/85">
+                  Ogni pallino è un oggetto vivo del tuo workspace — chat, progetti, file, ricordi,
+                  skill, plugin — tutti collegati al nucleo. Tocca un nodo per aprirlo.
+                </p>
+                <div className="mt-4 flex gap-5">
+                  <p>
+                    <span className="font-hermes text-3xl italic text-white">
+                      {graph.nodes.length}
+                    </span>
+                    <span className="ml-1.5 text-[11px] uppercase tracking-[0.18em] text-sky-100/60">
+                      nodi
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-hermes text-3xl italic text-white">
+                      {graph.nodes.length + graph.edges.length}
+                    </span>
+                    <span className="ml-1.5 text-[11px] uppercase tracking-[0.18em] text-sky-100/60">
+                      fili
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-hermes text-3xl italic text-white">{totalMessages}</span>
+                    <span className="ml-1.5 text-[11px] uppercase tracking-[0.18em] text-sky-100/60">
+                      msg
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Grafo interattivo */}
+            <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-4 sm:p-6">
+              {graph.nodes.length > 0 ? (
+                <>
+                  <KnowledgeGraph
+                    nodes={graph.nodes}
+                    edges={graph.edges}
+                    onSelect={onGraphSelect}
+                  />
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-white/[0.06] pt-3">
+                    {(
+                      [
+                        ["project", "Progetti", "#34d399"],
+                        ["chat", "Chat", "#7dd3fc"],
+                        ["file", "File", "#fbbf24"],
+                        ["memory", "Ricordi", "#c4b5fd"],
+                        ["skill", "Skill", "#f0abfc"],
+                        ["mcp", "Plugin", "#fb9238"],
+                      ] as const
+                    ).map(([kind, label, color]) => {
+                      const n = graph.nodes.filter((x) => x.kind === kind).length;
+                      return (
+                        <span
+                          key={kind}
+                          className="inline-flex items-center gap-1.5 font-mono text-[11px] text-slate-300"
+                        >
+                          <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                          {label} · {n}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="p-4 text-center text-[13px] text-slate-400">
+                  Rete vuota: scrivi in chat, crea un progetto o salva un ricordo con{" "}
+                  <span className="font-mono text-sky-200">/memorizza</span> e i nodi si accendono.
+                </p>
+              )}
+            </div>
             <div className="mx-auto grid max-w-3xl gap-3 sm:grid-cols-3">
               {[
                 { v: String(store.projects.length), l: "Progetti" },
@@ -715,9 +965,40 @@ function JarvisWorkspace() {
 
             {/* Ricordi locali stile Claude memory */}
             <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
-              <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
-                <History className="h-4 w-4 text-sky-200" /> Ricordi · {memories.length}/50
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="flex flex-1 items-center gap-2 text-[14px] font-semibold text-white">
+                  <History className="h-4 w-4 text-sky-200" /> Ricordi · {memories.length}/50
+                </p>
+                <button
+                  type="button"
+                  onClick={onExportMemories}
+                  title="Esporta ricordi in JSON"
+                  aria-label="Esporta ricordi"
+                  className="rounded-xl border border-sky-100/15 p-2 text-sky-100/70 hover:text-white"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => memFileRef.current?.click()}
+                  title="Importa ricordi da JSON"
+                  aria-label="Importa ricordi"
+                  className="rounded-xl border border-sky-100/15 p-2 text-sky-100/70 hover:text-white"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                </button>
+                <input
+                  ref={memFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onImportMemories(f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-400">
                 Fatti e preferenze che Jarvis riusa in ogni chat (solo questo browser). Anche via{" "}
                 <span className="font-mono text-sky-200">/memorizza</span>.
@@ -746,40 +1027,143 @@ function JarvisWorkspace() {
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
+              {memories.length > 3 ? (
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sky-100/40" />
+                  <input
+                    value={memQuery}
+                    onChange={(e) => setMemQuery(e.target.value.slice(0, 80))}
+                    placeholder="Filtra ricordi…"
+                    maxLength={80}
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-sky-100/10 bg-black/35 py-2 pl-9 pr-3 text-[12.5px] text-white outline-none placeholder:text-sky-100/30 focus:border-sky-200/35"
+                  />
+                </div>
+              ) : null}
               {memories.length > 0 ? (
                 <ul className="mt-3 space-y-1.5">
-                  {memories.map((m) => (
-                    <li
-                      key={m.id}
-                      className="group flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12.5px] text-slate-200"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{m.text}</span>
-                      <button
-                        type="button"
-                        aria-label={`Dimentica ${m.text}`}
-                        onClick={() => {
-                          removeJarvisMemory(accountKey, m.id);
-                          setMemTick((n) => n + 1);
-                        }}
-                        className="shrink-0 rounded p-1 text-slate-500 opacity-0 hover:text-red-300 group-hover:opacity-100"
+                  {memories
+                    .filter((m) =>
+                      memQuery.trim()
+                        ? m.text.toLowerCase().includes(memQuery.trim().toLowerCase())
+                        : true,
+                    )
+                    .map((m) => (
+                      <li
+                        key={m.id}
+                        className="group flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12.5px] text-slate-200"
                       >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </li>
-                  ))}
+                        <span className="min-w-0 flex-1 truncate">{m.text}</span>
+                        <button
+                          type="button"
+                          aria-label={`Dimentica ${m.text}`}
+                          onClick={() => {
+                            removeJarvisMemory(accountKey, m.id);
+                            setMemTick((n) => n + 1);
+                          }}
+                          className="shrink-0 rounded p-1 text-slate-500 opacity-0 hover:text-red-300 group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </li>
+                    ))}
                 </ul>
               ) : null}
             </div>
 
             {/* Skill stile Claude Agent Skills */}
             <div className="hermes-card jx-card mx-auto mt-4 max-w-3xl p-5 sm:p-6">
-              <p className="flex items-center gap-2 text-[14px] font-semibold text-white">
-                <Puzzle className="h-4 w-4 text-sky-200" /> Skill · {skills.length} attive
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="flex flex-1 items-center gap-2 text-[14px] font-semibold text-white">
+                  <Puzzle className="h-4 w-4 text-sky-200" /> Skill ·{" "}
+                  {skills.filter((s) => s.status === "active").length} attive
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowSkillForm((v) => !v)}
+                  aria-expanded={showSkillForm}
+                  className="inline-flex items-center gap-1 rounded-xl border border-sky-100/15 px-3 py-1.5 text-[12px] text-sky-100/80 hover:text-white"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Nuova
+                </button>
+              </div>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-400">
                 Procedure riusabili (stile Claude SKILL.md). “Usa” la arma per la prossima risposta,
                 oppure <span className="font-mono text-sky-200">/skill &lt;nome&gt;</span> in chat.
+                Le bozze restano inattive finché non le abiliti.
               </p>
+              {showSkillForm ? (
+                <div className="mt-3 space-y-2 rounded-2xl border border-white/10 bg-black/30 p-3.5">
+                  <input
+                    value={skillForm.name}
+                    onChange={(e) =>
+                      setSkillForm((f) => ({ ...f, name: e.target.value.slice(0, 48) }))
+                    }
+                    placeholder="nome-skill (kebab-case)"
+                    maxLength={48}
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2 font-mono text-[12.5px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
+                  />
+                  <input
+                    value={skillForm.desc}
+                    onChange={(e) =>
+                      setSkillForm((f) => ({ ...f, desc: e.target.value.slice(0, 200) }))
+                    }
+                    placeholder="Una riga: quando usarla"
+                    maxLength={200}
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2 text-[12.5px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
+                  />
+                  <textarea
+                    value={skillForm.body}
+                    onChange={(e) =>
+                      setSkillForm((f) => ({ ...f, body: e.target.value.slice(0, 12000) }))
+                    }
+                    placeholder="Body SKILL.md: Quando / Passi / Evita…"
+                    rows={3}
+                    maxLength={12000}
+                    className="w-full resize-y rounded-xl border border-sky-100/15 bg-black/40 px-3 py-2 text-[12.5px] text-white outline-none placeholder:text-slate-500 focus:border-sky-200/40"
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex flex-1 items-center gap-2 text-[12px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={skillForm.activate}
+                        onChange={(e) =>
+                          setSkillForm((f) => ({ ...f, activate: e.target.checked }))
+                        }
+                        className="h-3.5 w-3.5 accent-sky-300"
+                      />
+                      Attiva subito
+                    </label>
+                    <button
+                      type="button"
+                      disabled={
+                        !skillForm.name.trim() || !skillForm.desc.trim() || !skillForm.body.trim()
+                      }
+                      onClick={() => {
+                        const res = proposeOrCreateSkill({
+                          name: skillForm.name,
+                          description: skillForm.desc,
+                          body: skillForm.body,
+                          activate: skillForm.activate,
+                          source: "user",
+                        });
+                        if (res.ok) {
+                          setSkillForm({ name: "", desc: "", body: "", activate: false });
+                          setShowSkillForm(false);
+                          setSkillTick((n) => n + 1);
+                        } else {
+                          setError(res.message);
+                        }
+                      }}
+                      className="rounded-xl bg-gradient-to-b from-sky-200 to-sky-400 px-4 py-2 text-[12.5px] font-semibold text-black disabled:opacity-40"
+                    >
+                      Crea
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {skills.length > 0 ? (
                 <ul className="mt-3 space-y-1.5">
                   {skills.map((s) => (
@@ -787,9 +1171,43 @@ function JarvisWorkspace() {
                       key={s.id}
                       className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2"
                     >
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={s.status === "active"}
+                        aria-label={`${s.status === "active" ? "Disattiva" : "Attiva"} ${s.name}`}
+                        title={
+                          s.status === "active"
+                            ? "Attiva — tocca per mettere in bozza"
+                            : "Bozza — tocca per attivare"
+                        }
+                        onClick={() => {
+                          setSkillStatus(s.id, s.status === "active" ? "draft" : "active");
+                          if (agent.activeSkill?.name === s.name.toLowerCase()) agent.clearSkill();
+                          setSkillTick((n) => n + 1);
+                        }}
+                        className={`h-5 w-9 shrink-0 rounded-full p-0.5 transition ${
+                          s.status === "active" ? "bg-sky-300/60" : "bg-white/10"
+                        }`}
+                      >
+                        <span
+                          className={`block h-4 w-4 rounded-full bg-white transition-transform ${
+                            s.status === "active" ? "translate-x-4" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
                       <div className="min-w-0 flex-1">
-                        <p className="font-mono text-[12px] text-sky-100">{s.name}</p>
-                        <p className="truncate text-[11.5px] text-slate-400">{s.description}</p>
+                        <p className="font-mono text-[12px] text-sky-100">
+                          {s.name}
+                          {s.status !== "active" ? (
+                            <span className="ml-2 rounded-full border border-white/15 px-1.5 py-0.5 text-[10px] text-slate-400">
+                              bozza
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="truncate text-[11.5px] text-slate-400">
+                          {s.description} · usata {s.useCount}×
+                        </p>
                       </div>
                       <button
                         type="button"
@@ -799,7 +1217,8 @@ function JarvisWorkspace() {
                             setSidebarOpen(false);
                           }
                         }}
-                        className={`shrink-0 rounded-xl px-3 py-1.5 text-[12px] font-semibold ${
+                        disabled={s.status !== "active"}
+                        className={`shrink-0 rounded-xl px-3 py-1.5 text-[12px] font-semibold disabled:opacity-30 ${
                           agent.activeSkill?.name === s.name.toLowerCase()
                             ? "bg-emerald-300/25 text-emerald-100"
                             : "bg-sky-300/20 text-white hover:bg-sky-300/30"
@@ -807,12 +1226,26 @@ function JarvisWorkspace() {
                       >
                         {agent.activeSkill?.name === s.name.toLowerCase() ? "Attiva ✓" : "Usa"}
                       </button>
+                      <button
+                        type="button"
+                        aria-label={`Elimina ${s.name}`}
+                        title="Elimina skill"
+                        onClick={() => {
+                          if (!window.confirm(`Eliminare la skill "${s.name}"?`)) return;
+                          removeSkill(s.id);
+                          if (agent.activeSkill?.name === s.name.toLowerCase()) agent.clearSkill();
+                          setSkillTick((n) => n + 1);
+                        }}
+                        className="shrink-0 rounded p-1 text-slate-500 hover:text-red-300"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="mt-3 text-[12.5px] text-slate-500">
-                  Nessuna skill attiva — creane da Competenze o chiedi a Jarvis di proporne una.
+                  Nessuna skill — creane una qui sopra o chiedi a Jarvis di proporla.
                 </p>
               )}
             </div>
@@ -868,6 +1301,38 @@ function JarvisWorkspace() {
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-200/80" />
                   VibeSec: segreto mai hardcodato, mai nei log, revocabile in un tap.
                 </p>
+                <div className="mt-3 border-t border-white/[0.06] pt-3">
+                  <button
+                    type="button"
+                    onClick={() => void onTestGithubTools()}
+                    disabled={toolsBusy || !patSaved}
+                    title={patSaved ? "Elenca i tool MCP GitHub" : "Salva prima il PAT"}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-sky-100/15 px-3 py-2 text-[12px] text-sky-100/80 hover:text-white disabled:opacity-40"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" />
+                    {toolsBusy ? "Verifica…" : "Verifica connessione ed elenca tool"}
+                  </button>
+                  {toolsResult ? (
+                    <div
+                      className={`mt-2.5 rounded-xl border px-3 py-2.5 text-[12.5px] leading-relaxed ${toolsResult.ok ? "border-emerald-300/25 bg-emerald-400/[0.06] text-emerald-50" : "border-red-300/25 bg-red-950/40 text-red-100"}`}
+                      role="status"
+                    >
+                      <p>{toolsResult.message}</p>
+                      {toolsResult.names.length > 0 ? (
+                        <p className="mt-1.5 flex flex-wrap gap-1.5">
+                          {toolsResult.names.map((n) => (
+                            <span
+                              key={n}
+                              className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 font-mono text-[10.5px] text-sky-100"
+                            >
+                              {n}
+                            </span>
+                          ))}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
               {/* Plugin MCP custom stile Claude Connectors */}
               <div className="hermes-card jx-card p-5 sm:p-7">
