@@ -1,6 +1,11 @@
-// Server-side Supabase (service role). Opzionale se non usi cloud memory.
+// Server-side Supabase (service role / secret). Opzionale se non usi cloud memory.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
+import {
+  isSupabaseAdminEnvConfigured,
+  resolveSupabaseServiceKey,
+  resolveSupabaseUrl,
+} from "./env";
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
@@ -29,16 +34,16 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
 }
 
 export function isSupabaseAdminConfigured(): boolean {
-  return Boolean(process.env["SUPABASE_URL"] && process.env["SUPABASE_SERVICE_ROLE_KEY"]);
+  return isSupabaseAdminEnvConfigured();
 }
 
 function createSupabaseAdminClient(): SupabaseClient<Database> {
-  const SUPABASE_URL = process.env["SUPABASE_URL"];
-  const SUPABASE_SERVICE_ROLE_KEY = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+  const SUPABASE_URL = resolveSupabaseUrl();
+  const SUPABASE_SERVICE_ROLE_KEY = resolveSupabaseServiceKey();
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY. Cloud memory disabilitata.",
+      "Missing SUPABASE_URL / (SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY). Cloud memory disabilitata.",
     );
   }
 
@@ -61,7 +66,7 @@ export const supabaseAdmin = new Proxy({} as SupabaseClient<Database>, {
     if (!_supabaseAdmin) {
       if (!isSupabaseAdminConfigured()) {
         throw new Error(
-          "Supabase admin non configurato (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).",
+          "Supabase admin non configurato (SUPABASE_URL + SERVICE_ROLE/SECRET_KEY).",
         );
       }
       _supabaseAdmin = createSupabaseAdminClient();
