@@ -1,6 +1,11 @@
 // Client Supabase — opzionale in produzione (env assenti = modalità offline).
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
+import {
+  isSupabaseClientConfigured,
+  resolveSupabasePublishableKey,
+  resolveSupabaseUrl,
+} from "./env";
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
@@ -28,38 +33,17 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
   };
 }
 
-function getProcessEnv(key: string): string | undefined {
-  try {
-    if (typeof process !== "undefined" && process.env) return process.env[key];
-  } catch {
-    /* ignore — browser senza process */
-  }
-  return undefined;
-}
-
-function readEnv() {
-  const SUPABASE_URL =
-    (import.meta.env?.["VITE_SUPABASE_URL"] as string | undefined) ||
-    getProcessEnv("SUPABASE_URL") ||
-    getProcessEnv("VITE_SUPABASE_URL");
-  const SUPABASE_PUBLISHABLE_KEY =
-    (import.meta.env?.["VITE_SUPABASE_PUBLISHABLE_KEY"] as string | undefined) ||
-    getProcessEnv("SUPABASE_PUBLISHABLE_KEY") ||
-    getProcessEnv("VITE_SUPABASE_PUBLISHABLE_KEY");
-  return { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY };
-}
-
 export function isSupabaseConfigured(): boolean {
-  const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = readEnv();
-  return Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+  return isSupabaseClientConfigured();
 }
 
 function createSupabaseClient(): SupabaseClient<Database> {
-  const { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } = readEnv();
+  const SUPABASE_URL = resolveSupabaseUrl();
+  const SUPABASE_PUBLISHABLE_KEY = resolveSupabasePublishableKey();
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     throw new Error(
-      "Missing Supabase environment variable(s). Imposta SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY su Vercel, oppure usa solo localStorage.",
+      "Missing Supabase env. Vercel integration: SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY (o ANON_KEY). Vite: VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY.",
     );
   }
 
@@ -112,7 +96,7 @@ export const supabase = new Proxy({} as SupabaseClient<Database>, {
         if (!_warned) {
           _warned = true;
           console.warn(
-            "[Supabase] Env assenti — modalità offline (localStorage). Aggiungi SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY su Vercel per la cloud memory.",
+            "[Supabase] Env assenti — offline. Integrazione Vercel fornisce SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY/ANON_KEY (non serve obbligatoriamente VITE_*).",
           );
         }
         _supabase = createDisabledStub();
